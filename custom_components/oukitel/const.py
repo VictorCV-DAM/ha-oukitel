@@ -18,7 +18,7 @@ REGION_SERVERS = {
         "user_domain": "E.SP.4294967410",
         "user_domain_secret": "3aRNUwWahjyANa7WfBK2wCCkxCexB6nXxKJwXxfePvzf",
         "appid": "277",
-        "appversion": "2.19.6",
+        "appversion": "3.7.5",
     },
     "US": {
         "name": "North America / USA [EXPERIMENTAL]",
@@ -26,7 +26,7 @@ REGION_SERVERS = {
         "user_domain": "E.SP.4294967410",
         "user_domain_secret": "3aRNUwWahjyANa7WfBK2wCCkxCexB6nXxKJwXxfePvzf",
         "appid": "277",
-        "appversion": "2.19.6",
+        "appversion": "3.7.5",
     },
     "CN": {
         "name": "China / Asia [EXPERIMENTAL]",
@@ -34,6 +34,6 @@ REGION_SERVERS = {
         "user_domain": "E.SP.4294967410",
         "user_domain_secret": "3aRNUwWahjyANa7WfBK2wCCkxCexB6nXxKJwXxfePvzf",
         "appid": "277",
-        "appversion": "2.19.6",
+        "appversion": "3.7.5",
     },
 }
