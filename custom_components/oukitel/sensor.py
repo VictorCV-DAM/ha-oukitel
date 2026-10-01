@@ -49,6 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         OukitelSensor(coordinator, client, key, name, unit, dev_class, state_class, icon, category)
         for key, name, unit, dev_class, state_class, icon, category in SENSOR_TYPES
     ]
+    entities.append(OukitelConnectionModeSensor(coordinator, client))
     async_add_entities(entities)
 
 
@@ -138,3 +139,43 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             return "; ".join(faults) if faults else "Normal"
 
         return self.coordinator.data.get(self._key)
+
+
+class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
+    """Diagnostic sensor that reports the active connection mode."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_name = "Connection Mode"
+    _attr_icon = "mdi:lan-connect"
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_unique_id = f"oukitel_{client.device_key}_connection_mode"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.client.device_key)},
+            name=self.client.device_name,
+            manufacturer="OUKITEL",
+            model="P2001 Plus",
+        )
+
+    @property
+    def native_value(self) -> str:
+        return "LAN" if self.coordinator._lan_active else "Cloud"
+
+    @property
+    def icon(self) -> str:
+        return "mdi:lan-connect" if self.coordinator._lan_active else "mdi:cloud-outline"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        attrs: dict = {}
+        if self.coordinator._lan_active and self.coordinator._lan_last_report:
+            import time
+            age = round(time.monotonic() - self.coordinator._lan_last_report, 1)
+            attrs["last_lan_report_ago_s"] = age
+        return attrs
