@@ -73,6 +73,33 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         )
 
     @property
+    def icon(self):
+        """Return dynamic animated icon for battery depending on level and charging state."""
+        if self._key == "battery_percentage":
+            val = self.native_value
+            if val is not None:
+                # Calculate charging state from input power
+                is_charging = False
+                if self.coordinator.data:
+                    total_in = self.coordinator.data.get("total_input_power", 0) or 0
+                    ac_in = self.coordinator.data.get("ac_input", 0) or 0
+                    dc_in = self.coordinator.data.get("dc_input", 0) or 0
+                    if total_in > 5 or ac_in > 5 or dc_in > 5:
+                        is_charging = True
+
+                rounded = int(round(val / 10.0) * 10)
+                rounded = max(10, min(100, rounded))
+                if is_charging:
+                    if rounded == 100:
+                        return "mdi:battery-charging-100"
+                    return f"mdi:battery-charging-{rounded}"
+                else:
+                    if rounded == 100:
+                        return "mdi:battery"
+                    return f"mdi:battery-{rounded}"
+        return self._attr_icon
+
+    @property
     def native_value(self):
         if not self.coordinator.data:
             return None
