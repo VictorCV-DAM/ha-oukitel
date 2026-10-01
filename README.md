@@ -10,7 +10,7 @@
   [![Ko-fi](https://img.shields.io/badge/Ko--fi-Donate-red?logo=ko-fi)](https://ko-fi.com/victorcv)
 </div>
 
-Custom integration for Home Assistant to monitor and control **Oukitel Power Stations** (P2001 Plus, P2001, P5000, BP2000, etc.) via Cloud API without phone, emulator, or ADB.
+Custom integration for Home Assistant to monitor and control **Oukitel Power Stations** (P2001 Plus, P2001, P5000, BP2000, etc.). Connects via **local LAN** when the device is on the same network, with automatic fallback to Cloud API — no phone, emulator, or ADB required.
 
 ---
 
@@ -28,6 +28,8 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 
 ## ✨ Features
 
+- **Dual Connection Mode**: Automatically connects via **local LAN** (TCP, real-time push) when the station is on the same network. Falls back to **Cloud API** (polling) if LAN is unavailable — switching is transparent and requires no user action.
+- **Connection Mode Indicator**: Diagnostic entity in the device card shows whether the active connection is `LAN` or `Cloud` at all times.
 - **100% Standalone**: No smartphone, emulator, or ADB required.
 - **Interactive Bidirectional Switches**: Toggle AC, DC 12V, and USB directly from Home Assistant UI and automations with optimistic latching.
 - **Dynamic Energy Icons**: Automatic real-time animated battery status icons showing charging vs discharging states at 10% steps.
@@ -37,7 +39,7 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
   - `EU` (Europe - Verified)
   - `US` (North America - [EXPERIMENTAL])
   - `CN` (China/Asia - [EXPERIMENTAL])
-- **UI Config Flow**: Native setup directly from Home Assistant Settings -> Devices & Services.
+- **UI Config Flow**: Native setup directly from Home Assistant Settings → Devices & Services.
 
 ---
 
@@ -111,6 +113,23 @@ Click the button below to add this repository directly to your HACS:
 
 ---
 
+## 🌐 LAN Mode vs Cloud Mode
+
+The integration automatically detects whether your station is reachable on the local network:
+
+| | **LAN Mode** | **Cloud Mode** |
+|---|---|---|
+| **Protocol** | TCP port 6607 (binary, AES-128) | Acceleronix REST API |
+| **Latency** | Real-time push (~1 s) | Polling interval (min. 3 s) |
+| **Internet required** | Only at first setup | Always |
+| **Works away from home** | ❌ | ✅ |
+| **Works if Oukitel cloud down** | ✅ | ❌ |
+
+> [!TIP]
+> No configuration needed — the integration tries LAN automatically on every startup. If the station is not found on the local network it silently falls back to Cloud. The **Connection Mode** diagnostic sensor always shows the current state.
+
+---
+
 ## 📊 Entities Provided
 
 ### Sensors (Telemetry & Diagnostics)
@@ -122,9 +141,10 @@ Click the button below to add this repository directly to your HACS:
 - `sensor.oukitel_temperature`: Station internal temperature (°C)
 - `sensor.oukitel_remaining_discharge_time`: Estimated time remaining (min)
 - `sensor.oukitel_remaining_charge_time`: Charge time remaining (min)
-- `sensor.oukitel_wifi_signal`: Cloud Wi-Fi RSSI (dBm)
-- `sensor.oukitel_bms_version`: BMS firmware version (e.g. 215)
-- `sensor.oukitel_inverter_version`: Inverter firmware version (e.g. 106)
+- `sensor.oukitel_wifi_signal`: Cloud Wi-Fi RSSI (dBm) · *Diagnostic*
+- `sensor.oukitel_bms_version`: BMS firmware version · *Diagnostic*
+- `sensor.oukitel_inverter_version`: Inverter firmware version · *Diagnostic*
+- `sensor.oukitel_connection_mode`: Active connection — `LAN` or `Cloud` · *Diagnostic*
 
 ### Switches (Bidirectional Control)
 - `switch.oukitel_ac_output`: Toggle 230V AC output
