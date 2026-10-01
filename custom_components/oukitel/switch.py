@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -35,7 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class OukitelSwitch(CoordinatorEntity, SwitchEntity):
-    """Representation of an Oukitel switch with solid state retention."""
+    """Representation of an Oukitel switch with temporal latch lock."""
 
     def __init__(self, coordinator: OukitelDataCoordinator, client, key, name, icon):
         super().__init__(coordinator)
@@ -45,10 +46,15 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_unique_id = f"oukitel_{client.device_key}_{key}"
         self._attr_icon = icon
 
-        # Local state cache to prevent UI rollback
-        self._attr_is_on = False
+        # Local state cache
+        initial_val = False
         if coordinator.data and key in coordinator.data:
-            self._attr_is_on = bool(coordinator.data[key])
+            initial_val = bool(coordinator.data[key])
+        self._attr_is_on = initial_val
+
+        # Temporal latch lock
+        self._user_locked_state = None
+        self._user_locked_until = 0
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -62,13 +68,29 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        now = time.time()
+        # If user recently flipped the switch, ignore stale telemetry for 15s unless matched
+        if self._user_locked_state is not None:
+            if now < self._user_locked_until:
+                if self.coordinator.data and self._key in self.coordinator.data:
+                    telemetry_val = bool(self.coordinator.data[self._key])
+                    if telemetry_val == self._user_locked_state:
+                        # Cloud caught up with our commanded state, release lock early
+                        self._user_locked_state = None
+                # Maintain commanded state without rollback
+                return
+            else:
+                self._user_locked_state = None
+
         if self.coordinator.data and self._key in self.coordinator.data:
             self._attr_is_on = bool(self.coordinator.data[self._key])
         super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
-        # 1. Immediately update internal state and write to HA UI
+        # 1. Lock switch ON for 15s to guarantee no bounce
+        self._user_locked_state = True
+        self._user_locked_until = time.time() + 15
         self._attr_is_on = True
         if self.coordinator.data:
             self.coordinator.data[self._key] = True
@@ -80,14 +102,16 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         )
         if not success:
             _LOGGER.error("Failed to turn on %s", self._key)
-            self._attr_is_on = False
-            if self.coordinator.data:
-                self.coordinator.data[self._key] = False
+            self._user_locked_state = None
+            if self.coordinator.data and self._key in self.coordinator.data:
+                self._attr_is_on = bool(self.coordinator.data[self._key])
             self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
-        # 1. Immediately update internal state and write to HA UI
+        # 1. Lock switch OFF for 15s to guarantee no bounce
+        self._user_locked_state = False
+        self._user_locked_until = time.time() + 15
         self._attr_is_on = False
         if self.coordinator.data:
             self.coordinator.data[self._key] = False
@@ -99,7 +123,7 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         )
         if not success:
             _LOGGER.error("Failed to turn off %s", self._key)
-            self._attr_is_on = True
-            if self.coordinator.data:
-                self.coordinator.data[self._key] = True
+            self._user_locked_state = None
+            if self.coordinator.data and self._key in self.coordinator.data:
+                self._attr_is_on = bool(self.coordinator.data[self._key])
             self.async_write_ha_state()
