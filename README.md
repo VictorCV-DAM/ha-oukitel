@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="images/icon.svg" width="160" height="160" alt="Oukitel Power Station Icon" />
+  <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/icon.png" width="140" height="140" alt="Oukitel Power Station Icon" />
   <h1>Oukitel Power Station Integration for Home Assistant</h1>
 
   [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/default)
@@ -59,7 +59,7 @@ Click the button below to add this repository directly to your HACS:
 
 <div align="center">
   <h3>⚡ Full Device Dashboard & Interactive Controls</h3>
-  <img src="docs/images/05_device_dashboard.png" alt="Oukitel Device Dashboard" width="90%" />
+  <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/05_device_dashboard.png" alt="Oukitel Device Dashboard" width="90%" />
   <p><i>Live telemetry: real-time battery status, bidirectional switches (AC, 12V DC, USB), input/output power, diagnostics, and frequency/voltage controls.</i></p>
 </div>
 
@@ -70,36 +70,36 @@ Click the button below to add this repository directly to your HACS:
     <tr>
       <td width="50%" align="center">
         <b>1. Native Brand Search & Setup</b><br/><br/>
-        <img src="docs/images/01_select_brand.png" alt="Search Oukitel Brand" width="95%"/><br/>
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/01_select_brand.png" alt="Search Oukitel Brand" width="95%"/><br/>
         <sub>Direct search in Home Assistant Add Integration flow.</sub>
       </td>
       <td width="50%" align="center">
         <b>2. Multi-Region Cloud Authentication</b><br/><br/>
-        <img src="docs/images/02_login_dialog.png" alt="Login & Region Dialog" width="95%"/><br/>
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/02_login_dialog.png" alt="Login & Region Dialog" width="95%"/><br/>
         <sub>Region selection (EU/US/CN), email, password, and polling frequency.</sub>
       </td>
     </tr>
     <tr>
       <td width="50%" align="center">
         <b>3. Automatic Station Discovery</b><br/><br/>
-        <img src="docs/images/03_device_discovered.png" alt="Device Discovered" width="95%"/><br/>
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/03_device_discovered.png" alt="Device Discovered" width="95%"/><br/>
         <sub>Discovers your station model, serial number, and allows naming/area assignment.</sub>
       </td>
       <td width="50%" align="center">
         <b>4. Integration Card & Connected Entities</b><br/><br/>
-        <img src="docs/images/02_integration_card.png" alt="Integration Card" width="95%"/><br/>
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/02_integration_card.png" alt="Integration Card" width="95%"/><br/>
         <sub>Overview of the custom integration showing device status and 18 entities.</sub>
       </td>
     </tr>
     <tr>
       <td width="50%" align="center">
         <b>5. Device Management Hub</b><br/><br/>
-        <img src="docs/images/03_hub_device.png" alt="Hub Device View" width="95%"/><br/>
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/03_hub_device.png" alt="Hub Device View" width="95%"/><br/>
         <sub>Hub entry point with direct access to options and diagnostics.</sub>
       </td>
       <td width="50%" align="center">
         <b>6. Dynamic Telemetry Frequency Options</b><br/><br/>
-        <img src="docs/images/04_options_frequency.png" alt="Options Frequency Dialog" width="95%"/><br/>
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/04_options_frequency.png" alt="Options Frequency Dialog" width="95%"/><br/>
         <sub>Modify update polling interval (3-120s) on-the-fly without re-logging.</sub>
       </td>
     </tr>
