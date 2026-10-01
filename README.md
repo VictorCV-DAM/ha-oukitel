@@ -48,7 +48,7 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 
 ## 📊 Entities Provided
 
-### Sensors
+### Sensors (Telemetry & Diagnostics)
 - `sensor.oukitel_battery`: Battery level (%) with dynamic charging icons
 - `sensor.oukitel_total_input_power`: Total input (W)
 - `sensor.oukitel_total_output_power`: Total output (W)
@@ -57,13 +57,19 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 - `sensor.oukitel_temperature`: Station internal temperature (°C)
 - `sensor.oukitel_remaining_discharge_time`: Estimated time remaining (min)
 - `sensor.oukitel_remaining_charge_time`: Charge time remaining (min)
-- `sensor.oukitel_ac_charging_limit`: Configured charge limit (%)
 - `sensor.oukitel_wifi_signal`: Cloud Wi-Fi RSSI (dBm)
+- `sensor.oukitel_bms_version`: BMS firmware version (e.g. 215)
+- `sensor.oukitel_inverter_version`: Inverter firmware version (e.g. 106)
 
 ### Switches (Bidirectional Control)
 - `switch.oukitel_ac_output`: Toggle 230V AC output
 - `switch.oukitel_dc_12v_output`: Toggle 12V DC output
 - `switch.oukitel_usb_output`: Toggle USB ports output
+
+### Controls & Configuration (From the "Settings / Wheel" Screen)
+- `number.oukitel_ac_charging_limit`: AC Upper Limit Charging Power slider (3% to 100%)
+- `select.oukitel_output_frequency`: Output Frequency setting (`50Hz` / `60Hz`)
+- `select.oukitel_output_voltage`: Output Voltage setting (`200V`, `208V`, `220V`, `230V`, `240V`)
 
 ---
 
