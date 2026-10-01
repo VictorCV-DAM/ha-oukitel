@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
@@ -55,6 +56,9 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
             initial_opt = FREQ_MAP_TO_NAME.get(str(coordinator.data[self._key]), "50Hz")
         self._attr_current_option = initial_opt
 
+        self._user_locked_value = None
+        self._user_locked_until = 0
+
     @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
@@ -67,6 +71,17 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Update from coordinator when new data arrives."""
+        now = time.time()
+        if self._user_locked_value is not None:
+            if now < self._user_locked_until:
+                if self.coordinator.data and self._key in self.coordinator.data:
+                    telemetry_opt = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]))
+                    if telemetry_opt == self._user_locked_value:
+                        self._user_locked_value = None
+                return
+            else:
+                self._user_locked_value = None
+
         if self.coordinator.data and self._key in self.coordinator.data:
             self._attr_current_option = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]), "50Hz")
         super()._handle_coordinator_update()
@@ -78,7 +93,9 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
 
         cloud_val = FREQ_MAP_TO_VAL[option]
 
-        # 1. Immediately pin local value in UI
+        # 1. Lock option for 15s to eliminate bounce
+        self._user_locked_value = option
+        self._user_locked_until = time.time() + 15
         self._attr_current_option = option
         if self.coordinator.data:
             self.coordinator.data[self._key] = cloud_val
@@ -90,6 +107,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
         )
         if not success:
             _LOGGER.error("Failed to set output frequency to %s", option)
+            self._user_locked_value = None
             if self.coordinator.data and self._key in self.coordinator.data:
                 self._attr_current_option = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]), "50Hz")
             self.async_write_ha_state()
@@ -117,6 +135,9 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
                 initial_opt = formatted
         self._attr_current_option = initial_opt
 
+        self._user_locked_value = None
+        self._user_locked_until = 0
+
     @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
@@ -129,6 +150,17 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Update from coordinator when new data arrives."""
+        now = time.time()
+        if self._user_locked_value is not None:
+            if now < self._user_locked_until:
+                if self.coordinator.data and self._key in self.coordinator.data:
+                    raw = str(self.coordinator.data[self._key]).replace("V", "").strip()
+                    if f"{raw}V" == self._user_locked_value:
+                        self._user_locked_value = None
+                return
+            else:
+                self._user_locked_value = None
+
         if self.coordinator.data and self._key in self.coordinator.data:
             raw = str(self.coordinator.data[self._key]).replace("V", "").strip()
             formatted = f"{raw}V"
@@ -143,7 +175,9 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
 
         clean_num = int(option.replace("V", ""))
 
-        # 1. Immediately pin local value in UI
+        # 1. Lock option for 15s to eliminate bounce
+        self._user_locked_value = option
+        self._user_locked_until = time.time() + 15
         self._attr_current_option = option
         if self.coordinator.data:
             self.coordinator.data[self._key] = clean_num
@@ -155,6 +189,7 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
         )
         if not success:
             _LOGGER.error("Failed to set output voltage to %s", option)
+            self._user_locked_value = None
             if self.coordinator.data and self._key in self.coordinator.data:
                 raw = str(self.coordinator.data[self._key]).replace("V", "").strip()
                 formatted = f"{raw}V"
