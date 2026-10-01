@@ -40,6 +40,12 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 
 ## 📦 Installation via HACS
 
+### 1-Click Installation:
+Click the button below to add this repository directly to your HACS:
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=VictorCV-DAM&repository=ha-oukitel&category=integration)
+
+### Manual Installation:
 1. Open **HACS** in your Home Assistant.
 2. Click the three dots in the top right corner and select **Custom repositories**.
 3. Add this repository URL: `https://github.com/VictorCV-DAM/ha-oukitel` and category **Integration**.
