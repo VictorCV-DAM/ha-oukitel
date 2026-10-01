@@ -27,7 +27,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_REGION, default=DEFAULT_REGION): vol.In(REGIONS_OPTIONS),
         vol.Required(CONF_EMAIL): cv.string,
         vol.Required(CONF_PASSWORD): cv.string,
-        vol.Optional(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): vol.All(cv.positive_int, vol.Range(min=5, max=60)),
+        vol.Optional(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): vol.All(cv.positive_int, vol.Range(min=3, max=120)),
     }
 )
 
@@ -73,7 +73,7 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry):
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry):
         """Get the options flow handler to adjust settings per device."""
         return OukitelOptionsFlowHandler(config_entry)
 
@@ -82,16 +82,17 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle per-device options like polling update interval."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry):
-        self.config_entry = config_entry
+        super().__init__()
+        self._config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         """Manage per-device settings."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        current_interval = self.config_entry.options.get(
+        current_interval = self._config_entry.options.get(
             CONF_POLL_INTERVAL,
-            self.config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
+            self._config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
         )
 
         options_schema = vol.Schema(

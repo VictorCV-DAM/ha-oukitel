@@ -35,6 +35,7 @@ SENSOR_TYPES = [
     ("wifi_signal", "WiFi Signal", SIGNAL_STRENGTH_DECIBELS_MILLIWATT, SensorDeviceClass.SIGNAL_STRENGTH, SensorStateClass.MEASUREMENT, "mdi:wifi", EntityCategory.DIAGNOSTIC),
     ("BMS_Version", "BMS Version", None, None, None, "mdi:chip", EntityCategory.DIAGNOSTIC),
     ("AC_Version", "Inverter Version", None, None, None, "mdi:sine-wave", EntityCategory.DIAGNOSTIC),
+    ("device_fault_status", "Hardware Fault Status", None, None, None, "mdi:shield-check", EntityCategory.DIAGNOSTIC),
 ]
 
 
@@ -102,10 +103,38 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                     if rounded == 100:
                         return "mdi:battery"
                     return f"mdi:battery-{rounded}"
+
+        if self._key == "device_fault_status":
+            if self.native_value == "Normal":
+                return "mdi:shield-check"
+            return "mdi:alert-octagon"
+
         return self._attr_icon
 
     @property
     def native_value(self):
         if not self.coordinator.data:
             return None
+
+        if self._key == "device_fault_status":
+            # Real-time health audit
+            faults = []
+            temp = self.coordinator.data.get("temp", 0)
+            if temp and temp >= 65:
+                faults.append(f"Over-Temperature ({temp}°C)")
+            elif temp and temp <= -10:
+                faults.append(f"Under-Temperature ({temp}°C)")
+
+            batt = self.coordinator.data.get("battery_percentage", 100)
+            if batt is not None and batt == 0:
+                faults.append("Critical Low Battery (0%)")
+
+            # Check for any error/fault codes in telemetry payload
+            for k, v in self.coordinator.data.items():
+                if any(x in k.lower() for x in ["fault", "alarm", "error", "protect"]):
+                    if v and str(v).lower() not in ["0", "false", "none", "normal", "ok"]:
+                        faults.append(f"{k}: {v}")
+
+            return "; ".join(faults) if faults else "Normal"
+
         return self.coordinator.data.get(self._key)

@@ -45,8 +45,10 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_unique_id = f"oukitel_{client.device_key}_{key}"
         self._attr_icon = icon
 
-        # Local state overrides coordinator while hardware/cloud syncs
-        self._state_override = None
+        # Local state cache to prevent UI rollback
+        self._attr_is_on = False
+        if coordinator.data and key in coordinator.data:
+            self._attr_is_on = bool(coordinator.data[key])
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -58,28 +60,16 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
             sw_version="Cloud API 1.0.0",
         )
 
-    @property
-    def is_on(self) -> bool:
-        """Return the current state of the switch."""
-        if self._state_override is not None:
-            # Check if coordinator telemetry has now matched our override
-            if self.coordinator.data and self._key in self.coordinator.data:
-                telemetry_state = bool(self.coordinator.data[self._key])
-                if telemetry_state == self._state_override:
-                    # Cloud has finally confirmed our state change! Release override.
-                    self._state_override = None
-                    return telemetry_state
-            # Still waiting for cloud to catch up; keep the user's commanded state
-            return self._state_override
-
-        if not self.coordinator.data:
-            return False
-        return bool(self.coordinator.data.get(self._key, False))
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self.coordinator.data and self._key in self.coordinator.data:
+            self._attr_is_on = bool(self.coordinator.data[self._key])
+        super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
-        # 1. Immediately force local state in Home Assistant
-        self._state_override = True
+        # 1. Immediately update internal state and write to HA UI
+        self._attr_is_on = True
         if self.coordinator.data:
             self.coordinator.data[self._key] = True
         self.async_write_ha_state()
@@ -90,15 +80,15 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         )
         if not success:
             _LOGGER.error("Failed to turn on %s", self._key)
-            self._state_override = None
+            self._attr_is_on = False
             if self.coordinator.data:
                 self.coordinator.data[self._key] = False
             self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
-        # 1. Immediately force local state in Home Assistant
-        self._state_override = False
+        # 1. Immediately update internal state and write to HA UI
+        self._attr_is_on = False
         if self.coordinator.data:
             self.coordinator.data[self._key] = False
         self.async_write_ha_state()
@@ -109,7 +99,7 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         )
         if not success:
             _LOGGER.error("Failed to turn off %s", self._key)
-            self._state_override = None
+            self._attr_is_on = True
             if self.coordinator.data:
                 self.coordinator.data[self._key] = True
             self.async_write_ha_state()
