@@ -235,3 +235,27 @@ class AcceleronixCloudClient:
         except Exception as err:
             _LOGGER.error("Exception fetching telemetry: %s", err)
             return {}
+
+    def fetch_auth_key(self) -> str | None:
+        """Fetch the per-device AES authKey required for local LAN sessions."""
+        self.ensure_authenticated()
+        if not self.device_key or not self.product_key:
+            if not self.fetch_device_info():
+                return None
+
+        url = f"{self.base_url}/v2/binding/enduserapi/getDeviceAuthKey"
+        params = {"pk": self.product_key, "dk": self.device_key}
+
+        try:
+            r = requests.get(url, headers=self.get_auth_headers(), params=params, timeout=10)
+            res = r.json()
+            if res.get("code") == 200:
+                return res.get("data", {}).get("authKey")
+            if res.get("code") == 5032:
+                self.login()
+                return self.fetch_auth_key()
+            _LOGGER.debug("authKey endpoint returned code %s — LAN mode unavailable", res.get("code"))
+            return None
+        except Exception as err:
+            _LOGGER.debug("Could not fetch authKey: %s", err)
+            return None
