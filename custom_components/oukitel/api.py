@@ -254,7 +254,8 @@ class AcceleronixCloudClient:
             if res.get("code") == 5032:
                 self.login()
                 return self.fetch_auth_key()
-            _LOGGER.debug("authKey endpoint returned code %s — LAN mode unavailable", res.get("code"))
+            _LOGGER.debug("authKey HTTP %s - Response: %s", r.status_code, res)
+            """_LOGGER.debug("authKey endpoint returned code %s — LAN mode unavailable", res.get("code"))"""
             return None
         except Exception as err:
             _LOGGER.debug("Could not fetch authKey: %s", err)
