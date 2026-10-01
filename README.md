@@ -68,21 +68,33 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
         <sub>Direct search in Home Assistant Add Integration flow.</sub>
       </td>
       <td width="50%" align="center">
-        <b>2. Integration Overview & Multi-Device Hub</b><br/><br/>
-        <img src="docs/images/02_integration_card.png" alt="Integration Card" width="95%"/><br/>
-        <sub>Installed custom integration showing connected stations and entities.</sub>
+        <b>2. Multi-Region Cloud Authentication</b><br/><br/>
+        <img src="docs/images/02_login_dialog.png" alt="Login & Region Dialog" width="95%"/><br/>
+        <sub>Region selection (EU/US/CN), email, password, and polling frequency.</sub>
       </td>
     </tr>
     <tr>
       <td width="50%" align="center">
-        <b>3. Device Management Hub</b><br/><br/>
-        <img src="docs/images/03_hub_device.png" alt="Hub Device View" width="95%"/><br/>
-        <sub>Quick access to station options and device settings.</sub>
+        <b>3. Automatic Station Discovery</b><br/><br/>
+        <img src="docs/images/03_device_discovered.png" alt="Device Discovered" width="95%"/><br/>
+        <sub>Discovers your station model, serial number, and allows naming/area assignment.</sub>
       </td>
       <td width="50%" align="center">
-        <b>4. Per-Device Options & Telemetry Frequency</b><br/><br/>
+        <b>4. Integration Card & Connected Entities</b><br/><br/>
+        <img src="docs/images/02_integration_card.png" alt="Integration Card" width="95%"/><br/>
+        <sub>Overview of the custom integration showing device status and 18 entities.</sub>
+      </td>
+    </tr>
+    <tr>
+      <td width="50%" align="center">
+        <b>5. Device Management Hub</b><br/><br/>
+        <img src="docs/images/03_hub_device.png" alt="Hub Device View" width="95%"/><br/>
+        <sub>Hub entry point with direct access to options and diagnostics.</sub>
+      </td>
+      <td width="50%" align="center">
+        <b>6. Dynamic Telemetry Frequency Options</b><br/><br/>
         <img src="docs/images/04_options_frequency.png" alt="Options Frequency Dialog" width="95%"/><br/>
-        <sub>Configurable polling interval (3-120s) without re-logging.</sub>
+        <sub>Modify update polling interval (3-120s) on-the-fly without re-logging.</sub>
       </td>
     </tr>
   </table>
