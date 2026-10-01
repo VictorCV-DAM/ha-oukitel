@@ -120,6 +120,7 @@ class AcceleronixCloudClient:
                     self.device_key = dev["deviceKey"]
                     self.product_key = dev["productKey"]
                     self.device_name = dev.get("deviceName", "Oukitel P2001")
+                    _LOGGER.debug("Full device object: %s", dev)
                     return True
                 _LOGGER.error("No bound devices found in account.")
                 return False
