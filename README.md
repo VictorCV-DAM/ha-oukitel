@@ -4,7 +4,7 @@
 
   [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/default)
   [![GitHub Release](https://img.shields.io/github/v/release/VictorCV-DAM/ha-oukitel)](https://github.com/VictorCV-DAM/ha-oukitel/releases)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
   [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-orange?logo=buy-me-a-coffee)](https://buymeacoffee.com/VictorCV)
   [![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?logo=paypal)](https://paypal.me/victorcava)
   [![Ko-fi](https://img.shields.io/badge/Ko--fi-Donate-red?logo=ko-fi)](https://ko-fi.com/victorcv)
@@ -19,7 +19,10 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 - **Author & Maintainer:** Víctor C. V. ([@VictorCV-DAM](https://github.com/VictorCV-DAM))
 - **Email:** `victorcvtrabajo@gmail.com`
 - **Copyright:** © 2024-2026 Víctor C. V. All rights reserved.
-- **License:** Released under the [MIT License](LICENSE).
+- **License:** [Proprietary — All Rights Reserved](LICENSE). Pending adoption of an OSI-approved license.
+
+> [!NOTE]
+> **Pending OSI-approved license:** Until an OSI-approved open-source license is adopted, this project can only be installed as a **Custom Repository** in HACS and cannot be submitted to the official HACS default store. Functionality is not affected.
 
 ---
 
