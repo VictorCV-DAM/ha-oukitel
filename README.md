@@ -49,6 +49,47 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 
 ---
 
+## 📸 Screenshots & User Interface
+
+<div align="center">
+  <h3>⚡ Full Device Dashboard & Interactive Controls</h3>
+  <img src="docs/images/05_device_dashboard.png" alt="Oukitel Device Dashboard" width="90%" />
+  <p><i>Live telemetry: real-time battery status, bidirectional switches (AC, 12V DC, USB), input/output power, diagnostics, and frequency/voltage controls.</i></p>
+</div>
+
+<br/>
+
+<div align="center">
+  <table width="100%">
+    <tr>
+      <td width="50%" align="center">
+        <b>1. Native Brand Search & Setup</b><br/><br/>
+        <img src="docs/images/01_select_brand.png" alt="Search Oukitel Brand" width="95%"/><br/>
+        <sub>Direct search in Home Assistant Add Integration flow.</sub>
+      </td>
+      <td width="50%" align="center">
+        <b>2. Integration Overview & Multi-Device Hub</b><br/><br/>
+        <img src="docs/images/02_integration_card.png" alt="Integration Card" width="95%"/><br/>
+        <sub>Installed custom integration showing connected stations and entities.</sub>
+      </td>
+    </tr>
+    <tr>
+      <td width="50%" align="center">
+        <b>3. Device Management Hub</b><br/><br/>
+        <img src="docs/images/03_hub_device.png" alt="Hub Device View" width="95%"/><br/>
+        <sub>Quick access to station options and device settings.</sub>
+      </td>
+      <td width="50%" align="center">
+        <b>4. Per-Device Options & Telemetry Frequency</b><br/><br/>
+        <img src="docs/images/04_options_frequency.png" alt="Options Frequency Dialog" width="95%"/><br/>
+        <sub>Configurable polling interval (3-120s) without re-logging.</sub>
+      </td>
+    </tr>
+  </table>
+</div>
+
+---
+
 ## 📊 Entities Provided
 
 ### Sensors (Telemetry & Diagnostics)
