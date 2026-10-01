@@ -20,5 +20,16 @@
     "abort": {
       "already_configured": "This Oukitel device is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Device Options",
+        "description": "Adjust the telemetry update frequency for this Oukitel device.",
+        "data": {
+          "poll_interval": "Update Interval (seconds, 3-120s)"
+        }
+      }
+    }
   }
 }

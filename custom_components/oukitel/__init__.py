@@ -1,12 +1,21 @@
 """The Oukitel Power Station integration."""
 
+from datetime import timedelta
 import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .api import AcceleronixCloudClient
-from .const import CONF_EMAIL, CONF_PASSWORD, CONF_POLL_INTERVAL, CONF_REGION, DEFAULT_POLL_INTERVAL, DEFAULT_REGION, DOMAIN
+from .const import (
+    CONF_EMAIL,
+    CONF_PASSWORD,
+    CONF_POLL_INTERVAL,
+    CONF_REGION,
+    DEFAULT_POLL_INTERVAL,
+    DEFAULT_REGION,
+    DOMAIN,
+)
 from .coordinator import OukitelDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,7 +35,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     region = entry.data.get(CONF_REGION, DEFAULT_REGION)
     email = entry.data[CONF_EMAIL]
     password = entry.data[CONF_PASSWORD]
-    poll_interval = entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
+
+    # Poll interval priority: options -> data -> default
+    poll_interval = entry.options.get(
+        CONF_POLL_INTERVAL,
+        entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
+    )
 
     client = AcceleronixCloudClient(email=email, password=password, region=region)
     success = await hass.async_add_executor_job(client.login)
@@ -39,6 +53,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = OukitelDataCoordinator(hass, client, poll_interval=poll_interval)
     await coordinator.async_config_entry_first_refresh()
 
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
     hass.data[DOMAIN][entry.entry_id] = {
         "client": client,
         "coordinator": coordinator,
@@ -46,6 +62,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload config entry when options are updated."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -20,5 +20,16 @@
     "abort": {
       "already_configured": "Esta batería Oukitel ya está configurada."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opciones del Dispositivo",
+        "description": "Ajusta la frecuencia con la que Home Assistant consulta los datos de esta batería.",
+        "data": {
+          "poll_interval": "Intervalo de actualización (segundos, 3-120s)"
+        }
+      }
+    }
   }
 }

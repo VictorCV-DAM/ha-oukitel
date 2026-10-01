@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import time
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
@@ -50,8 +49,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
         self._attr_options = ["50Hz", "60Hz"]
         self._attr_entity_category = EntityCategory.CONFIG
 
-        self._target_state = None
-        self._target_timestamp = 0
+        self._state_override = None
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -65,9 +63,13 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
 
     @property
     def current_option(self) -> str:
-        now = time.time()
-        if self._target_state is not None and (now - self._target_timestamp < 15):
-            return self._target_state
+        if self._state_override is not None:
+            if self.coordinator.data and self._key in self.coordinator.data:
+                raw_val = self.coordinator.data.get(self._key)
+                if FREQ_MAP_TO_NAME.get(str(raw_val)) == self._state_override:
+                    self._state_override = None
+                    return FREQ_MAP_TO_NAME.get(str(raw_val), "50Hz")
+            return self._state_override
 
         if not self.coordinator.data:
             return "50Hz"
@@ -80,8 +82,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
             return
 
         cloud_val = FREQ_MAP_TO_VAL[option]
-        self._target_state = option
-        self._target_timestamp = time.time()
+        self._state_override = option
         if self.coordinator.data:
             self.coordinator.data[self._key] = cloud_val
         self.async_write_ha_state()
@@ -91,12 +92,8 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
         )
         if not success:
             _LOGGER.error("Failed to set output frequency to %s", option)
-            self._target_state = None
+            self._state_override = None
             self.async_write_ha_state()
-            return
-
-        await asyncio.sleep(2)
-        await self.coordinator.async_request_refresh()
 
 
 class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
@@ -112,8 +109,7 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
         self._attr_options = VOLTAGE_OPTIONS
         self._attr_entity_category = EntityCategory.CONFIG
 
-        self._target_state = None
-        self._target_timestamp = 0
+        self._state_override = None
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -127,9 +123,13 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
 
     @property
     def current_option(self) -> str:
-        now = time.time()
-        if self._target_state is not None and (now - self._target_timestamp < 15):
-            return self._target_state
+        if self._state_override is not None:
+            if self.coordinator.data and self._key in self.coordinator.data:
+                raw = str(self.coordinator.data.get(self._key, 230)).replace("V", "").strip()
+                if f"{raw}V" == self._state_override:
+                    self._state_override = None
+                    return f"{raw}V"
+            return self._state_override
 
         if not self.coordinator.data:
             return "230V"
@@ -143,8 +143,7 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
             return
 
         clean_num = int(option.replace("V", ""))
-        self._target_state = option
-        self._target_timestamp = time.time()
+        self._state_override = option
         if self.coordinator.data:
             self.coordinator.data[self._key] = clean_num
         self.async_write_ha_state()
@@ -154,9 +153,5 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
         )
         if not success:
             _LOGGER.error("Failed to set output voltage to %s", option)
-            self._target_state = None
+            self._state_override = None
             self.async_write_ha_state()
-            return
-
-        await asyncio.sleep(2)
-        await self.coordinator.async_request_refresh()

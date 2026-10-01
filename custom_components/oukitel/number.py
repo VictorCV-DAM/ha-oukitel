@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import time
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, PERCENTAGE
@@ -46,8 +45,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         self._attr_mode = NumberMode.SLIDER
         self._attr_entity_category = EntityCategory.CONFIG
 
-        self._target_state = None
-        self._target_timestamp = 0
+        self._state_override = None
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -62,15 +60,13 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
     @property
     def native_value(self) -> float:
         """Return the current configured charge limit percentage."""
-        now = time.time()
-        if self._target_state is not None and (now - self._target_timestamp < 15):
+        if self._state_override is not None:
             if self.coordinator.data and self._key in self.coordinator.data:
-                if int(self.coordinator.data[self._key]) == int(self._target_state):
-                    self._target_state = None
+                if int(self.coordinator.data[self._key]) == int(self._state_override):
+                    self._state_override = None
                     return float(self.coordinator.data[self._key])
-            return float(self._target_state)
+            return float(self._state_override)
 
-        self._target_state = None
         if not self.coordinator.data:
             return 100.0
         val = self.coordinator.data.get(self._key, 100)
@@ -84,8 +80,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         target_val = int(round(value))
         target_val = max(3, min(100, target_val))
 
-        self._target_state = target_val
-        self._target_timestamp = time.time()
+        self._state_override = target_val
         if self.coordinator.data:
             self.coordinator.data[self._key] = target_val
         self.async_write_ha_state()
@@ -95,9 +90,5 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         )
         if not success:
             _LOGGER.error("Failed to set %s to %s", self._key, target_val)
-            self._target_state = None
+            self._state_override = None
             self.async_write_ha_state()
-            return
-
-        await asyncio.sleep(2)
-        await self.coordinator.async_request_refresh()

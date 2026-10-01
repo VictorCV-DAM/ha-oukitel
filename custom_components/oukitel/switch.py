@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import time
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -36,7 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class OukitelSwitch(CoordinatorEntity, SwitchEntity):
-    """Representation of an Oukitel switch."""
+    """Representation of an Oukitel switch with solid state retention."""
 
     def __init__(self, coordinator: OukitelDataCoordinator, client, key, name, icon):
         super().__init__(coordinator)
@@ -46,9 +45,8 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_unique_id = f"oukitel_{client.device_key}_{key}"
         self._attr_icon = icon
 
-        # Optimistic local state and timestamp to prevent immediate rollback
-        self._target_state = None
-        self._target_timestamp = 0
+        # Local state overrides coordinator while hardware/cloud syncs
+        self._state_override = None
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -63,68 +61,55 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def is_on(self) -> bool:
         """Return the current state of the switch."""
-        now = time.time()
-        # Hold optimistic state for up to 15 seconds while cloud telemetry propagates
-        if self._target_state is not None and (now - self._target_timestamp < 15):
+        if self._state_override is not None:
+            # Check if coordinator telemetry has now matched our override
             if self.coordinator.data and self._key in self.coordinator.data:
-                # If telemetry caught up with our target state, release lock early
-                if bool(self.coordinator.data[self._key]) == self._target_state:
-                    self._target_state = None
-                    return bool(self.coordinator.data[self._key])
-            return self._target_state
+                telemetry_state = bool(self.coordinator.data[self._key])
+                if telemetry_state == self._state_override:
+                    # Cloud has finally confirmed our state change! Release override.
+                    self._state_override = None
+                    return telemetry_state
+            # Still waiting for cloud to catch up; keep the user's commanded state
+            return self._state_override
 
-        # Release optimistic lock if expired
-        self._target_state = None
         if not self.coordinator.data:
             return False
         return bool(self.coordinator.data.get(self._key, False))
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
-        # Set optimistic state immediately
-        self._target_state = True
-        self._target_timestamp = time.time()
+        # 1. Immediately force local state in Home Assistant
+        self._state_override = True
         if self.coordinator.data:
             self.coordinator.data[self._key] = True
         self.async_write_ha_state()
 
-        # Send hardware command
+        # 2. Fire hardware command to cloud API
         success = await self.hass.async_add_executor_job(
             self.client.control_device, [{self._key: True}]
         )
         if not success:
             _LOGGER.error("Failed to turn on %s", self._key)
-            self._target_state = None
+            self._state_override = None
             if self.coordinator.data:
                 self.coordinator.data[self._key] = False
             self.async_write_ha_state()
-            return
-
-        # Wait 3 seconds for physical hardware and cloud to acknowledge, then refresh
-        await asyncio.sleep(3)
-        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
-        # Set optimistic state immediately
-        self._target_state = False
-        self._target_timestamp = time.time()
+        # 1. Immediately force local state in Home Assistant
+        self._state_override = False
         if self.coordinator.data:
             self.coordinator.data[self._key] = False
         self.async_write_ha_state()
 
-        # Send hardware command
+        # 2. Fire hardware command to cloud API
         success = await self.hass.async_add_executor_job(
             self.client.control_device, [{self._key: False}]
         )
         if not success:
             _LOGGER.error("Failed to turn off %s", self._key)
-            self._target_state = None
+            self._state_override = None
             if self.coordinator.data:
                 self.coordinator.data[self._key] = True
             self.async_write_ha_state()
-            return
-
-        # Wait 3 seconds for physical hardware and cloud to acknowledge, then refresh
-        await asyncio.sleep(3)
-        await self.coordinator.async_request_refresh()
