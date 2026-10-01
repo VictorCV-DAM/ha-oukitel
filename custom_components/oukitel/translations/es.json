@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Estación de Energía Oukitel",
+        "description": "Introduce las credenciales de tu cuenta de la app oficial Oukitel / Wonderfree.",
+        "data": {
+          "region": "Región del Servidor",
+          "email": "Correo Electrónico",
+          "password": "Contraseña",
+          "poll_interval": "Intervalo de Actualización (segundos)"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Correo o contraseña no válidos.",
+      "no_devices": "No se encontraron baterías Oukitel vinculadas a esta cuenta.",
+      "cannot_connect": "Error al conectar con los servidores cloud de Oukitel."
+    },
+    "abort": {
+      "already_configured": "Esta batería Oukitel ya está configurada."
+    }
+  }
+}

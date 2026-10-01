@@ -1,0 +1,12 @@
+{
+  "domain": "oukitel",
+  "name": "Oukitel Power Station",
+  "codeowners": ["@VictorCV-DAM"],
+  "config_flow": true,
+  "documentation": "https://github.com/VictorCV-DAM/ha-oukitel",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/VictorCV-DAM/ha-oukitel/issues",
+  "requirements": ["pycryptodome>=3.18.0", "requests>=2.28.0"],
+  "version": "1.0.0"
+}
