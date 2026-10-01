@@ -45,7 +45,14 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         self._attr_mode = NumberMode.SLIDER
         self._attr_entity_category = EntityCategory.CONFIG
 
-        self._state_override = None
+        # Solid internal state cache
+        initial_val = 100.0
+        if coordinator.data and self._key in coordinator.data:
+            try:
+                initial_val = float(coordinator.data[self._key])
+            except (ValueError, TypeError):
+                initial_val = 100.0
+        self._attr_native_value = initial_val
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -57,38 +64,32 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
             sw_version="Cloud API 1.0.0",
         )
 
-    @property
-    def native_value(self) -> float:
-        """Return the current configured charge limit percentage."""
-        if self._state_override is not None:
-            if self.coordinator.data and self._key in self.coordinator.data:
-                if int(self.coordinator.data[self._key]) == int(self._state_override):
-                    self._state_override = None
-                    return float(self.coordinator.data[self._key])
-            return float(self._state_override)
-
-        if not self.coordinator.data:
-            return 100.0
-        val = self.coordinator.data.get(self._key, 100)
-        try:
-            return float(val)
-        except (ValueError, TypeError):
-            return 100.0
+    def _handle_coordinator_update(self) -> None:
+        """Update from coordinator when new data arrives."""
+        if self.coordinator.data and self._key in self.coordinator.data:
+            try:
+                self._attr_native_value = float(self.coordinator.data[self._key])
+            except (ValueError, TypeError):
+                pass
+        super()._handle_coordinator_update()
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new AC charging limit."""
         target_val = int(round(value))
         target_val = max(3, min(100, target_val))
 
-        self._state_override = target_val
+        # 1. Immediately pin local value in UI
+        self._attr_native_value = float(target_val)
         if self.coordinator.data:
             self.coordinator.data[self._key] = target_val
         self.async_write_ha_state()
 
+        # 2. Send command to cloud
         success = await self.hass.async_add_executor_job(
             self.client.control_device, [{self._key: target_val}]
         )
         if not success:
             _LOGGER.error("Failed to set %s to %s", self._key, target_val)
-            self._state_override = None
+            if self.coordinator.data and self._key in self.coordinator.data:
+                self._attr_native_value = float(self.coordinator.data[self._key])
             self.async_write_ha_state()

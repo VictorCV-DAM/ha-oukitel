@@ -49,7 +49,11 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
         self._attr_options = ["50Hz", "60Hz"]
         self._attr_entity_category = EntityCategory.CONFIG
 
-        self._state_override = None
+        # Solid internal state cache
+        initial_opt = "50Hz"
+        if coordinator.data and self._key in coordinator.data:
+            initial_opt = FREQ_MAP_TO_NAME.get(str(coordinator.data[self._key]), "50Hz")
+        self._attr_current_option = initial_opt
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -61,20 +65,11 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
             sw_version="Cloud API 1.0.0",
         )
 
-    @property
-    def current_option(self) -> str:
-        if self._state_override is not None:
-            if self.coordinator.data and self._key in self.coordinator.data:
-                raw_val = self.coordinator.data.get(self._key)
-                if FREQ_MAP_TO_NAME.get(str(raw_val)) == self._state_override:
-                    self._state_override = None
-                    return FREQ_MAP_TO_NAME.get(str(raw_val), "50Hz")
-            return self._state_override
-
-        if not self.coordinator.data:
-            return "50Hz"
-        raw_val = self.coordinator.data.get(self._key, 0)
-        return FREQ_MAP_TO_NAME.get(str(raw_val), "50Hz")
+    def _handle_coordinator_update(self) -> None:
+        """Update from coordinator when new data arrives."""
+        if self.coordinator.data and self._key in self.coordinator.data:
+            self._attr_current_option = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]), "50Hz")
+        super()._handle_coordinator_update()
 
     async def async_select_option(self, option: str) -> None:
         """Change output frequency."""
@@ -82,17 +77,21 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
             return
 
         cloud_val = FREQ_MAP_TO_VAL[option]
-        self._state_override = option
+
+        # 1. Immediately pin local value in UI
+        self._attr_current_option = option
         if self.coordinator.data:
             self.coordinator.data[self._key] = cloud_val
         self.async_write_ha_state()
 
+        # 2. Send command to cloud
         success = await self.hass.async_add_executor_job(
             self.client.control_device, [{self._key: cloud_val}]
         )
         if not success:
             _LOGGER.error("Failed to set output frequency to %s", option)
-            self._state_override = None
+            if self.coordinator.data and self._key in self.coordinator.data:
+                self._attr_current_option = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]), "50Hz")
             self.async_write_ha_state()
 
 
@@ -109,7 +108,14 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
         self._attr_options = VOLTAGE_OPTIONS
         self._attr_entity_category = EntityCategory.CONFIG
 
-        self._state_override = None
+        # Solid internal state cache
+        initial_opt = "230V"
+        if coordinator.data and self._key in coordinator.data:
+            raw = str(coordinator.data[self._key]).replace("V", "").strip()
+            formatted = f"{raw}V"
+            if formatted in VOLTAGE_OPTIONS:
+                initial_opt = formatted
+        self._attr_current_option = initial_opt
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -121,21 +127,14 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
             sw_version="Cloud API 1.0.0",
         )
 
-    @property
-    def current_option(self) -> str:
-        if self._state_override is not None:
-            if self.coordinator.data and self._key in self.coordinator.data:
-                raw = str(self.coordinator.data.get(self._key, 230)).replace("V", "").strip()
-                if f"{raw}V" == self._state_override:
-                    self._state_override = None
-                    return f"{raw}V"
-            return self._state_override
-
-        if not self.coordinator.data:
-            return "230V"
-        raw_val = str(self.coordinator.data.get(self._key, 230)).replace("V", "").strip()
-        formatted = f"{raw_val}V"
-        return formatted if formatted in VOLTAGE_OPTIONS else "230V"
+    def _handle_coordinator_update(self) -> None:
+        """Update from coordinator when new data arrives."""
+        if self.coordinator.data and self._key in self.coordinator.data:
+            raw = str(self.coordinator.data[self._key]).replace("V", "").strip()
+            formatted = f"{raw}V"
+            if formatted in VOLTAGE_OPTIONS:
+                self._attr_current_option = formatted
+        super()._handle_coordinator_update()
 
     async def async_select_option(self, option: str) -> None:
         """Change output voltage."""
@@ -143,15 +142,22 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
             return
 
         clean_num = int(option.replace("V", ""))
-        self._state_override = option
+
+        # 1. Immediately pin local value in UI
+        self._attr_current_option = option
         if self.coordinator.data:
             self.coordinator.data[self._key] = clean_num
         self.async_write_ha_state()
 
+        # 2. Send command to cloud
         success = await self.hass.async_add_executor_job(
             self.client.control_device, [{self._key: clean_num}]
         )
         if not success:
             _LOGGER.error("Failed to set output voltage to %s", option)
-            self._state_override = None
+            if self.coordinator.data and self._key in self.coordinator.data:
+                raw = str(self.coordinator.data[self._key]).replace("V", "").strip()
+                formatted = f"{raw}V"
+                if formatted in VOLTAGE_OPTIONS:
+                    self._attr_current_option = formatted
             self.async_write_ha_state()
