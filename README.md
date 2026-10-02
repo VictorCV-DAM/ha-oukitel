@@ -374,15 +374,16 @@ Only displays when AC grid charging is idle, focusing on clean solar generation:
 type: conditional
 conditions:
   - condition: state
-    entity: switch.enchufe_carga_oukitel
+    entity: switch.oukitel_ac_charging_plug
     state_not: 'on'
 card:
   type: gauge
   entity: sensor.p2001_plus_tt_ab76_p2001_plus_dc_solar_input_power
   min: 0
   max: 450
-  name: Producción solar
+  name: Solar Production
 ```
+*(Note: Replace `switch.oukitel_ac_charging_plug` with your AC wall plug entity if you automate grid charging).*
 
 ---
 
