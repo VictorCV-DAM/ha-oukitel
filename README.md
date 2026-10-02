@@ -113,20 +113,24 @@ Click the button below to add this repository directly to your HACS:
 
 ---
 
-## 🌐 LAN Mode vs Cloud Mode
+## 🌐 Connection Modes: Auto, LAN & Cloud
 
-The integration automatically detects whether your station is reachable on the local network:
+You can configure the active connection mode at any time directly in Home Assistant (**Settings** ➔ **Devices & Services** ➔ **Oukitel Power Station** ➔ **Configure ⚙️**):
 
-| | **LAN Mode** | **Cloud Mode** |
+1. **Automático (LAN preferente + Cloud)** *(Default)*: Automatically connects via local LAN (TCP port 6607, binary AES-128 push) when the station is on your home Wi-Fi network. If the station goes offline, drops Wi-Fi, or is outside the local network, it seamlessly falls back to Cloud API polling without missing data.
+2. **Solo LAN (Tiempo real directo)**: Pure local communication with 0 cloud latency. Does not make requests to the cloud servers.
+3. **Solo Cloud (Nube / Polling)**: Standard cloud polling via the official Acceleronix/Quectel servers (ideal when Home Assistant and the power station are on separate networks or behind isolated VLANs).
+
+| Feature | **LAN Mode** | **Cloud Mode** |
 |---|---|---|
-| **Protocol** | TCP port 6607 (binary, AES-128) | Acceleronix REST API |
+| **Protocol** | TCP port 6607 (binary, AES-128 push) | Acceleronix REST API (JSON) |
 | **Latency** | Real-time push (~1 s) | Polling interval (min. 3 s) |
-| **Internet required** | Only at first setup | Always |
-| **Works away from home** | ❌ | ✅ |
-| **Works if Oukitel cloud down** | ✅ | ❌ |
+| **Internet Required** | Only during first setup | Always |
+| **Works Offline / Cloud Down** | ✅ Yes | ❌ No |
+| **Works Outside Local Network** | ❌ (requires VPN) | ✅ Yes |
 
 > [!TIP]
-> No configuration needed — the integration tries LAN automatically on every startup. If the station is not found on the local network it silently falls back to Cloud. The **Connection Mode** diagnostic sensor always shows the current state.
+> The **Connection Mode** diagnostic sensor on the device page always reports whether the station is actively communicating via `LAN` or `Cloud`.
 
 ---
 
@@ -158,27 +162,158 @@ The integration automatically detects whether your station is reachable on the l
 
 ---
 
-## 🎨 Animated Dashboard Card (Lovelace Example)
+## 🎨 Dashboard Cards & Custom Lovelace Examples
 
-You can place the animated SVG directly on any Home Assistant dashboard card using standard markdown or picture elements:
+Here are curated Lovelace card examples to monitor your Oukitel Power Station with custom visuals:
+
+### 1. Animated Battery Graphic (Picture Elements)
+
+Displays the station's animated battery graphic with live percentage overlaid in the center:
+
+<img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/card_picture_elements.png" width="300" alt="Picture Elements Battery Card" />
 
 ```yaml
-type: picture
+type: picture-elements
 image: /local/oukitel/icon.svg
-tap_action:
-  action: more-info
-  entity: sensor.oukitel_p2001_plus_tt_ab76_battery
+elements:
+  - type: state-label
+    entity: sensor.p2001_plus_tt_ab76_p2001_plus_battery
+    tap_action:
+      action: more-info
+    style:
+      top: 75%
+      left: 50%
+      transform: translate(-50%, -50%)
+      color: white
+      font-size: 24px
+      font-weight: bold
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8)
+```
+*(Note: Replace `sensor.p2001_plus_tt_ab76_p2001_plus_battery` with your device's entity ID).*
+
+---
+
+### 2. Header & Battery Autonomy Ring (custom:button-card)
+
+Top header bar and circular gauge showing battery level, remaining autonomy, solar input, and AC load:
+
+<img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/card_battery_ring.png" width="300" alt="Oukitel Header and Battery Ring" />
+
+```yaml
+type: custom:button-card
+name: OUKITEL P2001
+show_name: true
+show_state: false
+styles:
+  card:
+    - background: '#1a1a1a'
+    - border-radius: 30px 30px 0px 0px
+    - padding: 20px 10px 5px 10px
+    - border: none
+    - margin-bottom: -8px
+  name:
+    - font-size: 22px
+    - font-weight: bold
+    - color: rgba(255, 255, 255, 0.9)
+    - text-transform: uppercase
+    - letter-spacing: 1px
 ```
 
-Or using **mushroom-template-card** / **button-card** with pulse effect:
+---
+
+### 3. Glassmorphic Temperature Card with Dynamic Icon (custom:button-card)
+
+Interactive temperature card with glassmorphism, dynamic color thresholds, and thermometer icons:
+
+<img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/card_temperature.png" width="180" alt="Oukitel Glassmorphic Temperature Card" />
+
+```yaml
+type: custom:button-card
+entity: sensor.p2001_plus_tt_ab76_p2001_plus_temperature
+show_name: true
+show_state: true
+name: OUKITEL
+icon: |
+  [[[
+    if (entity.state > 25) return 'mdi:thermometer-high';
+    if (entity.state < 18) return 'mdi:thermometer-low';
+    return 'mdi:thermometer';
+  ]]]
+styles:
+  card:
+    - height: 140px
+    - width: 140px
+    - border-radius: 20px
+    - background: rgba(255, 255, 255, 0.1)
+    - backdrop-filter: blur(10px)
+    - border: 1px solid rgba(255, 255, 255, 0.2)
+    - box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37)
+    - padding: 10%
+  grid:
+    - grid-template-areas: '"i" "n" "s"'
+    - grid-template-columns: 1fr
+    - grid-template-rows: 1fr min-content min-content
+  icon:
+    - width: 45%
+    - color: |
+        [[[
+          if (entity.state > 25) return '#ff5722';
+          if (entity.state < 18) return '#00bcd4';
+          return '#4caf50';
+        ]]]
+  name:
+    - justify-self: start
+    - font-weight: bold
+    - font-size: 14px
+    - color: white
+    - margin-top: 10px
+  state:
+    - justify-self: start
+    - font-size: 22px
+    - font-weight: 900
+    - color: white
+state:
+  - operator: default
+    spin: false
+```
+
+---
+
+### 4. Conditional Solar Production Gauge
+
+Only displays when AC grid charging is idle, focusing on clean solar generation:
+
+<img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/card_solar_gauge.png" width="300" alt="Solar Production Gauge" />
+
+```yaml
+type: conditional
+conditions:
+  - condition: state
+    entity: switch.enchufe_carga_oukitel
+    state_not: 'on'
+card:
+  type: gauge
+  entity: sensor.p2001_plus_tt_ab76_p2001_plus_dc_solar_input_power
+  min: 0
+  max: 450
+  name: Producción solar
+```
+
+---
+
+### 5. Mushroom Summary Chip (Compact Tile)
+
+Compact status banner displaying battery, live input, and active load:
+
+<img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/card_mushroom.png" width="300" alt="Mushroom Card" />
 
 ```yaml
 type: custom:mushroom-template-card
 primary: Oukitel P2001 Plus
 secondary: >-
-  {{ states('sensor.oukitel_p2001_plus_tt_ab76_battery') }}% • {{
-  states('sensor.oukitel_p2001_plus_tt_ab76_total_input_power') }}W IN • {{
-  states('sensor.oukitel_p2001_plus_tt_ab76_total_output_power') }}W OUT
+  {{ states('sensor.p2001_plus_tt_ab76_p2001_plus_battery') }}% • {{
+  states('sensor.p2001_plus_tt_ab76_p2001_plus_total_input_power') | default(0) }}W IN • {{
+  states('sensor.p2001_plus_tt_ab76_p2001_plus_total_output_power') | default(0) }}W OUT
 picture: /local/oukitel/icon.svg
 ```
 
