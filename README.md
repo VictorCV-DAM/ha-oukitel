@@ -200,23 +200,108 @@ Top header bar and circular gauge showing battery level, remaining autonomy, sol
 <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/card_battery_ring.png" width="300" alt="Oukitel Header and Battery Ring" />
 
 ```yaml
-type: custom:button-card
-name: OUKITEL P2001
-show_name: true
-show_state: false
-styles:
-  card:
-    - background: '#1a1a1a'
-    - border-radius: 30px 30px 0px 0px
-    - padding: 20px 10px 5px 10px
-    - border: none
-    - margin-bottom: -8px
-  name:
-    - font-size: 22px
-    - font-weight: bold
-    - color: rgba(255, 255, 255, 0.9)
-    - text-transform: uppercase
-    - letter-spacing: 1px
+type: vertical-stack
+cards:
+  - type: custom:button-card
+    name: OUKITEL P2001
+    show_name: true
+    show_state: false
+    styles:
+      card:
+        - background: '#1a1a1a'
+        - border-radius: 30px 30px 0px 0px
+        - padding: 20px 10px 5px 10px
+        - border: none
+        - margin-bottom: -8px
+      name:
+        - font-size: 22px
+        - font-weight: bold
+        - color: rgba(255, 255, 255, 0.9)
+        - text-transform: uppercase
+        - letter-spacing: 1px
+  - type: custom:button-card
+    entity: sensor.p2001_plus_tt_ab76_p2001_plus_battery
+    aspect_ratio: 1/1
+    show_name: false
+    show_state: false
+    custom_fields:
+      ring: |
+        [[[
+          const pct = states['sensor.p2001_plus_tt_ab76_p2001_plus_battery'].state;
+          const modo = states['sensor.oukitel_estado_de_autonomia'].attributes.modo;
+          const color = modo === 'carga' ? '#00d2ff' : (modo === 'descarga' ? '#f5576c' : '#2ecc71');
+          
+          /* Ajustes de grosor y radio */
+          const radius = 42; 
+          const circ = 2 * Math.PI * radius;
+          const offset = circ * (1 - pct / 100);
+          
+          /* Lógica para 10 segmentos */
+          const numSegmentos = 10;
+          const gap = 3; 
+          const segmentLength = (circ / numSegmentos) - gap;
+          const divisiones = `${gap} ${segmentLength}`; 
+
+          return `
+            <svg viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="${radius}" fill="none" 
+                stroke="rgba(255,255,255,0.05)" stroke-width="12" />
+              
+              <circle cx="50" cy="50" r="${radius}" fill="none" stroke="${color}" stroke-width="12" 
+                stroke-dasharray="${circ}" 
+                stroke-dashoffset="${offset}" 
+                stroke-linecap="butt" transform="rotate(-90 50 50)" style="transition: all 1s ease-out;" />
+                
+              <circle cx="50" cy="50" r="${radius}" fill="none" stroke="#1a1a1a" stroke-width="14" 
+                stroke-dasharray="${divisiones}" transform="rotate(-91.5 50 50)" />
+
+              <text x="50" y="48" text-anchor="middle" font-size="6" fill="rgba(255,255,255,0.5)" font-weight="bold">BATERÍA</text>
+              <text x="50" y="62" text-anchor="middle" font-size="14" fill="white" font-weight="bold">${pct}%</text>
+            </svg>
+          `;
+        ]]]
+      tiempo: |
+        [[[
+          const tiempo = states['sensor.oukitel_estado_de_autonomia'].attributes.tiempo_formateado;
+          const modo = states['sensor.oukitel_estado_de_autonomia'].attributes.modo;
+          const label = modo === 'carga' ? 'CARGA COMPLETA EN:' : 'AUTONOMÍA';
+          return `
+            <div style="text-align: center;">
+              <div style="font-size: 10px; opacity: 0.6; font-weight: bold;">${label}</div>
+              <div style="font-size: 24px; font-weight: 900; color: white; line-height: 1.1;">${tiempo}</div>
+            </div>
+          `;
+        ]]]
+      watts: |
+        [[[
+          const entrada = states['sensor.p2001_plus_tt_ab76_p2001_plus_total_input_power'].state;
+          const consumo = states['sensor.p2001_plus_tt_ab76_p2001_plus_total_output_power'].state;
+          return `
+            <div style="display: flex; justify-content: space-around; width: 100%; font-size: 14px; font-weight: bold;">
+              <span style="color: #4caf50;">↑ ${entrada}W</span>
+              <span style="color: #f44336;">↓ ${consumo}W</span>
+            </div>
+          `;
+        ]]]
+    styles:
+      card:
+        - border-radius: 0px 0px 30px 30px
+        - background: '#1a1a1a'
+        - padding: 10%
+        - border: none
+      grid:
+        - grid-template-areas: '"ring" "tiempo" "watts"'
+        - grid-template-columns: 1fr
+        - grid-template-rows: 1fr auto auto
+      custom_fields:
+        ring:
+          - width: 85%
+          - justify-self: center
+        tiempo:
+          - margin-top: 30px
+          - margin-bottom: 10px
+        watts:
+          - margin-top: 5px
 ```
 
 ---
