@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import OukitelDataCoordinator
+from .sensor import _build_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,13 +62,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.client.device_key)},
-            name=self.client.device_name,
-            manufacturer="OUKITEL",
-            model="P2001 Plus",
-            sw_version="Cloud API 1.0.0",
-        )
+        return _build_device_info(self.coordinator, self.client)
 
     def _handle_coordinator_update(self) -> None:
         """Update from coordinator when new data arrives."""
@@ -106,7 +101,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
             self.client.control_device, [{self._key: cloud_val}]
         )
         if not success:
-            _LOGGER.error("Failed to set output frequency to %s", option)
+            _LOGGER.error("oukitel: Failed to set output frequency to %s", option)
             self._user_locked_value = None
             if self.coordinator.data and self._key in self.coordinator.data:
                 self._attr_current_option = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]), "50Hz")
@@ -140,13 +135,7 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.client.device_key)},
-            name=self.client.device_name,
-            manufacturer="OUKITEL",
-            model="P2001 Plus",
-            sw_version="Cloud API 1.0.0",
-        )
+        return _build_device_info(self.coordinator, self.client)
 
     def _handle_coordinator_update(self) -> None:
         """Update from coordinator when new data arrives."""
@@ -188,7 +177,7 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
             self.client.control_device, [{self._key: clean_num}]
         )
         if not success:
-            _LOGGER.error("Failed to set output voltage to %s", option)
+            _LOGGER.error("oukitel: Failed to set output voltage to %s", option)
             self._user_locked_value = None
             if self.coordinator.data and self._key in self.coordinator.data:
                 raw = str(self.coordinator.data[self._key]).replace("V", "").strip()

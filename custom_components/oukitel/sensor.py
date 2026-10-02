@@ -15,12 +15,43 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import OukitelDataCoordinator
+
+
+def _format_mac(dk: str) -> str:
+    if dk and len(dk) == 12:
+        return ":".join(dk[i:i+2] for i in range(0, 12, 2)).upper()
+    return dk or ""
+
+
+def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInfo:
+    mac = _format_mac(client.device_key or "")
+    host = getattr(coordinator, "lan_host", None)
+    mode = getattr(coordinator, "connection_mode", "auto").upper()
+
+    connections = set()
+    if mac and ":" in mac:
+        connections.add((CONNECTION_NETWORK_MAC, mac))
+
+    hw_info = f"IP: {host} [{mode}]" if host else f"Cloud [{mode}]"
+
+    return DeviceInfo(
+        identifiers={(DOMAIN, client.device_key)},
+        connections=connections,
+        name=client.device_name,
+        manufacturer="OUKITEL",
+        model=getattr(client, "product_name", "P2001 Plus") or "P2001 Plus",
+        sw_version="Cloud+LAN API 1.2.3",
+        hw_version=hw_info,
+        serial_number=mac if mac else client.device_key,
+        configuration_url=f"http://{host}" if host else None,
+    )
 
 # (key, name, unit, dev_class, state_class, icon, entity_category)
 SENSOR_TYPES = [
@@ -71,13 +102,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.client.device_key)},
-            name=self.client.device_name,
-            manufacturer="OUKITEL",
-            model="P2001 Plus",
-            sw_version="Cloud API 1.0.0",
-        )
+        return _build_device_info(self.coordinator, self.client)
 
     @property
     def icon(self):
@@ -132,7 +157,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
 
             # Check for any error/fault codes in telemetry payload
             for k, v in self.coordinator.data.items():
-                if any(x in k.lower() for x in ["fault", "alarm", "error", "protect"]):
+                if isinstance(k, str) and any(x in k.lower() for x in ["fault", "alarm", "error", "protect"]):
                     if v and str(v).lower() not in ["0", "false", "none", "normal", "ok"]:
                         faults.append(f"{k}: {v}")
 
@@ -156,12 +181,7 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.client.device_key)},
-            name=self.client.device_name,
-            manufacturer="OUKITEL",
-            model="P2001 Plus",
-        )
+        return _build_device_info(self.coordinator, self.client)
 
     @property
     def native_value(self) -> str:
@@ -173,7 +193,11 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        attrs: dict = {}
+        attrs: dict = {
+            "configured_mode": getattr(self.coordinator, "connection_mode", "auto"),
+            "lan_ip": getattr(self.coordinator, "lan_host", None),
+            "device_mac": _format_mac(self.client.device_key or ""),
+        }
         if self.coordinator._lan_active and self.coordinator._lan_last_report:
             import time
             age = round(time.monotonic() - self.coordinator._lan_last_report, 1)

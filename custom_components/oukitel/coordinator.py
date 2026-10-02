@@ -17,7 +17,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import AcceleronixCloudClient
-from .const import DEFAULT_POLL_INTERVAL, DEFAULT_WAKE_INTERVAL, DOMAIN
+from .const import (
+    DEFAULT_CONNECTION_MODE,
+    DEFAULT_POLL_INTERVAL,
+    DEFAULT_WAKE_INTERVAL,
+    DOMAIN,
+    MODE_AUTO,
+    MODE_CLOUD,
+    MODE_LAN,
+)
 from .local_scan import find_device_on_lan
 from .local_session import LocalSession, LocalAuthError, LocalSessionError
 
@@ -35,6 +43,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         client: AcceleronixCloudClient,
         poll_interval: int = DEFAULT_POLL_INTERVAL,
+        connection_mode: str = DEFAULT_CONNECTION_MODE,
     ) -> None:
         super().__init__(
             hass,
@@ -43,7 +52,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=poll_interval),
         )
         self.client = client
+        self.connection_mode = connection_mode
         self.last_wake_time: float = 0.0
+        self.lan_host: str | None = None
 
         self._lan_session: LocalSession | None = None
         self._lan_listen_task: asyncio.Task | None = None
@@ -58,21 +69,26 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def async_setup_lan(self) -> None:
         """Try to start LAN mode; silently skips if device not found on LAN."""
+        if self.connection_mode == MODE_CLOUD:
+            _LOGGER.warning("oukitel: Connection mode set to Cloud Only — skipping LAN setup")
+            return
+
         if not self.client.device_key:
             await self.hass.async_add_executor_job(self.client.fetch_device_info)
 
-        _LOGGER.debug("Scanning LAN for device %s …", self.client.device_key)
+        _LOGGER.warning("oukitel: Scanning LAN for device %s …", self.client.device_key)
         host = await find_device_on_lan(self.client.device_key or "")
         if not host:
-            _LOGGER.info("Device not found on LAN — running in cloud mode")
+            _LOGGER.warning("oukitel: Device not found on LAN — running in cloud mode")
             return
 
+        self.lan_host = host
         auth_key = await self.hass.async_add_executor_job(self.client.fetch_auth_key)
         if not auth_key:
-            _LOGGER.info("authKey unavailable — running in cloud mode")
+            _LOGGER.warning("oukitel: authKey unavailable — running in cloud mode")
             return
 
-        _LOGGER.info("Device found at %s — starting LAN session", host)
+        _LOGGER.warning("oukitel: Device found at %s — starting LAN session", host)
         await self._start_lan_session(host, auth_key)
 
     async def _start_lan_session(self, host: str, auth_key: str) -> None:
@@ -84,12 +100,13 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         try:
             await self._lan_session.connect()
         except (LocalSessionError, LocalAuthError) as exc:
-            _LOGGER.warning("LAN session failed to start: %s — using cloud", exc)
+            _LOGGER.warning("oukitel: LAN session failed to start: %s — using cloud", exc)
             self._lan_session = None
             return
 
         self._lan_active = True
         self._lan_connected_at = time.monotonic()
+        _LOGGER.warning("oukitel: LAN session established and active with %s!", host)
         self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
 
     async def _lan_read_loop(self, host: str, auth_key: str) -> None:
@@ -97,13 +114,13 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             try:
                 await self._lan_session.read_loop()
             except Exception as exc:
-                _LOGGER.debug("LAN read loop ended: %s", exc)
+                _LOGGER.debug("oukitel: LAN read loop ended: %s", exc)
 
             if self._lan_session:
                 await self._lan_session.close()
                 self._lan_session = None
 
-            _LOGGER.info("LAN disconnected — reconnecting in %ss", _LAN_RECONNECT_DELAY)
+            _LOGGER.info("oukitel: LAN disconnected — reconnecting in %ss", _LAN_RECONNECT_DELAY)
             await asyncio.sleep(_LAN_RECONNECT_DELAY)
 
             # Re-scan: device IP may have changed
@@ -118,16 +135,44 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 await self._lan_session.connect()
                 self._lan_connected_at = time.monotonic()
             except (LocalSessionError, LocalAuthError) as exc:
-                _LOGGER.warning("LAN reconnect failed: %s", exc)
+                _LOGGER.warning("oukitel: LAN reconnect failed: %s", exc)
                 self._lan_session = None
                 self._lan_active = False
                 return
 
     def _on_lan_telemetry(self, fields: dict[int, Any]) -> None:
         self._lan_last_report = time.monotonic()
-        self._lan_state.update(fields)
-        # Convert int-keyed LAN tags to string resourceCodes where possible
-        # and schedule an HA state push
+        
+        # Base LAN tag mapping to HA sensor keys
+        tag_map = {
+            1: "battery_percentage",
+            2: "remain_time",
+            3: "remain_charging_time",
+            4: "total_input_power",
+            5: "total_output_power",
+            11: "ac_input",
+            12: "dc_input",
+            14: "temp",
+            31: "AC_Version",
+            33: "temp",
+            34: "BMS_Version",
+        }
+        
+        current_data = dict(self.data or {})
+        for tag, val in fields.items():
+            if tag in tag_map:
+                current_data[tag_map[tag]] = val
+            current_data[str(tag)] = val
+            
+            # Struct sub-tags for AC/DC output power
+            if tag == 6 and isinstance(val, dict):
+                if 2 in val:
+                    current_data["ac_output_power"] = val[2]
+            elif tag == 9 and isinstance(val, dict):
+                if 2 in val:
+                    current_data["dc_output_power"] = val[2]
+
+        self._lan_state = current_data
         self.hass.loop.call_soon_threadsafe(
             self.async_set_updated_data, dict(self._lan_state)
         )
@@ -149,8 +194,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
     # ------------------------------------------------------------------
 
     async def _async_update_data(self) -> dict:
+        if self.connection_mode == MODE_CLOUD:
+            return await self._update_cloud()
         if self._lan_active:
             return await self._update_lan()
+        if self.connection_mode == MODE_LAN:
+            raise UpdateFailed("LAN session not active and mode is set to LAN Only")
         return await self._update_cloud()
 
     async def _update_lan(self) -> dict:
@@ -160,9 +209,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             and (now - self._lan_last_report) > _LAN_STALE_TIMEOUT
         )
         if stale:
-            _LOGGER.warning("LAN telemetry stale — falling back to cloud")
-            self._lan_active = False
-            return await self._update_cloud()
+            if self.connection_mode == MODE_LAN:
+                _LOGGER.warning("oukitel: LAN telemetry stale (LAN Only mode — keeping state)")
+            else:
+                _LOGGER.warning("oukitel: LAN telemetry stale — falling back to cloud")
+                self._lan_active = False
+                return await self._update_cloud()
 
         if self._lan_session:
             try:

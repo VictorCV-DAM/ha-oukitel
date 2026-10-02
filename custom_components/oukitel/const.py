@@ -6,10 +6,22 @@ CONF_REGION = "region"
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
 CONF_POLL_INTERVAL = "poll_interval"
+CONF_CONNECTION_MODE = "connection_mode"
+
+MODE_AUTO = "auto"
+MODE_LAN = "lan"
+MODE_CLOUD = "cloud"
+
+CONNECTION_MODES = {
+    MODE_AUTO: "Automático (LAN preferente + Cloud)",
+    MODE_LAN: "Solo LAN (Tiempo real directo)",
+    MODE_CLOUD: "Solo Cloud (Nube / Polling)",
+}
 
 DEFAULT_REGION = "EU"
 DEFAULT_POLL_INTERVAL = 10
 DEFAULT_WAKE_INTERVAL = 25
+DEFAULT_CONNECTION_MODE = MODE_AUTO
 
 REGION_SERVERS = {
     "EU": {

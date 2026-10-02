@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import socket
-import struct
 
 from .local_frame import FrameAssembler, build_frame, ttlv_decode
 
@@ -14,7 +13,6 @@ _LOGGER = logging.getLogger(__name__)
 _UDP_PORT = 6606
 _TCP_PORT = 6607
 
-# Protocol command IDs used during LAN handshake and telemetry
 _CMD_SCAN_REQUEST = 28720
 _CMD_SCAN_REPLY = 28721
 _CMD_HELLO = 28722
@@ -34,7 +32,7 @@ _REPORT_MODE_LAN = 3
 
 _DEFAULT_READ_TAGS = (2, 8, 9, 6, 31, 7, 28, 27, 14, 12, 11, 5, 4, 3, 1, 34, 20, 100, 43, 44, 46)
 
-_SCAN_TIMEOUT = 3.0
+_SCAN_TIMEOUT = 6.0
 
 
 def _parse_scan_reply(payload: bytes) -> tuple[str | None, str | None]:
@@ -60,26 +58,45 @@ class _ScanProtocol(asyncio.DatagramProtocol):
             if cmd != _CMD_SCAN_REPLY:
                 continue
             ip, mac = _parse_scan_reply(payload)
-            if mac and mac == self._dk and ip and not self._result.done():
-                self._result.set_result(ip)
+            if mac and mac == self._dk and not self._result.done():
+                resolved_ip = ip or addr[0]
+                _LOGGER.warning("oukitel: Device found on LAN! IP=%s (MAC=%s)", resolved_ip, mac)
+                self._result.set_result(resolved_ip)
 
     def error_received(self, exc: Exception) -> None:
-        _LOGGER.debug("Scan socket error: %s", exc)
+        _LOGGER.warning("oukitel: Scan socket error: %s", exc)
 
     def connection_lost(self, exc: Exception | None) -> None:
         pass
 
 
+def _broadcast_targets() -> list[str]:
+    """Return both global and subnet-directed broadcast addresses."""
+    targets = ["255.255.255.255"]
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 53))
+        local_ip = s.getsockname()[0]
+        s.close()
+        directed = local_ip.rsplit(".", 1)[0] + ".255"
+        if directed not in targets:
+            targets.append(directed)
+    except OSError:
+        pass
+    return targets
+
+
 async def find_device_on_lan(device_key: str, timeout: float = _SCAN_TIMEOUT) -> str | None:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     result: asyncio.Future[str] = loop.create_future()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     try:
         sock.bind(("", 0))
-    except OSError:
+    except OSError as exc:
+        _LOGGER.warning("oukitel: Failed to bind UDP scan socket: %s", exc)
         sock.close()
         return None
 
@@ -88,13 +105,19 @@ async def find_device_on_lan(device_key: str, timeout: float = _SCAN_TIMEOUT) ->
         sock=sock,
     )
 
+    probe = build_frame(1000, _CMD_SCAN_REQUEST)
+    targets = _broadcast_targets()
+    _LOGGER.warning("oukitel: Sending UDP scan for device %s to %s", device_key, targets)
+
     try:
-        probe = build_frame(_CMD_SCAN_REQUEST)
-        transport.sendto(probe, ("255.255.255.255", _UDP_PORT))
-        return await asyncio.wait_for(asyncio.shield(result), timeout=timeout)
-    except TimeoutError:
-        return None
-    except asyncio.TimeoutError:
+        for attempt in range(3):
+            for target in targets:
+                transport.sendto(probe, (target, _UDP_PORT))
+            try:
+                return await asyncio.wait_for(asyncio.shield(result), timeout=timeout / 3)
+            except (asyncio.TimeoutError, TimeoutError):
+                continue
+        _LOGGER.warning("oukitel: Device %s not found on LAN after 3 UDP scans", device_key)
         return None
     finally:
         transport.close()

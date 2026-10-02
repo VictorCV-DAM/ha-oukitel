@@ -27,7 +27,8 @@
         "title": "Device Options",
         "description": "Adjust the telemetry update frequency for this Oukitel device.",
         "data": {
-          "poll_interval": "Update Interval (seconds, 3-120s)"
+          "connection_mode": "Connection Mode",
+          "poll_interval": "Cloud Update Interval (seconds, 3-120s)"
         }
       }
     }

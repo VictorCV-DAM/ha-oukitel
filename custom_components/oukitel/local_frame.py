@@ -5,20 +5,21 @@ Wire format (TCP port 6607):
     - body_len  = checksum + pkt_id + cmd + payload  (excludes the 4 magic+len bytes)
     - checksum  = sum(bytes from pkt_id through end) & 0xFF
     - payload   = byte-stuffed; 0xAA in the data stream becomes 0xAA 0x55
-    - after handshake the payload is AES-128-CBC encrypted before stuffing
+    - after handshake the payload is AES-128-CBC encrypted (fixed IV = nonce bytes)
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
-import os
+import logging
 import struct
 from typing import Any
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 _FRAME_MAGIC = b"\xaa\xaa"
+_LOGGER = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -39,12 +40,12 @@ def _unpad(data: bytes) -> bytes:
     return data
 
 
-def _aes_encrypt(key: bytes, iv: bytes, plaintext: bytes) -> bytes:
+def aes_encrypt(key: bytes, iv: bytes, plaintext: bytes) -> bytes:
     enc = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
     return enc.update(_pad(plaintext)) + enc.finalize()
 
 
-def _aes_decrypt(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
+def aes_decrypt(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
     dec = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
     return _unpad(dec.update(ciphertext) + dec.finalize())
 
@@ -57,20 +58,8 @@ def session_token(key: bytes, nonce: str) -> str:
     return hashlib.sha256((key.hex() + ";" + nonce).encode()).hexdigest()
 
 
-def fresh_iv() -> bytes:
-    return os.urandom(16)
-
-
-def encrypt_payload(key: bytes, iv: bytes, plaintext: bytes) -> bytes:
-    return _aes_encrypt(key, iv, plaintext)
-
-
-def decrypt_payload(key: bytes, iv: bytes, ciphertext: bytes) -> bytes:
-    return _aes_decrypt(key, iv, ciphertext)
-
-
 # ---------------------------------------------------------------------------
-# Byte stuffing  (0xAA → 0xAA 0x55 in the wire stream)
+# Byte stuffing  (0xAA -> 0xAA 0x55 in the wire stream)
 # ---------------------------------------------------------------------------
 
 def _stuff(frame: bytes) -> bytes:
@@ -104,27 +93,12 @@ class _StreamDestuffer:
 # Frame builder / parser
 # ---------------------------------------------------------------------------
 
-_pkt_counter = 0
-
-
-def _next_pkt_id() -> int:
-    global _pkt_counter
-    _pkt_counter = (_pkt_counter + 1) & 0xFFFF
-    return _pkt_counter
-
-
-def build_frame(cmd: int, payload: bytes = b"") -> bytes:
-    pkt_id = _next_pkt_id()
-    inner = struct.pack(">HH", pkt_id, cmd) + payload
+def build_frame(packet_id: int, cmd: int, payload: bytes = b"") -> bytes:
+    inner = struct.pack(">HH", packet_id & 0xFFFF, cmd & 0xFFFF) + payload
     checksum = sum(inner) & 0xFF
-    body_len = len(inner) + 1  # +1 for checksum byte
+    body_len = len(inner) + 1
     raw = _FRAME_MAGIC + struct.pack(">HB", body_len, checksum) + inner
     return _stuff(raw)
-
-
-def build_encrypted_frame(cmd: int, payload: bytes, key: bytes, iv: bytes) -> bytes:
-    encrypted = encrypt_payload(key, iv, payload)
-    return build_frame(cmd, iv + encrypted)
 
 
 class FrameAssembler:
@@ -138,39 +112,29 @@ class FrameAssembler:
         self._buf.extend(self._destuffer.feed(data))
         frames: list[tuple[int, int, bytes]] = []
         while True:
-            frame = self._try_parse()
-            if frame is None:
+            k = self._buf.find(_FRAME_MAGIC)
+            if k < 0:
+                if len(self._buf) > 1:
+                    del self._buf[:-1]
                 break
-            frames.append(frame)
+            if k > 0:
+                del self._buf[:k]
+            if len(self._buf) < 9:
+                break
+            body_len = struct.unpack_from(">H", self._buf, 2)[0]
+            total = 4 + body_len
+            if len(self._buf) < total:
+                break
+            frame = bytes(self._buf[:total])
+            del self._buf[:total]
+            body = frame[5:]
+            if (sum(body) & 0xFF) != frame[4]:
+                _LOGGER.debug("oukitel: checksum mismatch — dropping frame")
+                continue
+            pid = struct.unpack_from(">H", frame, 5)[0]
+            cmd = struct.unpack_from(">H", frame, 7)[0]
+            frames.append((pid, cmd, frame[9:]))
         return frames
-
-    def _try_parse(self) -> tuple[int, int, bytes] | None:
-        buf = self._buf
-        # Locate magic
-        idx = 0
-        while idx < len(buf) - 1:
-            if buf[idx] == 0xAA and buf[idx + 1] == 0xAA:
-                break
-            idx += 1
-        if idx:
-            del self._buf[:idx]
-            buf = self._buf
-
-        if len(buf) < 5:
-            return None
-
-        body_len = struct.unpack_from(">H", buf, 2)[0]
-        total = 4 + body_len  # magic(2) + len(2) + body_len
-        if len(buf) < total:
-            return None
-
-        frame = bytes(buf[:total])
-        del self._buf[:total]
-
-        pkt_id = struct.unpack_from(">H", frame, 5)[0]
-        cmd = struct.unpack_from(">H", frame, 7)[0]
-        payload = frame[9:]
-        return pkt_id, cmd, payload
 
 
 # ---------------------------------------------------------------------------
@@ -218,32 +182,46 @@ def ttlv_decode(buf: bytes) -> dict[int, Any]:
     while i < n:
         if i + 2 > n:
             break
-        header = struct.unpack_from(">H", buf, i)[0]
+        h = struct.unpack_from(">H", buf, i)[0]
         i += 2
-        tag = header >> 3
-        kind = header & 0x07
-
-        if kind == 0:
-            out[tag] = False
-        elif kind == 1:
-            out[tag] = True
-        elif kind == 2:
-            value, i = _read_num(i)
-            out[tag] = value
-        elif kind == 3:
+        tag, typ = (h >> 3) & 0x1FFF, h & 7
+        if typ in (0, 1):
+            out[tag] = typ == 1
+        elif typ == 2:
+            out[tag], i = _read_num(i)
+        elif typ in (3, 5):
             if i + 2 > n:
                 break
-            length = struct.unpack_from(">H", buf, i)[0]
+            ln = struct.unpack_from(">H", buf, i)[0]
             i += 2
-            out[tag] = buf[i: i + length].decode("utf-8", errors="replace")
-            i += length
-        elif kind == 4:
+            val = buf[i: i + ln]
+            i += ln
+            try:
+                out[tag] = val.decode("ascii") if val.isascii() else val
+            except Exception:
+                out[tag] = val
+        elif typ == 4:
             if i + 2 > n:
                 break
-            sub_len = struct.unpack_from(">H", buf, i)[0]
+            count = struct.unpack_from(">H", buf, i)[0]
             i += 2
-            out[tag] = ttlv_decode(buf[i: i + sub_len])
-            i += sub_len
+            sub: dict[int, Any] = {}
+            for _ in range(count):
+                if i + 2 > n:
+                    break
+                h2 = struct.unpack_from(">H", buf, i)[0]
+                i += 2
+                t2, ty2 = (h2 >> 3) & 0x1FFF, h2 & 7
+                if ty2 in (0, 1):
+                    sub[t2] = ty2 == 1
+                elif ty2 == 2:
+                    sub[t2], i = _read_num(i)
+                elif ty2 in (3, 5):
+                    ln = struct.unpack_from(">H", buf, i)[0]
+                    i += 2
+                    sub[t2] = buf[i: i + ln]
+                    i += ln
+            out[tag] = sub
         else:
             break
 

@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import OukitelDataCoordinator
+from .sensor import _build_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,13 +59,7 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.client.device_key)},
-            name=self.client.device_name,
-            manufacturer="OUKITEL",
-            model="P2001 Plus",
-            sw_version="Cloud API 1.0.0",
-        )
+        return _build_device_info(self.coordinator, self.client)
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
@@ -101,7 +96,7 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
             self.client.control_device, [{self._key: True}]
         )
         if not success:
-            _LOGGER.error("Failed to turn on %s", self._key)
+            _LOGGER.error("oukitel: Failed to turn on %s", self._key)
             self._user_locked_state = None
             if self.coordinator.data and self._key in self.coordinator.data:
                 self._attr_is_on = bool(self.coordinator.data[self._key])
@@ -122,7 +117,7 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
             self.client.control_device, [{self._key: False}]
         )
         if not success:
-            _LOGGER.error("Failed to turn off %s", self._key)
+            _LOGGER.error("oukitel: Failed to turn off %s", self._key)
             self._user_locked_state = None
             if self.coordinator.data and self._key in self.coordinator.data:
                 self._attr_is_on = bool(self.coordinator.data[self._key])

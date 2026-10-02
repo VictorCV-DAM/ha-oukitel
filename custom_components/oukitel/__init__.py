@@ -8,13 +8,16 @@ from homeassistant.core import HomeAssistant
 
 from .api import AcceleronixCloudClient
 from .const import (
+    CONF_CONNECTION_MODE,
     CONF_EMAIL,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
     CONF_REGION,
+    DEFAULT_CONNECTION_MODE,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_REGION,
     DOMAIN,
+    MODE_CLOUD,
 )
 from .coordinator import OukitelDataCoordinator
 
@@ -41,20 +44,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_POLL_INTERVAL,
         entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
     )
+    connection_mode = entry.options.get(
+        CONF_CONNECTION_MODE,
+        entry.data.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE)
+    )
 
+    _LOGGER.debug("oukitel: Setting up entry for %s (mode=%s)", email, connection_mode)
     client = AcceleronixCloudClient(email=email, password=password, region=region)
     success = await hass.async_add_executor_job(client.login)
     if not success:
-        _LOGGER.error("Failed to login to Oukitel cloud")
+        _LOGGER.error("oukitel: Failed to login to Oukitel cloud")
         return False
 
     await hass.async_add_executor_job(client.fetch_device_info)
+    _LOGGER.debug("oukitel: Fetched device info. authKey present: %s", bool(client.auth_key))
 
-    coordinator = OukitelDataCoordinator(hass, client, poll_interval=poll_interval)
-    await coordinator.async_config_entry_first_refresh()
+    coordinator = OukitelDataCoordinator(
+        hass,
+        client,
+        poll_interval=poll_interval,
+        connection_mode=connection_mode,
+    )
+    
+    # Attempt LAN mode in the background immediately if not forced to Cloud
+    if connection_mode != MODE_CLOUD:
+        _LOGGER.debug("oukitel: Creating background task for LAN setup")
+        hass.async_create_task(coordinator.async_setup_lan())
 
-    # Attempt LAN mode in the background — does not block setup
-    hass.async_create_task(coordinator.async_setup_lan())
+    _LOGGER.debug("oukitel: Awaiting first cloud refresh")
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception as err:
+        _LOGGER.error("oukitel: First refresh failed (%s): %s", type(err).__name__, err)
+        raise
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 

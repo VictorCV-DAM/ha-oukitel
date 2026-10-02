@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import OukitelDataCoordinator
+from .sensor import _build_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,13 +62,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={(DOMAIN, self.client.device_key)},
-            name=self.client.device_name,
-            manufacturer="OUKITEL",
-            model="P2001 Plus",
-            sw_version="Cloud API 1.0.0",
-        )
+        return _build_device_info(self.coordinator, self.client)
 
     def _handle_coordinator_update(self) -> None:
         """Update from coordinator when new data arrives."""
@@ -113,7 +108,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
             self.client.control_device, [{self._key: target_val}]
         )
         if not success:
-            _LOGGER.error("Failed to set %s to %s", self._key, target_val)
+            _LOGGER.error("oukitel: Failed to set %s to %s", self._key, target_val)
             self._user_locked_value = None
             if self.coordinator.data and self._key in self.coordinator.data:
                 self._attr_native_value = float(self.coordinator.data[self._key])

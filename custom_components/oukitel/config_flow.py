@@ -8,10 +8,13 @@ import homeassistant.helpers.config_validation as cv
 
 from .api import AcceleronixCloudClient
 from .const import (
+    CONF_CONNECTION_MODE,
     CONF_EMAIL,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
     CONF_REGION,
+    CONNECTION_MODES,
+    DEFAULT_CONNECTION_MODE,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_REGION,
     DOMAIN,
@@ -90,6 +93,10 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        current_mode = self._config_entry.options.get(
+            CONF_CONNECTION_MODE,
+            self._config_entry.data.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE)
+        )
         current_interval = self._config_entry.options.get(
             CONF_POLL_INTERVAL,
             self._config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
@@ -97,6 +104,10 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
 
         options_schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_CONNECTION_MODE,
+                    default=current_mode,
+                ): vol.In(CONNECTION_MODES),
                 vol.Required(
                     CONF_POLL_INTERVAL,
                     default=current_interval,

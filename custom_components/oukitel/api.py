@@ -38,6 +38,7 @@ class AcceleronixCloudClient:
         self.device_key = None
         self.product_key = None
         self.device_name = None
+        self.auth_key = None
 
     def _encrypt_password(self, password: str, random_str: str) -> str:
         md5_hash = hashlib.md5(random_str.encode("utf-8")).hexdigest().upper()
@@ -83,12 +84,12 @@ class AcceleronixCloudClient:
                 self.access_token = data["accessToken"]["token"]
                 self.token_expiry = data["accessToken"].get("expirationTime", int(time.time()) + 7000)
                 self.refresh_token = data["refreshToken"]["token"]
-                _LOGGER.debug("Session authenticated successfully.")
+                _LOGGER.debug("oukitel: Session authenticated successfully.")
                 return True
-            _LOGGER.error("Login failed: %s (code %s)", res.get("msg"), res.get("code"))
+            _LOGGER.error("oukitel: Login failed: %s (code %s)", res.get("msg"), res.get("code"))
             return False
         except Exception as err:
-            _LOGGER.error("Exception during login: %s", err)
+            _LOGGER.error("oukitel: Exception during login: %s", err)
             return False
 
     def ensure_authenticated(self):
@@ -120,17 +121,18 @@ class AcceleronixCloudClient:
                     self.device_key = dev["deviceKey"]
                     self.product_key = dev["productKey"]
                     self.device_name = dev.get("deviceName", "Oukitel P2001")
-                    _LOGGER.debug("Full device object: %s", dev)
+                    self.auth_key = dev.get("authKey")
+                    _LOGGER.debug("oukitel: Device ready — authKey present: %s", bool(self.auth_key))
                     return True
-                _LOGGER.error("No bound devices found in account.")
+                _LOGGER.error("oukitel: No bound devices found in account.")
                 return False
             if res.get("code") == 5032:
                 self.login()
                 return self.fetch_device_info()
-            _LOGGER.error("Error fetching device info: %s", res.get("msg"))
+            _LOGGER.error("oukitel: Error fetching device info: %s", res.get("msg"))
             return False
         except Exception as err:
-            _LOGGER.error("Exception in fetch_device_info: %s", err)
+            _LOGGER.error("oukitel: Exception in fetch_device_info: %s", err)
             return False
 
     def control_device(self, properties_list: list) -> bool:
@@ -158,15 +160,15 @@ class AcceleronixCloudClient:
             code = res.get("code")
 
             if code == 200:
-                _LOGGER.debug("Cloud command succeeded: %s", properties_list)
+                _LOGGER.debug("oukitel: Cloud command succeeded: %s", properties_list)
                 return True
             if code == 5032:
                 self.login()
                 return self.control_device(properties_list)
-            _LOGGER.error("Cloud control error: %s (code %s)", res.get("msg"), code)
+            _LOGGER.error("oukitel: Cloud control error: %s (code %s)", res.get("msg"), code)
             return False
         except Exception as err:
-            _LOGGER.error("Exception in control_device: %s", err)
+            _LOGGER.error("oukitel: Exception in control_device: %s", err)
             return False
 
     def wake_device(self) -> bool:
@@ -192,7 +194,7 @@ class AcceleronixCloudClient:
                 return self.get_telemetry()
 
             if res.get("code") != 200:
-                _LOGGER.warning("Telemetry response not OK: %s", res)
+                _LOGGER.warning("oukitel: Telemetry response not OK: %s", res)
                 return {}
 
             data = res.get("data", {})
@@ -234,30 +236,9 @@ class AcceleronixCloudClient:
             return metrics
 
         except Exception as err:
-            _LOGGER.error("Exception fetching telemetry: %s", err)
+            _LOGGER.error("oukitel: Exception fetching telemetry: %s", err)
             return {}
 
     def fetch_auth_key(self) -> str | None:
-        """Fetch the per-device AES authKey required for local LAN sessions."""
-        self.ensure_authenticated()
-        if not self.device_key or not self.product_key:
-            if not self.fetch_device_info():
-                return None
-
-        url = f"{self.base_url}/v2/binding/enduserapi/getDeviceAuthKey"
-        params = {"pk": self.product_key, "dk": self.device_key}
-
-        try:
-            r = requests.get(url, headers=self.get_auth_headers(), params=params, timeout=10)
-            res = r.json()
-            if res.get("code") == 200:
-                return res.get("data", {}).get("authKey")
-            if res.get("code") == 5032:
-                self.login()
-                return self.fetch_auth_key()
-            _LOGGER.debug("authKey HTTP %s - Response: %s", r.status_code, res)
-            """_LOGGER.debug("authKey endpoint returned code %s — LAN mode unavailable", res.get("code"))"""
-            return None
-        except Exception as err:
-            _LOGGER.debug("Could not fetch authKey: %s", err)
-            return None
+        """Return the per-device AES authKey (already stored from device list)."""
+        return self.auth_key
