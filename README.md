@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/icon.svg" width="140" height="140" alt="Oukitel Power Station Icon" />
+  <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/icon.png" width="140" height="140" alt="Oukitel Power Station Icon" />
   <h1>Oukitel Power Station Integration for Home Assistant</h1>
 
   [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/default)
