@@ -49,7 +49,7 @@ def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInf
         name=client.device_name,
         manufacturer="OUKITEL",
         model=getattr(client, "product_name", "P2001 Plus") or "P2001 Plus",
-        sw_version="Cloud+LAN API 1.2.5",
+        sw_version="Cloud+LAN API 1.2.6",
         hw_version=hw_info,
         serial_number=mac if mac else client.device_key,
         configuration_url=f"http://{host}" if host else None,
@@ -175,7 +175,15 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             val = self.coordinator.data.get("remain_time")
             if val is None or val == 0:
                 val = self.coordinator.data.get("remain_charging_time")
-            return val if val is not None else 0
+            if val is None:
+                val = 0
+            if (val == 0 or val >= 5940) and abs(net_power) > 5.0:
+                batt = self.coordinator.data.get("battery_percentage", 0) or 0
+                if net_power < -5.0 and batt > 0:
+                    val = int(((batt / 100.0) * 2048.0 / abs(net_power)) * 60)
+                elif net_power > 5.0 and batt < 100:
+                    val = int((((100.0 - batt) / 100.0) * 2048.0 / net_power) * 60)
+            return val
 
         # Calculate accurate net power balance
         # Positive net_power = charging battery; Negative net_power = discharging battery
@@ -198,7 +206,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
 
             # Battery is draining: return station BMS discharge autonomy
             val = self.coordinator.data.get("remain_time", 0) or 0
-            if val == 0:
+            if val == 0 or val >= 5940:
                 batt = self.coordinator.data.get("battery_percentage", 0) or 0
                 if batt > 0 and abs(net_power) > 5.0:
                     val = int(((batt / 100.0) * 2048.0 / abs(net_power)) * 60)
@@ -216,16 +224,57 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
 
             # Battery is charging: get station charge time estimate
             val = self.coordinator.data.get("remain_charging_time")
-            if val is None or val == 0:
+            if val is None or val == 0 or val >= 5940:
                 val = self.coordinator.data.get("remain_time", 0) or 0
-            if val == 0:
+            if val == 0 or val >= 5940:
                 batt_pct = batt or 0
                 if net_power > 5.0:
                     needed_wh = ((100.0 - batt_pct) / 100.0) * 2048.0
                     val = int((needed_wh / net_power) * 60)
             return val
 
-        # 4. Individual port outputs default to 0 if None/inactive (prevents "Unknown" states)
+        # 4. AC Output Voltage: 230V (or configured ACvoltage_Switchover) when AC output/switch active, 0V when off
+        if self._key == "ac_output_voltage":
+            val = self.coordinator.data.get("ac_output_voltage")
+            if val is not None and val > 0:
+                return val
+            ac_p = float(self.coordinator.data.get("ac_output_power") or 0)
+            ac_sw = bool(self.coordinator.data.get("ac_switch", False))
+            if ac_p > 0 or ac_sw:
+                v_enum = self.coordinator.data.get("ACvoltage_Switchover")
+                enum_map = {0: 100, 1: 110, 2: 120, 3: 220, 4: 230}
+                return enum_map.get(v_enum, 230)
+            return 0
+
+        # 5. DC Car Output Voltage & Current: 12V when active, otherwise 0
+        if self._key == "dc_output_voltage":
+            val = self.coordinator.data.get("dc_output_voltage")
+            if val is not None and val > 0:
+                return val
+            dc_p = float(self.coordinator.data.get("dc_output_power") or 0)
+            dc_sw = bool(self.coordinator.data.get("dc_switch", False))
+            if dc_p > 0 or dc_sw:
+                return 12.0
+            return 0.0
+
+        if self._key == "dc_output_current":
+            val = self.coordinator.data.get("dc_output_current")
+            if val is not None and val > 0:
+                return val
+            dc_p = float(self.coordinator.data.get("dc_output_power") or 0)
+            if dc_p > 0:
+                return round(dc_p / 12.0, 2)
+            return 0.0
+
+        # 6. Inverter Temperature: fallback to unit temperature (temp) if tag 33 is absent
+        if self._key == "inverter_temp":
+            val = self.coordinator.data.get("inverter_temp")
+            if val is not None and val > 0:
+                return val
+            val = self.coordinator.data.get("temp")
+            return val if val is not None else 0.0
+
+        # 7. Individual port outputs and power metrics default to 0 if None/inactive (prevents "Unknown" states)
         if self._key in (
             "ac_output_power",
             "dc_output_power",
@@ -235,11 +284,30 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             "typec2_power",
             "typec3_power",
             "typec4_power",
+            "total_input_power",
+            "total_output_power",
+            "ac_input",
+            "dc_input",
         ):
             val = self.coordinator.data.get(self._key)
             return val if val is not None else 0
 
-        # 5. Version string formatting (e.g. 215, 106)
+        # 8. Temperature default to 0.0 if not received
+        if self._key == "temp":
+            val = self.coordinator.data.get("temp")
+            return val if val is not None else 0.0
+
+        # 9. Battery default to 0 if not received
+        if self._key == "battery_percentage":
+            val = self.coordinator.data.get("battery_percentage")
+            return val if val is not None else 0
+
+        # 10. WiFi signal default
+        if self._key == "wifi_signal":
+            val = self.coordinator.data.get("wifi_signal")
+            return val if val is not None else -100
+
+        # 11. Version string formatting (e.g. 215, 106)
         if self._key in ("BMS_Version", "AC_Version"):
             val = self.coordinator.data.get(self._key)
             if val is not None:
@@ -249,7 +317,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                     return str(val)
             return None
 
-        # 6. Fault status audit
+        # 12. Fault status audit
         if self._key == "device_fault_status":
             faults = []
             temp = self.coordinator.data.get("temp", 0)
