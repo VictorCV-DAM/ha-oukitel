@@ -136,29 +136,122 @@ You can configure the active connection mode at any time directly in Home Assist
 
 ## 📊 Entities Provided
 
-### Sensors (Telemetry & Diagnostics)
-- `sensor.oukitel_battery`: Battery level (%) with dynamic charging icons
-- `sensor.oukitel_total_input_power`: Total input (W)
-- `sensor.oukitel_total_output_power`: Total output (W)
-- `sensor.oukitel_ac_input_power`: AC charging input (W)
-- `sensor.oukitel_dc_solar_input_power`: Solar DC input (W)
-- `sensor.oukitel_temperature`: Station internal temperature (°C)
-- `sensor.oukitel_remaining_discharge_time`: Estimated time remaining (min)
-- `sensor.oukitel_remaining_charge_time`: Charge time remaining (min)
-- `sensor.oukitel_wifi_signal`: Cloud Wi-Fi RSSI (dBm) · *Diagnostic*
-- `sensor.oukitel_bms_version`: BMS firmware version · *Diagnostic*
-- `sensor.oukitel_inverter_version`: Inverter firmware version · *Diagnostic*
-- `sensor.oukitel_connection_mode`: Active connection — `LAN` or `Cloud` · *Diagnostic*
+The integration automatically exposes over 25 entities across sensors, binary sensors, switches, numbers, selects, and buttons:
 
-### Switches (Bidirectional Control)
-- `switch.oukitel_ac_output`: Toggle 230V AC output
-- `switch.oukitel_dc_12v_output`: Toggle 12V DC output
-- `switch.oukitel_usb_output`: Toggle USB ports output
+### 🔋 Core Telemetry & Energy
+- `sensor.oukitel_battery`: Battery level (%) with dynamic real-time charging/discharging animated icons.
+- `sensor.oukitel_total_input_power`: Total aggregate incoming power from AC grid and solar DC (W).
+- `sensor.oukitel_total_output_power`: Total aggregate power consumed across all active outlets (W).
+- `sensor.oukitel_ac_input_power`: AC grid wall charging power (W).
+- `sensor.oukitel_dc_solar_input_power`: Solar array photovoltaic input power (W).
+- `sensor.oukitel_temperature`: Internal heatsink & cell temperature (°C).
+- `sensor.oukitel_inverter_temperature`: Inverter thermal monitoring with automatic sensor fallback (°C).
 
-### Controls & Configuration (From the "Settings / Wheel" Screen)
-- `number.oukitel_ac_charging_limit`: AC Upper Limit Charging Power slider (3% to 100%)
-- `select.oukitel_output_frequency`: Output Frequency setting (`50Hz` / `60Hz`)
-- `select.oukitel_output_voltage`: Output Voltage setting (`200V`, `208V`, `220V`, `230V`, `240V`)
+### ⏱️ Smart Physics-Based Autonomy & Remaining Times
+Unlike native station firmware which can confuse charging and discharging when solar production is lower than household consumption, this integration implements a **real-time net power balance engine**:
+- `sensor.oukitel_remaining_time`: Station LCD display equivalent time (minutes).
+- `sensor.oukitel_remaining_discharge_time`: True battery autonomy countdown while net discharging (minutes). Automatically sets to `0` when net charging.
+- `sensor.oukitel_remaining_charge_time`: Intelligent estimate to reach 100% full capacity while net charging (minutes). Automatically sets to `0` when net discharging or already at 100%. Bypasses the station's 99-hour (5,940m) display overflow cap with dynamic calculations.
+
+### 🔌 Per-Port Individual Telemetry
+- `sensor.oukitel_ac_output_power`: 230V Pure Sine Wave inverter output (W).
+- `sensor.oukitel_ac_output_voltage`: Real-time inverter output voltage (V). Accurately reports active voltage (e.g. 230V) when inverted output is active, and 0V when off.
+- `sensor.oukitel_type_c_1_power`: Fast-charge Type-C 1 port power (W).
+- `sensor.oukitel_type_c_2_power`: Type-C 2 port power (W).
+- `sensor.oukitel_type_c_3_power`: Type-C 3 port power (W).
+- `sensor.oukitel_type_c_4_power`: Type-C 4 port power (W).
+- `sensor.oukitel_usb_a_power`: Standard USB-A port power (W).
+- `sensor.oukitel_usb_c_qc_power`: Quick Charge USB-C port power (W).
+- `sensor.oukitel_dc_car_output_power`: 12V DC cigarette lighter socket power (W).
+- `sensor.oukitel_dc_car_output_voltage`: 12V DC car socket voltage (V).
+- `sensor.oukitel_dc_car_output_current`: 12V DC car socket current (A).
+
+*(Note: All port power sensors default to `0 W` immediately upon startup, guaranteeing zero `Unknown` states even before individual sub-packets arrive).*
+
+### 🛡️ Diagnostic & Health Sensors
+- `sensor.oukitel_hardware_fault_status`: **Official Home Assistant ENUM sensor** with predefined, standardized states for direct use in automations.
+- `sensor.oukitel_connection_mode`: Active transport layer (`LAN` or `Cloud`) · *Diagnostic*.
+- `sensor.oukitel_wifi_signal`: Cloud Wi-Fi RSSI (dBm) · *Diagnostic*.
+- `sensor.oukitel_bms_version`: BMS firmware version · *Diagnostic*.
+- `sensor.oukitel_inverter_version`: Inverter firmware version · *Diagnostic*.
+
+### 🔌 Binary Sensors & Quick Actions
+- `binary_sensor.oukitel_battery_powered_inferred`: Detects whether the station is actively running on battery (net discharging or mains/solar input absent).
+- `button.oukitel_reload`: Instantly reloads the integration session without restarting Home Assistant.
+
+### 🎛️ Bidirectional Switches & Settings
+- `switch.oukitel_ac_output`: Toggle 230V AC inverter output with optimistic latching.
+- `switch.oukitel_dc_12v_output`: Toggle 12V DC car/barrel port output.
+- `switch.oukitel_usb_output`: Toggle USB & Type-C power bank outputs.
+- `number.oukitel_ac_charging_limit`: AC Upper Limit Charging Power slider (3% to 100%).
+- `select.oukitel_output_frequency`: Output Frequency setting (`50Hz` / `60Hz`).
+- `select.oukitel_output_voltage`: Output Voltage setting (`200V`, `208V`, `220V`, `230V`, `240V`).
+
+---
+
+## 🛡️ Hardware Fault Status & Native Automations
+
+The `sensor.oukitel_hardware_fault_status` entity is implemented as a native **Home Assistant Enum Sensor** (`SensorDeviceClass.ENUM`). This means you do **not** have to guess what strings might occur: when configuring triggers in the Home Assistant Automation UI, all valid states appear directly in the dropdown menu:
+
+| State in Dropdown | Trigger Condition | Recommended Automation Action |
+|:---|:---|:---|
+| **`Normal`** | System operating within all safety specifications. | Resume normal schedule / clear alert dashboard. |
+| **`High Temperature Warning`** | Internal heatsink/battery temperature $\ge 55^\circ\text{C}$. | Trigger cooling fan or reduce AC charging rate. |
+| **`Over-Temperature`** | Internal temperature exceeds critical limit $\ge 65^\circ\text{C}$. | Disconnect heavy loads or shut down AC inverter. |
+| **`Under-Temperature`** | Temperature falls below $-10^\circ\text{C}$ (LiFePO4 charge lock). | Inhibit high-current charging until warm. |
+| **`Low Battery Warning`** | Battery $\le 10\%$ while actively discharging. | Send mobile push notification, shed secondary loads. |
+| **`Critical Low Battery`** | Battery reaches $0\%$ under load. | Emergency shutdown to protect battery cells. |
+| **`Overload Protection`** | Total output exceeds rated continuous capacity ($> 2,400\,\text{W}$). | Automatically trip or notify before hardware breaker trips. |
+| **`Hardware Fault`** | Critical BMS or inverter hardware error code emitted. | Emit priority siren / emergency notification. |
+
+### Entity Attributes (`extra_state_attributes`)
+- `fault_details`: Human-readable description of the exact trigger (e.g. *"Output power (2650W) exceeds rated 2400W"* or *"Temperature is critical: 67°C"*).
+- `possible_states`: Complete array of all possible enum states.
+
+### Example Automation: High Temperature Alert
+```yaml
+alias: "Oukitel: Thermal Protection Alert"
+description: "Notify and turn off heavy loads if Oukitel station overheats"
+trigger:
+  - platform: state
+    entity_id: sensor.p2001_plus_tt_ab76_hardware_fault_status
+    to:
+      - "High Temperature Warning"
+      - "Over-Temperature"
+action:
+  - service: notify.persistent_notification
+    data:
+      title: "⚠️ Oukitel Thermal Warning"
+      message: >-
+        Station reported {{ trigger.to_state.state }}.
+        Details: {{ state_attr(trigger.entity_id, 'fault_details') }}.
+```
+
+---
+
+## 🔬 Reverse-Engineering & Architecture Methodology
+
+How was this information discovered and implemented?
+
+1. **Thing Specification Language (TSL) Reverse Engineering:**
+   The exact data model for the P2001 Plus was extracted by querying the Quectel / Acceleronix IoT Cloud device model repository for `productKey: p11wN7`. This revealed all 21 official properties, including the complex structs:
+   - Tag 6 (`ac_data`): subtag 1 (`ac_switch`), subtag 2 (`ac1_output`), subtag 3 (`ac1_output_voltage`).
+   - Tag 7 (`usb_data`): subtag 1 (`usb_switch`), subtag 2 (`USB_QC1_output`), subtag 3 (`USB_QC2_output`).
+   - Tag 8 (`typec_data`): subtags 2, 5, 6, 7 (dedicated wattage for Type-C ports 1 through 4).
+   - Tag 9 (`dc_data`): subtag 1 (`dc_switch`), subtag 2 (`car1_output`), subtag 3 (`car1_output_voltage`), subtag 4 (`car1_output_current`).
+   - Tag 28 (`ACvoltage_Switchover`): Enums for 100V, 110V, 120V, 220V, and 230V.
+
+2. **Binary LAN Protocol (Port 6607):**
+   The station exposes an unadvertised local TCP service on port 6607 using a custom framing protocol (SLIP-like destuffing with `0xEB 0x90` frame magic and XOR byte-stuffing). The payload is encrypted with AES-128-CBC using a device-specific `authKey` provisioned over Cloud binding, and the decrypted body uses a compact TTLV (Tag-Type-Length-Value) encoding. Our parser decodes both scalar tags and nested struct subtags in real time.
+
+3. **Physics & Battery Management Engine:**
+   Official station firmware has known display quirks:
+   - When solar input is present (e.g. 337W) but household AC draw is larger (e.g. 342W), the firmware's internal flag often incorrectly treats the battery as charging. We solved this with a pure physics engine:
+     $$\text{net\_power} = \max(\text{total\_in}, \text{ac\_in} + \text{dc\_in}) - \max(\text{total\_out}, \text{ac\_out} + \text{dc\_out})$$
+   - When charging at low net wattage, the firmware's internal integer overflows its 99-hour display limit, getting stuck at 5,940 minutes (99 hours). We dynamically calculate real remaining time based on the 2,048 Wh LiFePO4 battery capacity.
+
+4. **Home Assistant Native Standards:**
+   Rather than treating fault alarms as arbitrary text, we mapped all physical and firmware thresholds to standard Home Assistant `SensorDeviceClass.ENUM` contracts so the HA UI natively presents all actionable choices directly to the user.
 
 ---
 
