@@ -247,7 +247,7 @@ How was this information discovered and implemented?
 3. **Physics & Battery Management Engine:**
    Official station firmware has known display quirks:
    - When solar input is present (e.g. 337W) but household AC draw is larger (e.g. 342W), the firmware's internal flag often incorrectly treats the battery as charging. We solved this with a pure physics engine:
-     $$\text{net\_power} = \max(\text{total\_in}, \text{ac\_in} + \text{dc\_in}) - \max(\text{total\_out}, \text{ac\_out} + \text{dc\_out})$$
+     $$\text{NetPower} = \max(\text{Total}_{\text{in}}, \text{AC}_{\text{in}} + \text{DC}_{\text{in}}) - \max(\text{Total}_{\text{out}}, \text{AC}_{\text{out}} + \text{DC}_{\text{out}})$$
    - When charging at low net wattage, the firmware's internal integer overflows its 99-hour display limit, getting stuck at 5,940 minutes (99 hours). We dynamically calculate real remaining time based on the 2,048 Wh LiFePO4 battery capacity.
 
 4. **Home Assistant Native Standards:**
