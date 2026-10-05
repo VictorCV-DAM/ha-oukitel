@@ -36,6 +36,84 @@ _LAN_STALE_TIMEOUT = 150.0
 _LAN_RECONNECT_DELAY = 10.0
 
 
+def _unpack_port_data(target: dict[str, Any]) -> None:
+    """Unpack individual port metrics from LAN tags (6, 7, 8, 9) or Cloud TSL (AC_Info, USB_Info, etc.)."""
+    def _parse_dict(val):
+        if isinstance(val, dict):
+            return val
+        if isinstance(val, str):
+            try:
+                parsed = json.loads(val)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+        return {}
+
+    # 1. AC Info: 2=AC output power (W), 3=AC output voltage (V)
+    ac_val = _parse_dict(target.get(6) or target.get("6") or target.get("AC_Info"))
+    if ac_val:
+        p = ac_val.get(2) if 2 in ac_val else ac_val.get("2")
+        v = ac_val.get(3) if 3 in ac_val else ac_val.get("3")
+        if p is not None:
+            target["ac_output_power"] = p
+        if v is not None:
+            target["ac_output_voltage"] = v
+
+    # 2. USB Info: 2=USB-A power (W), 3=USB-C QC power (W)
+    usb_val = _parse_dict(target.get(7) or target.get("7") or target.get("USB_Info"))
+    if usb_val:
+        usb_a = usb_val.get(2) if 2 in usb_val else usb_val.get("2")
+        usb_c = usb_val.get(3) if 3 in usb_val else usb_val.get("3")
+        if usb_a is not None:
+            target["usb_a_power"] = usb_a
+        if usb_c is not None:
+            target["usb_c_qc_power"] = usb_c
+
+    # 3. Type-C Info: 2=Type-C 1 (W), 5=Type-C 2 (W), 6=Type-C 3 (W), 7=Type-C 4 (W)
+    typec_val = _parse_dict(target.get(8) or target.get("8") or target.get("TypeC_Info"))
+    if typec_val:
+        c1 = typec_val.get(2) if 2 in typec_val else typec_val.get("2")
+        c2 = typec_val.get(5) if 5 in typec_val else typec_val.get("5")
+        c3 = typec_val.get(6) if 6 in typec_val else typec_val.get("6")
+        c4 = typec_val.get(7) if 7 in typec_val else typec_val.get("7")
+        if c1 is not None:
+            target["typec1_power"] = c1
+        if c2 is not None:
+            target["typec2_power"] = c2
+        if c3 is not None:
+            target["typec3_power"] = c3
+        if c4 is not None:
+            target["typec4_power"] = c4
+
+    # 4. DC Info: 2=DC Car output power (W), 3=voltage (V), 4=current (A)
+    dc_val = _parse_dict(target.get(9) or target.get("9") or target.get("DC_Info"))
+    if dc_val:
+        dc_p = dc_val.get(2) if 2 in dc_val else dc_val.get("2")
+        dc_v = dc_val.get(3) if 3 in dc_val else dc_val.get("3")
+        dc_a = dc_val.get(4) if 4 in dc_val else dc_val.get("4")
+        if dc_p is not None:
+            target["dc_output_power"] = dc_p
+        if dc_v is not None:
+            target["dc_output_voltage"] = dc_v
+        if dc_a is not None:
+            target["dc_output_current"] = dc_a
+
+    # Default all individual power sensors to 0 if not present yet (avoids Unknown states)
+    for k in (
+        "ac_output_power",
+        "usb_a_power",
+        "usb_c_qc_power",
+        "typec1_power",
+        "typec2_power",
+        "typec3_power",
+        "typec4_power",
+        "dc_output_power",
+    ):
+        if k not in target or target[k] is None:
+            target[k] = 0
+
+
 class OukitelDataCoordinator(DataUpdateCoordinator):
     """Fetches Oukitel station data; prefers LAN push, falls back to cloud polling."""
 
@@ -140,84 +218,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 self._lan_session = None
                 self._lan_active = False
                 return
-
-def _unpack_port_data(target: dict[str, Any]) -> None:
-    """Unpack individual port metrics from LAN tags (6, 7, 8, 9) or Cloud TSL (AC_Info, USB_Info, etc.)."""
-    def _parse_dict(val):
-        if isinstance(val, dict):
-            return val
-        if isinstance(val, str):
-            try:
-                parsed = json.loads(val)
-                if isinstance(parsed, dict):
-                    return parsed
-            except Exception:
-                pass
-        return {}
-
-    # 1. AC Info: 2=AC output power (W), 3=AC output voltage (V)
-    ac_val = _parse_dict(target.get(6) or target.get("6") or target.get("AC_Info"))
-    if ac_val:
-        p = ac_val.get(2) if 2 in ac_val else ac_val.get("2")
-        v = ac_val.get(3) if 3 in ac_val else ac_val.get("3")
-        if p is not None:
-            target["ac_output_power"] = p
-        if v is not None:
-            target["ac_output_voltage"] = v
-
-    # 2. USB Info: 2=USB-A power (W), 3=USB-C QC power (W)
-    usb_val = _parse_dict(target.get(7) or target.get("7") or target.get("USB_Info"))
-    if usb_val:
-        usb_a = usb_val.get(2) if 2 in usb_val else usb_val.get("2")
-        usb_c = usb_val.get(3) if 3 in usb_val else usb_val.get("3")
-        if usb_a is not None:
-            target["usb_a_power"] = usb_a
-        if usb_c is not None:
-            target["usb_c_qc_power"] = usb_c
-
-    # 3. Type-C Info: 2=Type-C 1 (W), 5=Type-C 2 (W), 6=Type-C 3 (W), 7=Type-C 4 (W)
-    typec_val = _parse_dict(target.get(8) or target.get("8") or target.get("TypeC_Info"))
-    if typec_val:
-        c1 = typec_val.get(2) if 2 in typec_val else typec_val.get("2")
-        c2 = typec_val.get(5) if 5 in typec_val else typec_val.get("5")
-        c3 = typec_val.get(6) if 6 in typec_val else typec_val.get("6")
-        c4 = typec_val.get(7) if 7 in typec_val else typec_val.get("7")
-        if c1 is not None:
-            target["typec1_power"] = c1
-        if c2 is not None:
-            target["typec2_power"] = c2
-        if c3 is not None:
-            target["typec3_power"] = c3
-        if c4 is not None:
-            target["typec4_power"] = c4
-
-    # 4. DC Info: 2=DC Car output power (W), 3=voltage (V), 4=current (A)
-    dc_val = _parse_dict(target.get(9) or target.get("9") or target.get("DC_Info"))
-    if dc_val:
-        dc_p = dc_val.get(2) if 2 in dc_val else dc_val.get("2")
-        dc_v = dc_val.get(3) if 3 in dc_val else dc_val.get("3")
-        dc_a = dc_val.get(4) if 4 in dc_val else dc_val.get("4")
-        if dc_p is not None:
-            target["dc_output_power"] = dc_p
-        if dc_v is not None:
-            target["dc_output_voltage"] = dc_v
-        if dc_a is not None:
-            target["dc_output_current"] = dc_a
-
-    # Default all individual power sensors to 0 if not present yet (avoids Unknown states)
-    for k in (
-        "ac_output_power",
-        "usb_a_power",
-        "usb_c_qc_power",
-        "typec1_power",
-        "typec2_power",
-        "typec3_power",
-        "typec4_power",
-        "dc_output_power",
-    ):
-        if k not in target or target[k] is None:
-            target[k] = 0
-
 
     def _on_lan_telemetry(self, fields: dict[int, Any]) -> None:
         self._lan_last_report = time.monotonic()
