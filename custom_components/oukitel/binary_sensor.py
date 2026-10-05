@@ -48,20 +48,19 @@ class OukitelOnBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        """Return True if running on battery (inputs absent or <= 5W), False if connected to grid/solar power."""
+        """Return True if running on battery (actively discharging or inputs absent), False if net charging."""
         if not self.coordinator.data:
             return None
 
-        total_in = self.coordinator.data.get("total_input_power")
-        ac_in = self.coordinator.data.get("ac_input")
-        dc_in = self.coordinator.data.get("dc_input")
+        total_in = float(self.coordinator.data.get("total_input_power") or 0)
+        total_out = float(self.coordinator.data.get("total_output_power") or 0)
+        ac_in = float(self.coordinator.data.get("ac_input") or 0)
+        dc_in = float(self.coordinator.data.get("dc_input") or 0)
+        ac_out = float(self.coordinator.data.get("ac_output_power") or 0)
+        dc_out = float(self.coordinator.data.get("dc_output_power") or 0)
 
-        if total_in is None and ac_in is None and dc_in is None:
-            return None
+        real_in = max(total_in, ac_in + dc_in)
+        real_out = max(total_out, ac_out + dc_out)
 
-        tin = float(total_in or 0)
-        ain = float(ac_in or 0)
-        din = float(dc_in or 0)
-
-        # On battery when no significant charging power is entering the station
-        return tin <= 5.0 and ain <= 5.0 and din <= 5.0
+        # On battery when load exceeds input by >5W (draining battery) or when inputs are absent (<= 5W)
+        return real_out > real_in + 5.0 or real_in <= 5.0

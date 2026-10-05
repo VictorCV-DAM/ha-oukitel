@@ -49,46 +49,46 @@ def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInf
         name=client.device_name,
         manufacturer="OUKITEL",
         model=getattr(client, "product_name", "P2001 Plus") or "P2001 Plus",
-        sw_version="Cloud+LAN API 1.2.4",
+        sw_version="Cloud+LAN API 1.2.5",
         hw_version=hw_info,
         serial_number=mac if mac else client.device_key,
         configuration_url=f"http://{host}" if host else None,
     )
 
-# (key, name, unit, dev_class, state_class, icon, entity_category)
+# (key, name, unit, dev_class, state_class, icon, entity_category, enabled_default)
 SENSOR_TYPES = [
     # Core Telemetry
-    ("battery_percentage", "Battery", PERCENTAGE, SensorDeviceClass.BATTERY, SensorStateClass.MEASUREMENT, "mdi:battery-charging", None),
-    ("total_input_power", "Total Input Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:solar-power", None),
-    ("total_output_power", "Total Output Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:flash", None),
-    ("ac_input", "AC Input Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:transmission-tower", None),
-    ("dc_input", "DC Solar Input Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:solar-panel", None),
-    ("temp", "Temperature", UnitOfTemperature.CELSIUS, SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, "mdi:thermometer", None),
-    ("inverter_temp", "Inverter Temperature", UnitOfTemperature.CELSIUS, SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, "mdi:thermometer-lines", None),
+    ("battery_percentage", "Battery", PERCENTAGE, SensorDeviceClass.BATTERY, SensorStateClass.MEASUREMENT, "mdi:battery-charging", None, True),
+    ("total_input_power", "Total Input Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:solar-power", None, True),
+    ("total_output_power", "Total Output Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:flash", None, True),
+    ("ac_input", "AC Input Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:transmission-tower", None, True),
+    ("dc_input", "DC Solar Input Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:solar-panel", None, True),
+    ("temp", "Temperature", UnitOfTemperature.CELSIUS, SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, "mdi:thermometer", None, True),
+    ("inverter_temp", "Inverter Temperature", UnitOfTemperature.CELSIUS, SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, "mdi:thermometer-lines", None, False),
 
     # Time calculations (LCD display, distinct discharge vs charging)
-    ("remaining_time", "Remaining Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-outline", None),
-    ("remain_time", "Remaining Discharge Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-outline", None),
-    ("remain_charging_time", "Remaining Charge Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-sand", None),
+    ("remaining_time", "Remaining Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-outline", None, True),
+    ("remain_time", "Remaining Discharge Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-outline", None, True),
+    ("remain_charging_time", "Remaining Charge Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-sand", None, True),
 
     # Per-port Individual Outputs (W / V / A)
-    ("ac_output_power", "AC Output Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:lightning-bolt", None),
-    ("ac_output_voltage", "AC Output Voltage", UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "mdi:sine-wave", None),
-    ("usb_a_power", "USB-A Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-port", None),
-    ("usb_c_qc_power", "USB-C (QC) Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None),
-    ("typec1_power", "Type-C 1 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None),
-    ("typec2_power", "Type-C 2 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None),
-    ("typec3_power", "Type-C 3 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None),
-    ("typec4_power", "Type-C 4 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None),
-    ("dc_output_power", "DC (Car) Output Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:car-electric", None),
-    ("dc_output_voltage", "DC (Car) Output Voltage", UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "mdi:car-battery", None),
-    ("dc_output_current", "DC (Car) Output Current", UnitOfElectricCurrent.AMPERE, SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, "mdi:current-dc", None),
+    ("ac_output_power", "AC Output Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:lightning-bolt", None, True),
+    ("ac_output_voltage", "AC Output Voltage", UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "mdi:sine-wave", None, False),
+    ("usb_a_power", "USB-A Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-port", None, True),
+    ("usb_c_qc_power", "USB-C (QC) Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, True),
+    ("typec1_power", "Type-C 1 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, True),
+    ("typec2_power", "Type-C 2 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, True),
+    ("typec3_power", "Type-C 3 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, True),
+    ("typec4_power", "Type-C 4 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, True),
+    ("dc_output_power", "DC (Car) Output Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:car-electric", None, True),
+    ("dc_output_voltage", "DC (Car) Output Voltage", UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "mdi:car-battery", None, False),
+    ("dc_output_current", "DC (Car) Output Current", UnitOfElectricCurrent.AMPERE, SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, "mdi:current-dc", None, False),
 
     # Diagnostic & Health
-    ("wifi_signal", "WiFi Signal", SIGNAL_STRENGTH_DECIBELS_MILLIWATT, SensorDeviceClass.SIGNAL_STRENGTH, SensorStateClass.MEASUREMENT, "mdi:wifi", EntityCategory.DIAGNOSTIC),
-    ("BMS_Version", "BMS Version", None, None, None, "mdi:chip", EntityCategory.DIAGNOSTIC),
-    ("AC_Version", "Inverter Version", None, None, None, "mdi:sine-wave", EntityCategory.DIAGNOSTIC),
-    ("device_fault_status", "Hardware Fault Status", None, None, None, "mdi:shield-check", EntityCategory.DIAGNOSTIC),
+    ("wifi_signal", "WiFi Signal", SIGNAL_STRENGTH_DECIBELS_MILLIWATT, SensorDeviceClass.SIGNAL_STRENGTH, SensorStateClass.MEASUREMENT, "mdi:wifi", EntityCategory.DIAGNOSTIC, True),
+    ("BMS_Version", "BMS Version", None, None, None, "mdi:chip", EntityCategory.DIAGNOSTIC, True),
+    ("AC_Version", "Inverter Version", None, None, None, "mdi:sine-wave", EntityCategory.DIAGNOSTIC, True),
+    ("device_fault_status", "Hardware Fault Status", None, None, None, "mdi:shield-check", EntityCategory.DIAGNOSTIC, True),
 ]
 
 
@@ -99,8 +99,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     client = data["client"]
 
     entities = [
-        OukitelSensor(coordinator, client, key, name, unit, dev_class, state_class, icon, category)
-        for key, name, unit, dev_class, state_class, icon, category in SENSOR_TYPES
+        OukitelSensor(coordinator, client, key, name, unit, dev_class, state_class, icon, category, enabled_default)
+        for key, name, unit, dev_class, state_class, icon, category, enabled_default in SENSOR_TYPES
     ]
     entities.append(OukitelConnectionModeSensor(coordinator, client))
     async_add_entities(entities)
@@ -109,7 +109,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class OukitelSensor(CoordinatorEntity, SensorEntity):
     """Representation of an Oukitel sensor."""
 
-    def __init__(self, coordinator: OukitelDataCoordinator, client, key, name, unit, dev_class, state_class, icon, category=None):
+    def __init__(self, coordinator: OukitelDataCoordinator, client, key, name, unit, dev_class, state_class, icon, category=None, enabled_default=True):
         super().__init__(coordinator)
         self.client = client
         self._key = key
@@ -119,6 +119,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         self._attr_device_class = dev_class
         self._attr_state_class = state_class
         self._attr_icon = icon
+        self._attr_entity_registry_enabled_default = enabled_default
         if category:
             self._attr_entity_category = category
 
@@ -132,13 +133,18 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         if self._key == "battery_percentage":
             val = self.native_value
             if val is not None:
-                # Calculate charging state from input power
+                # Calculate charging state from net power
                 is_charging = False
                 if self.coordinator.data:
-                    total_in = self.coordinator.data.get("total_input_power", 0) or 0
-                    ac_in = self.coordinator.data.get("ac_input", 0) or 0
-                    dc_in = self.coordinator.data.get("dc_input", 0) or 0
-                    if total_in > 5 or ac_in > 5 or dc_in > 5:
+                    total_in = float(self.coordinator.data.get("total_input_power") or 0)
+                    total_out = float(self.coordinator.data.get("total_output_power") or 0)
+                    ac_in = float(self.coordinator.data.get("ac_input") or 0)
+                    dc_in = float(self.coordinator.data.get("dc_input") or 0)
+                    ac_out = float(self.coordinator.data.get("ac_output_power") or 0)
+                    dc_out = float(self.coordinator.data.get("dc_output_power") or 0)
+                    real_in = max(total_in, ac_in + dc_in)
+                    real_out = max(total_out, ac_out + dc_out)
+                    if real_in > real_out + 5.0:
                         is_charging = True
 
                 rounded = int(round(val / 10.0) * 10)
@@ -171,18 +177,32 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                 val = self.coordinator.data.get("remain_charging_time")
             return val if val is not None else 0
 
+        # Calculate accurate net power balance
+        # Positive net_power = charging battery; Negative net_power = discharging battery
+        total_in = float(self.coordinator.data.get("total_input_power") or 0)
+        total_out = float(self.coordinator.data.get("total_output_power") or 0)
+        ac_in = float(self.coordinator.data.get("ac_input") or 0)
+        dc_in = float(self.coordinator.data.get("dc_input") or 0)
+        ac_out = float(self.coordinator.data.get("ac_output_power") or 0)
+        dc_out = float(self.coordinator.data.get("dc_output_power") or 0)
+
+        real_in = max(total_in, ac_in + dc_in)
+        real_out = max(total_out, ac_out + dc_out)
+        net_power = real_in - real_out
+
         # 2. Remaining Discharge Time: Autonomy remaining while draining battery
         if self._key == "remain_time":
-            total_in = self.coordinator.data.get("total_input_power", 0) or 0
-            total_out = self.coordinator.data.get("total_output_power", 0) or 0
-            ac_in = self.coordinator.data.get("ac_input", 0) or 0
-            dc_in = self.coordinator.data.get("dc_input", 0) or 0
-
-            # If input power clearly exceeds output by >10W or substantial charging is active, battery is NOT discharging
-            if (total_in > total_out + 10) or ac_in > 15 or dc_in > 15:
+            # If net power is charging or idle (real_in >= real_out - 5W), battery is NOT discharging
+            if net_power >= -5.0:
                 return 0
 
-            return self.coordinator.data.get("remain_time", 0)
+            # Battery is draining: return station BMS discharge autonomy
+            val = self.coordinator.data.get("remain_time", 0) or 0
+            if val == 0:
+                batt = self.coordinator.data.get("battery_percentage", 0) or 0
+                if batt > 0 and abs(net_power) > 5.0:
+                    val = int(((batt / 100.0) * 2048.0 / abs(net_power)) * 60)
+            return val
 
         # 3. Remaining Charge Time: Estimated time to reach 100% full
         if self._key == "remain_charging_time":
@@ -190,21 +210,36 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             if batt is not None and batt >= 100:
                 return 0
 
-            total_in = self.coordinator.data.get("total_input_power", 0) or 0
-            total_out = self.coordinator.data.get("total_output_power", 0) or 0
-            ac_in = self.coordinator.data.get("ac_input", 0) or 0
-            dc_in = self.coordinator.data.get("dc_input", 0) or 0
-
-            # If not charging from grid or solar
-            if not ((total_in > total_out + 10) or ac_in > 15 or dc_in > 15):
+            # If net power is discharging or idle (real_in <= real_out + 5W), battery is NOT charging
+            if net_power <= 5.0:
                 return 0
 
+            # Battery is charging: get station charge time estimate
             val = self.coordinator.data.get("remain_charging_time")
             if val is None or val == 0:
-                val = self.coordinator.data.get("remain_time", 0)
+                val = self.coordinator.data.get("remain_time", 0) or 0
+            if val == 0:
+                batt_pct = batt or 0
+                if net_power > 5.0:
+                    needed_wh = ((100.0 - batt_pct) / 100.0) * 2048.0
+                    val = int((needed_wh / net_power) * 60)
             return val
 
-        # 4. Version string formatting (e.g. 215, 106)
+        # 4. Individual port outputs default to 0 if None/inactive (prevents "Unknown" states)
+        if self._key in (
+            "ac_output_power",
+            "dc_output_power",
+            "usb_a_power",
+            "usb_c_qc_power",
+            "typec1_power",
+            "typec2_power",
+            "typec3_power",
+            "typec4_power",
+        ):
+            val = self.coordinator.data.get(self._key)
+            return val if val is not None else 0
+
+        # 5. Version string formatting (e.g. 215, 106)
         if self._key in ("BMS_Version", "AC_Version"):
             val = self.coordinator.data.get(self._key)
             if val is not None:
@@ -214,7 +249,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                     return str(val)
             return None
 
-        # 5. Fault status audit
+        # 6. Fault status audit
         if self._key == "device_fault_status":
             faults = []
             temp = self.coordinator.data.get("temp", 0)
