@@ -154,7 +154,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             12: "dc_input",
             14: "temp",
             31: "AC_Version",
-            33: "temp",
+            33: "inverter_temp",
             34: "BMS_Version",
         }
         
@@ -162,15 +162,41 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         for tag, val in fields.items():
             if tag in tag_map:
                 current_data[tag_map[tag]] = val
+            if tag == 2:
+                current_data["remaining_time"] = val
             current_data[str(tag)] = val
             
-            # Struct sub-tags for AC/DC output power
+            # Struct sub-tags for individual ports & detailed measurements
             if tag == 6 and isinstance(val, dict):
+                # AC Info: 2=AC output power (W), 3=AC output voltage (V)
                 if 2 in val:
                     current_data["ac_output_power"] = val[2]
+                if 3 in val:
+                    current_data["ac_output_voltage"] = val[3]
+            elif tag == 7 and isinstance(val, dict):
+                # USB Info: 2=USB-A power (W), 3=USB-C QC power (W)
+                if 2 in val:
+                    current_data["usb_a_power"] = val[2]
+                if 3 in val:
+                    current_data["usb_c_qc_power"] = val[3]
+            elif tag == 8 and isinstance(val, dict):
+                # Type-C Info: 2=Type-C 1 (W), 5=Type-C 2 (W), 6=Type-C 3 (W), 7=Type-C 4 (W)
+                if 2 in val:
+                    current_data["typec1_power"] = val[2]
+                if 5 in val:
+                    current_data["typec2_power"] = val[5]
+                if 6 in val:
+                    current_data["typec3_power"] = val[6]
+                if 7 in val:
+                    current_data["typec4_power"] = val[7]
             elif tag == 9 and isinstance(val, dict):
+                # DC Info: 2=DC Car output power (W), 3=voltage (V), 4=current (A)
                 if 2 in val:
                     current_data["dc_output_power"] = val[2]
+                if 3 in val:
+                    current_data["dc_output_voltage"] = val[3]
+                if 4 in val:
+                    current_data["dc_output_current"] = val[4]
 
         self._lan_state = current_data
         self.hass.loop.call_soon_threadsafe(

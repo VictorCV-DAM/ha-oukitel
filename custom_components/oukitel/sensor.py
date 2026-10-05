@@ -10,6 +10,8 @@ from homeassistant.const import (
     EntityCategory,
     PERCENTAGE,
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    UnitOfElectricCurrent,
+    UnitOfElectricPotential,
     UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
@@ -47,7 +49,7 @@ def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInf
         name=client.device_name,
         manufacturer="OUKITEL",
         model=getattr(client, "product_name", "P2001 Plus") or "P2001 Plus",
-        sw_version="Cloud+LAN API 1.2.3",
+        sw_version="Cloud+LAN API 1.2.4",
         hw_version=hw_info,
         serial_number=mac if mac else client.device_key,
         configuration_url=f"http://{host}" if host else None,
@@ -55,14 +57,34 @@ def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInf
 
 # (key, name, unit, dev_class, state_class, icon, entity_category)
 SENSOR_TYPES = [
+    # Core Telemetry
     ("battery_percentage", "Battery", PERCENTAGE, SensorDeviceClass.BATTERY, SensorStateClass.MEASUREMENT, "mdi:battery-charging", None),
     ("total_input_power", "Total Input Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:solar-power", None),
     ("total_output_power", "Total Output Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:flash", None),
     ("ac_input", "AC Input Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:transmission-tower", None),
     ("dc_input", "DC Solar Input Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:solar-panel", None),
     ("temp", "Temperature", UnitOfTemperature.CELSIUS, SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, "mdi:thermometer", None),
+    ("inverter_temp", "Inverter Temperature", UnitOfTemperature.CELSIUS, SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, "mdi:thermometer-lines", None),
+
+    # Time calculations (LCD display, distinct discharge vs charging)
+    ("remaining_time", "Remaining Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-outline", None),
     ("remain_time", "Remaining Discharge Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-outline", None),
     ("remain_charging_time", "Remaining Charge Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-sand", None),
+
+    # Per-port Individual Outputs (W / V / A)
+    ("ac_output_power", "AC Output Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:lightning-bolt", None),
+    ("ac_output_voltage", "AC Output Voltage", UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "mdi:sine-wave", None),
+    ("usb_a_power", "USB-A Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-port", None),
+    ("usb_c_qc_power", "USB-C (QC) Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None),
+    ("typec1_power", "Type-C 1 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None),
+    ("typec2_power", "Type-C 2 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None),
+    ("typec3_power", "Type-C 3 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None),
+    ("typec4_power", "Type-C 4 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None),
+    ("dc_output_power", "DC (Car) Output Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:car-electric", None),
+    ("dc_output_voltage", "DC (Car) Output Voltage", UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "mdi:car-battery", None),
+    ("dc_output_current", "DC (Car) Output Current", UnitOfElectricCurrent.AMPERE, SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, "mdi:current-dc", None),
+
+    # Diagnostic & Health
     ("wifi_signal", "WiFi Signal", SIGNAL_STRENGTH_DECIBELS_MILLIWATT, SensorDeviceClass.SIGNAL_STRENGTH, SensorStateClass.MEASUREMENT, "mdi:wifi", EntityCategory.DIAGNOSTIC),
     ("BMS_Version", "BMS Version", None, None, None, "mdi:chip", EntityCategory.DIAGNOSTIC),
     ("AC_Version", "Inverter Version", None, None, None, "mdi:sine-wave", EntityCategory.DIAGNOSTIC),
@@ -142,8 +164,58 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         if not self.coordinator.data:
             return None
 
+        # 1. Remaining Time: General LCD display value (what appears on station LCD)
+        if self._key == "remaining_time":
+            val = self.coordinator.data.get("remain_time")
+            if val is None or val == 0:
+                val = self.coordinator.data.get("remain_charging_time")
+            return val if val is not None else 0
+
+        # 2. Remaining Discharge Time: Autonomy remaining while draining battery
+        if self._key == "remain_time":
+            total_in = self.coordinator.data.get("total_input_power", 0) or 0
+            total_out = self.coordinator.data.get("total_output_power", 0) or 0
+            ac_in = self.coordinator.data.get("ac_input", 0) or 0
+            dc_in = self.coordinator.data.get("dc_input", 0) or 0
+
+            # If input power clearly exceeds output by >10W or substantial charging is active, battery is NOT discharging
+            if (total_in > total_out + 10) or ac_in > 15 or dc_in > 15:
+                return 0
+
+            return self.coordinator.data.get("remain_time", 0)
+
+        # 3. Remaining Charge Time: Estimated time to reach 100% full
+        if self._key == "remain_charging_time":
+            batt = self.coordinator.data.get("battery_percentage")
+            if batt is not None and batt >= 100:
+                return 0
+
+            total_in = self.coordinator.data.get("total_input_power", 0) or 0
+            total_out = self.coordinator.data.get("total_output_power", 0) or 0
+            ac_in = self.coordinator.data.get("ac_input", 0) or 0
+            dc_in = self.coordinator.data.get("dc_input", 0) or 0
+
+            # If not charging from grid or solar
+            if not ((total_in > total_out + 10) or ac_in > 15 or dc_in > 15):
+                return 0
+
+            val = self.coordinator.data.get("remain_charging_time")
+            if val is None or val == 0:
+                val = self.coordinator.data.get("remain_time", 0)
+            return val
+
+        # 4. Version string formatting (e.g. 215, 106)
+        if self._key in ("BMS_Version", "AC_Version"):
+            val = self.coordinator.data.get(self._key)
+            if val is not None:
+                try:
+                    return str(int(val))
+                except (ValueError, TypeError):
+                    return str(val)
+            return None
+
+        # 5. Fault status audit
         if self._key == "device_fault_status":
-            # Real-time health audit
             faults = []
             temp = self.coordinator.data.get("temp", 0)
             if temp and temp >= 65:
