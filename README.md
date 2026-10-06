@@ -19,7 +19,10 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 - **Author & Maintainer:** Víctor C. V. ([@VictorCV-DAM](https://github.com/VictorCV-DAM))
 - **Email:** `victorcvtrabajo@gmail.com`
 - **Copyright:** © 2024-2026 Víctor C. V. All rights reserved.
-- **License:** [MIT License](LICENSE) (OSI-approved Open Source).
+- **License:** [Free for Personal Use — All Rights Reserved](LICENSE).
+
+> [!NOTE]
+> **Free for Personal Use:** Any user is granted full, free permission to install, run, and use this integration without restrictions in their personal Home Assistant instance. Redistribution, modification, or commercial exploitation is strictly prohibited without prior written consent.
 
 ---
 
