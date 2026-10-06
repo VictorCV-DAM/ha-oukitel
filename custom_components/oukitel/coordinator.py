@@ -188,6 +188,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._user_overrides: dict[str, tuple] = {}
         self._last_device_list_check: float = 0.0
         self.last_user_command_time: float = 0.0
+        self._last_cloud_attrs_poll: float = 0.0
 
     @property
     def is_paused(self) -> bool:
@@ -237,30 +238,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             )
         except Exception as exc:
             _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
-
-        return lan_ok or cloud_ok
-
-    async def async_send_select_command(
-        self, key: str, cloud_val: Any, lan_tag: int, lan_kind: str, lan_val: Any
-    ) -> bool:
-        """Send setting change via instant LAN if active, and synchronize with Cloud."""
-        lan_ok = False
-        if self._lan_active and self._lan_session:
-            try:
-                await self._lan_session.send_write(lan_tag, lan_kind, lan_val)
-                lan_ok = True
-                _LOGGER.debug("oukitel: Instant LAN setting write: tag %s = %s", lan_tag, lan_val)
-            except Exception as exc:
-                _LOGGER.warning("oukitel: LAN setting write failed: %s", exc)
-
-        cloud_ok = False
-        try:
-            cloud_ok = await self.hass.async_add_executor_job(
-                self.client.control_device,
-                [{key: cloud_val}, {"high_frequency_reporting": 3}],
-            )
-        except Exception as exc:
-            _LOGGER.warning("oukitel: Cloud setting sync failed: %s", exc)
 
         return lan_ok or cloud_ok
 
@@ -426,8 +403,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             11: "ac_input",
             12: "dc_input",
             14: "temp",
-            27: "Frequency_Switchover",
-            28: "ACvoltage_Switchover",
             31: "AC_Version",
             33: "inverter_temp",
             34: "BMS_Version",
@@ -507,6 +482,20 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             raise UpdateFailed("LAN session connected but no telemetry received yet")
 
         now_ts = time.time()
+        # Periodically poll cloud attributes (every 60s) for tags that LAN never delivers (voltage & frequency)
+        if now_ts - self._last_cloud_attrs_poll >= 60.0:
+            self._last_cloud_attrs_poll = now_ts
+            try:
+                cloud_data = await self.hass.async_add_executor_job(self.client.get_telemetry)
+                if cloud_data:
+                    for k in ("ACvoltage_Switchover", "Frequency_Switchover"):
+                        if k in cloud_data:
+                            self._lan_state[k] = cloud_data[k]
+                            if self.data:
+                                self.data[k] = cloud_data[k]
+            except Exception:
+                pass
+
         if now_ts - self.last_wake_time >= DEFAULT_WAKE_INTERVAL:
             try:
                 await self.hass.async_add_executor_job(self.client.wake_device)
@@ -515,6 +504,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 pass
 
         data = dict(self._lan_state)
+        # Preserve cloud-only tags if already known
+        if self.data:
+            for k in ("ACvoltage_Switchover", "Frequency_Switchover"):
+                if k in self.data and k not in data:
+                    data[k] = self.data[k]
         self._apply_user_overrides(data)
         return data
 
