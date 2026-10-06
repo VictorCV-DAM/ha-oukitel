@@ -228,13 +228,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             except Exception as exc:
                 _LOGGER.warning("oukitel: LAN write failed: %s", exc)
 
-        # Always dispatch to Cloud with high_frequency_reporting so Quectel cloud
-        # shadow and Wonderfree app update immediately (< 1-2s)
+        # Synchronize switch state to Cloud cleanly matching Wonderfree native command structure
         cloud_ok = False
         try:
             cloud_ok = await self.hass.async_add_executor_job(
                 self.client.control_device,
-                [{key: value}, {"high_frequency_reporting": 3}],
+                [{key: value}],
             )
         except Exception as exc:
             _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
@@ -483,7 +482,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         now_ts = time.time()
         # Periodically poll cloud attributes (every 60s) for tags that LAN never delivers (voltage & frequency)
-        if now_ts - self._last_cloud_attrs_poll >= 60.0:
+        # Avoid polling immediately after a user command to prevent race conditions
+        if (now_ts - self._last_cloud_attrs_poll >= 60.0) and ((now_ts - self.last_user_command_time) >= 10.0):
             self._last_cloud_attrs_poll = now_ts
             try:
                 cloud_data = await self.hass.async_add_executor_job(self.client.get_telemetry)
@@ -493,13 +493,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                             self._lan_state[k] = cloud_data[k]
                             if self.data:
                                 self.data[k] = cloud_data[k]
-            except Exception:
-                pass
-
-        if now_ts - self.last_wake_time >= DEFAULT_WAKE_INTERVAL:
-            try:
-                await self.hass.async_add_executor_job(self.client.wake_device)
-                self.last_wake_time = now_ts
             except Exception:
                 pass
 
