@@ -56,10 +56,7 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
             initial_val = bool(coordinator.data[key])
         self._attr_is_on = initial_val
 
-        # Temporal latch lock
-        self._user_locked_state = None
-        self._user_locked_until = 0
-
+        # State tracking
     @property
     def device_info(self) -> DeviceInfo:
         return _build_device_info(self.coordinator, self.client)
@@ -73,32 +70,15 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        now = time.time()
-        # If user recently flipped the switch, ignore stale telemetry for 15s unless matched
-        if self._user_locked_state is not None:
-            if now < self._user_locked_until:
-                if self.coordinator.data and self._key in self.coordinator.data:
-                    telemetry_val = bool(self.coordinator.data[self._key])
-                    if telemetry_val == self._user_locked_state:
-                        # Cloud caught up with our commanded state, release lock early
-                        self._user_locked_state = None
-                # Maintain commanded state without rollback
-                return
-            else:
-                self._user_locked_state = None
-
         if self.coordinator.data and self._key in self.coordinator.data:
             self._attr_is_on = bool(self.coordinator.data[self._key])
         super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
-        # 1. Lock switch ON for 15s to guarantee no bounce
-        self._user_locked_state = True
-        self._user_locked_until = time.time() + 15
+        # 1. Update UI and coordinator cache immediately with active override
         self._attr_is_on = True
-        if self.coordinator.data:
-            self.coordinator.data[self._key] = True
+        self.coordinator.async_set_user_override(self._key, True, ttl=60.0)
         self.async_write_ha_state()
 
         # 2. Fire hardware command to cloud API
@@ -107,19 +87,16 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         )
         if not success:
             _LOGGER.error("oukitel: Failed to turn on %s", self._key)
-            self._user_locked_state = None
+            self.coordinator.async_clear_user_override(self._key)
             if self.coordinator.data and self._key in self.coordinator.data:
                 self._attr_is_on = bool(self.coordinator.data[self._key])
             self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
-        # 1. Lock switch OFF for 15s to guarantee no bounce
-        self._user_locked_state = False
-        self._user_locked_until = time.time() + 15
+        # 1. Update UI and coordinator cache immediately with active override
         self._attr_is_on = False
-        if self.coordinator.data:
-            self.coordinator.data[self._key] = False
+        self.coordinator.async_set_user_override(self._key, False, ttl=60.0)
         self.async_write_ha_state()
 
         # 2. Fire hardware command to cloud API
@@ -128,7 +105,7 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         )
         if not success:
             _LOGGER.error("oukitel: Failed to turn off %s", self._key)
-            self._user_locked_state = None
+            self.coordinator.async_clear_user_override(self._key)
             if self.coordinator.data and self._key in self.coordinator.data:
                 self._attr_is_on = bool(self.coordinator.data[self._key])
             self.async_write_ha_state()

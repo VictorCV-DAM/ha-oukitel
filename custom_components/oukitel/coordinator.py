@@ -50,9 +50,12 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
                 pass
         return {}
 
-    # 1. AC Info: 2=AC output power (W), 3=AC output voltage (V)
+    # 1. AC Info: 1=ac_switch, 2=AC output power (W), 3=AC output voltage (V)
     ac_val = _parse_dict(target.get(6) or target.get("6") or target.get("AC_Info"))
     if ac_val:
+        sw = ac_val.get(1) if 1 in ac_val else (ac_val.get("1") if "1" in ac_val else ac_val.get("ac_switch"))
+        if sw is not None:
+            target["ac_switch"] = bool(sw)
         p = ac_val.get(2) if 2 in ac_val else ac_val.get("2")
         v = ac_val.get(3) if 3 in ac_val else ac_val.get("3")
         if p is not None:
@@ -60,9 +63,12 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
         if v is not None:
             target["ac_output_voltage"] = v
 
-    # 2. USB Info: 2=USB-A power (W), 3=USB-C QC power (W)
+    # 2. USB Info: 1=usb_switch, 2=USB-A power (W), 3=USB-C QC power (W)
     usb_val = _parse_dict(target.get(7) or target.get("7") or target.get("USB_Info"))
     if usb_val:
+        sw = usb_val.get(1) if 1 in usb_val else (usb_val.get("1") if "1" in usb_val else usb_val.get("usb_switch"))
+        if sw is not None:
+            target["usb_switch"] = bool(sw)
         usb_a = usb_val.get(2) if 2 in usb_val else usb_val.get("2")
         usb_c = usb_val.get(3) if 3 in usb_val else usb_val.get("3")
         if usb_a is not None:
@@ -86,9 +92,12 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
         if c4 is not None:
             target["typec4_power"] = c4
 
-    # 4. DC Info: 2=DC Car output power (W), 3=voltage (V), 4=current (A)
+    # 4. DC Info: 1=dc_switch, 2=DC Car output power (W), 3=voltage (V), 4=current (A)
     dc_val = _parse_dict(target.get(9) or target.get("9") or target.get("DC_Info"))
     if dc_val:
+        sw = dc_val.get(1) if 1 in dc_val else (dc_val.get("1") if "1" in dc_val else dc_val.get("dc_switch"))
+        if sw is not None:
+            target["dc_switch"] = bool(sw)
         dc_p = dc_val.get(2) if 2 in dc_val else dc_val.get("2")
         dc_v = dc_val.get(3) if 3 in dc_val else dc_val.get("3")
         dc_a = dc_val.get(4) if 4 in dc_val else dc_val.get("4")
@@ -176,11 +185,52 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_connected_at: float | None = None
         self._lan_active = False
         self._paused: bool = False
+        self._user_overrides: dict[str, tuple[Any, float]] = {}
 
     @property
     def is_paused(self) -> bool:
         """Return True if communication with the power station is paused."""
         return self._paused
+
+    def async_set_user_override(self, key: str, value: Any, ttl: float = 60.0) -> None:
+        """Record user command override so stale telemetry does not overwrite commanded state."""
+        self._user_overrides[key] = (value, time.time() + ttl)
+        if self.data is not None:
+            self.data[key] = value
+        if self._lan_state is not None:
+            self._lan_state[key] = value
+
+    def async_clear_user_override(self, key: str) -> None:
+        """Cancel user command override immediately (e.g. if cloud command failed)."""
+        self._user_overrides.pop(key, None)
+
+    def _apply_user_overrides(self, target: dict[str, Any]) -> None:
+        """Apply active user overrides to incoming telemetry dictionary."""
+        now = time.time()
+        expired = []
+        for k, (v, until) in list(self._user_overrides.items()):
+            if now < until:
+                if k in target:
+                    val_t = target[k]
+                    if isinstance(v, bool):
+                        if bool(val_t) == v:
+                            expired.append(k)
+                            continue
+                    elif isinstance(v, (int, float)):
+                        try:
+                            if abs(float(val_t) - float(v)) < 0.1:
+                                expired.append(k)
+                                continue
+                        except (ValueError, TypeError):
+                            pass
+                    elif str(val_t).strip().lower() == str(v).strip().lower():
+                        expired.append(k)
+                        continue
+                target[k] = v
+            else:
+                expired.append(k)
+        for k in expired:
+            self._user_overrides.pop(k, None)
 
     async def async_set_paused(self, paused: bool) -> None:
         """Pause or resume polling, LAN connection, and wake-up commands."""
@@ -324,6 +374,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 current_data[tag] = val
 
         _unpack_port_data(current_data)
+        self._apply_user_overrides(current_data)
 
         self._lan_state = current_data
         self.hass.loop.call_soon_threadsafe(
@@ -385,7 +436,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if not self._lan_state:
             raise UpdateFailed("LAN session connected but no telemetry received yet")
 
-        return dict(self._lan_state)
+        data = dict(self._lan_state)
+        self._apply_user_overrides(data)
+        return data
 
     async def _update_cloud(self) -> dict:
         if self._paused:
@@ -405,6 +458,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if not data:
             raise UpdateFailed("Failed to communicate with Oukitel Cloud")
 
-        _unpack_port_data(data)
+        merged = dict(self.data or {})
+        merged.update(data)
+        _unpack_port_data(merged)
+        self._apply_user_overrides(merged)
 
-        return data
+        return merged

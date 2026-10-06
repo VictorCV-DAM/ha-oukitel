@@ -56,10 +56,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
                 initial_val = 100.0
         self._attr_native_value = initial_val
 
-        # Temporal lock to prevent slider bounce while user drags or cloud updates
-        self._user_locked_value = None
-        self._user_locked_until = 0
-
+        # State tracking
     @property
     def device_info(self) -> DeviceInfo:
         return _build_device_info(self.coordinator, self.client)
@@ -73,23 +70,6 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Update from coordinator when new data arrives."""
-        now = time.time()
-        # If user recently adjusted slider, ignore stale telemetry from cloud for 15s
-        if self._user_locked_value is not None:
-            if now < self._user_locked_until:
-                # If telemetry has caught up, release early
-                if self.coordinator.data and self._key in self.coordinator.data:
-                    try:
-                        telemetry_val = float(self.coordinator.data[self._key])
-                        if telemetry_val == self._user_locked_value:
-                            self._user_locked_value = None
-                    except (ValueError, TypeError):
-                        pass
-                # Keep user commanded value
-                return
-            else:
-                self._user_locked_value = None
-
         if self.coordinator.data and self._key in self.coordinator.data:
             try:
                 self._attr_native_value = float(self.coordinator.data[self._key])
@@ -102,12 +82,9 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         target_val = int(round(value))
         target_val = max(3, min(100, target_val))
 
-        # 1. Lock slider at this value for 15 seconds to eliminate bounce
-        self._user_locked_value = float(target_val)
-        self._user_locked_until = time.time() + 15
+        # 1. Update UI and coordinator cache immediately with active override
         self._attr_native_value = float(target_val)
-        if self.coordinator.data:
-            self.coordinator.data[self._key] = target_val
+        self.coordinator.async_set_user_override(self._key, target_val, ttl=60.0)
         self.async_write_ha_state()
 
         # 2. Send command to cloud
@@ -116,7 +93,10 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         )
         if not success:
             _LOGGER.error("oukitel: Failed to set %s to %s", self._key, target_val)
-            self._user_locked_value = None
+            self.coordinator.async_clear_user_override(self._key)
             if self.coordinator.data and self._key in self.coordinator.data:
-                self._attr_native_value = float(self.coordinator.data[self._key])
+                try:
+                    self._attr_native_value = float(self.coordinator.data[self._key])
+                except (ValueError, TypeError):
+                    pass
             self.async_write_ha_state()
