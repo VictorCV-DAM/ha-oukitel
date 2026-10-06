@@ -5,6 +5,7 @@ import logging
 import time
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -128,6 +129,8 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
 class OukitelPauseSwitch(CoordinatorEntity, SwitchEntity, RestoreEntity):
     """Switch to pause/resume integration requests, disconnect LAN and stop wake-up calls."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
