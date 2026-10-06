@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Upload Release Asset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Zip integration for HACS
+        run: |
+          cd custom_components
+          zip -r ../oukitel.zip oukitel -x "*.pyc" -x "*/__pycache__/*"
+          cd ..
+
+      - name: Upload zip to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: oukitel.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
