@@ -90,7 +90,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
 
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_current_option = option
-            self.coordinator.async_set_user_override(self._key, cloud_val, ttl=60.0)
+            self.coordinator.async_set_user_override(self._key, cloud_val, ttl=60.0, min_hold=5.0)
             self.async_write_ha_state()
 
             # 2. Send command to cloud
@@ -163,7 +163,7 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
 
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_current_option = option
-            self.coordinator.async_set_user_override(self._key, clean_num, ttl=60.0)
+            self.coordinator.async_set_user_override(self._key, clean_num, ttl=60.0, min_hold=5.0)
             self.async_write_ha_state()
 
             # 2. Send command to cloud

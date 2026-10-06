@@ -86,7 +86,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
 
         # 1. Update UI and coordinator cache immediately with active override
         self._attr_native_value = float(target_val)
-        self.coordinator.async_set_user_override(self._key, target_val, ttl=60.0)
+        self.coordinator.async_set_user_override(self._key, target_val, ttl=60.0, min_hold=5.0)
         self.async_write_ha_state()
 
         # 2. Cancel any pending dispatch and schedule a new debounced send

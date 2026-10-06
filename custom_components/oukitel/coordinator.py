@@ -185,17 +185,22 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_connected_at: float | None = None
         self._lan_active = False
         self._paused: bool = False
-        self._user_overrides: dict[str, tuple[Any, float]] = {}
+        self._user_overrides: dict[str, tuple] = {}
         self._last_device_list_check: float = 0.0
+        self.last_user_command_time: float = 0.0
 
     @property
     def is_paused(self) -> bool:
         """Return True if communication with the power station is paused."""
         return self._paused
 
-    def async_set_user_override(self, key: str, value: Any, ttl: float = 60.0) -> None:
+    def async_set_user_override(
+        self, key: str, value: Any, ttl: float = 60.0, min_hold: float = 5.0
+    ) -> None:
         """Record user command override so stale telemetry does not overwrite commanded state."""
-        self._user_overrides[key] = (value, time.time() + ttl)
+        now = time.time()
+        self.last_user_command_time = now
+        self._user_overrides[key] = (value, now + ttl, now + min_hold)
         if self.data is not None:
             self.data[key] = value
         if self._lan_state is not None:
@@ -209,24 +214,32 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         """Apply active user overrides to incoming telemetry dictionary."""
         now = time.time()
         expired = []
-        for k, (v, until) in list(self._user_overrides.items()):
+        for k, entry in list(self._user_overrides.items()):
+            if len(entry) == 3:
+                v, until, min_hold = entry
+            else:
+                v, until = entry
+                min_hold = 0.0
+
             if now < until:
                 if k in target:
                     val_t = target[k]
-                    if isinstance(v, bool):
-                        if bool(val_t) == v:
-                            expired.append(k)
-                            continue
-                    elif isinstance(v, (int, float)):
-                        try:
-                            if abs(float(val_t) - float(v)) < 0.1:
+                    # Only allow expiring after min_hold has elapsed to prevent jitter from out-of-order packets
+                    if now >= min_hold:
+                        if isinstance(v, bool):
+                            if bool(val_t) == v:
                                 expired.append(k)
                                 continue
-                        except (ValueError, TypeError):
-                            pass
-                    elif str(val_t).strip().lower() == str(v).strip().lower():
-                        expired.append(k)
-                        continue
+                        elif isinstance(v, (int, float)):
+                            try:
+                                if abs(float(val_t) - float(v)) < 0.1:
+                                    expired.append(k)
+                                    continue
+                            except (ValueError, TypeError):
+                                pass
+                        elif str(val_t).strip().lower() == str(v).strip().lower():
+                            expired.append(k)
+                            continue
                 target[k] = v
             else:
                 expired.append(k)
@@ -458,7 +471,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             offline_data["online"] = False
             return offline_data
 
-        if now - self.last_wake_time >= DEFAULT_WAKE_INTERVAL:
+        # Do not issue wake_device if a user command was recently sent (within 15s)
+        # to prevent isCover or command clashes on the battery's MQTT queue
+        can_wake = (now - self.last_user_command_time) >= 15.0
+        if (now - self.last_wake_time >= DEFAULT_WAKE_INTERVAL) and can_wake:
             await self.hass.async_add_executor_job(self.client.wake_device)
             self.last_wake_time = now
 
@@ -472,8 +488,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 offline_data["online"] = False
                 return offline_data
 
-            await self.hass.async_add_executor_job(self.client.wake_device)
-            self.last_wake_time = time.time()
+            if can_wake:
+                await self.hass.async_add_executor_job(self.client.wake_device)
+                self.last_wake_time = time.time()
             data = await self.hass.async_add_executor_job(self.client.get_telemetry)
 
         if not data:

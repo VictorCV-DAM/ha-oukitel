@@ -77,14 +77,11 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs) -> None:
-        """Turn the switch on with deduplication and reentrancy lock."""
+        """Turn the switch on with reentrancy lock and optimistic hold."""
         async with self._action_lock:
-            if self._attr_is_on:
-                return
-
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_is_on = True
-            self.coordinator.async_set_user_override(self._key, True, ttl=60.0)
+            self.coordinator.async_set_user_override(self._key, True, ttl=60.0, min_hold=5.0)
             self.async_write_ha_state()
 
             # 2. Fire hardware command to cloud API
@@ -99,14 +96,11 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
                 self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
-        """Turn the switch off with deduplication and reentrancy lock."""
+        """Turn the switch off with reentrancy lock and optimistic hold."""
         async with self._action_lock:
-            if not self._attr_is_on:
-                return
-
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_is_on = False
-            self.coordinator.async_set_user_override(self._key, False, ttl=60.0)
+            self.coordinator.async_set_user_override(self._key, False, ttl=60.0, min_hold=5.0)
             self.async_write_ha_state()
 
             # 2. Fire hardware command to cloud API

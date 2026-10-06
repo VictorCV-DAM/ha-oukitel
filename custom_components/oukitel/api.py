@@ -154,7 +154,7 @@ class AcceleronixCloudClient:
             _LOGGER.error("oukitel: Exception in fetch_device_info: %s", err)
             return False
 
-    def control_device(self, properties_list: list) -> bool:
+    def control_device(self, properties_list: list, is_cover: int = 0) -> bool:
         """Send hardware control commands via batchControlDevice."""
         self.ensure_authenticated()
         if not self.device_key or not self.product_key:
@@ -166,9 +166,9 @@ class AcceleronixCloudClient:
         payload = {
             "data": json.dumps(properties_list),
             "deviceList": [{"deviceKey": self.device_key, "productKey": self.product_key}],
-            "cacheTime": 2,
+            "cacheTime": 60,
             "isCache": 1,
-            "isCover": 1,
+            "isCover": is_cover,
             "dataFormat": 0,
             "type": 2,
         }
@@ -183,7 +183,7 @@ class AcceleronixCloudClient:
                 return True
             if code == 5032:
                 self.login()
-                return self.control_device(properties_list)
+                return self.control_device(properties_list, is_cover=is_cover)
             _LOGGER.error("oukitel: Cloud control error: %s (code %s)", res.get("msg"), code)
             return False
         except Exception as err:
@@ -192,7 +192,7 @@ class AcceleronixCloudClient:
 
     def wake_device(self) -> bool:
         """Wake device and maintain high-frequency telemetry reporting."""
-        return self.control_device([{"high_frequency_reporting": 3}])
+        return self.control_device([{"high_frequency_reporting": 3}], is_cover=1)
 
     def get_telemetry(self) -> dict:
         """Retrieve real-time telemetry from Cloud API."""
