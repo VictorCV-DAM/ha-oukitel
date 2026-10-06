@@ -114,6 +114,43 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
             target[k] = 0
 
 
+def _build_paused_data(source: dict[str, Any] | None) -> dict[str, Any]:
+    """Zero out active wattage, currents, remaining times, and outputs when paused while preserving battery SoC and temps."""
+    data = dict(source or {})
+    zero_fields = (
+        "total_input_power",
+        "total_output_power",
+        "ac_input",
+        "dc_input",
+        "ac_output_power",
+        "ac_output_voltage",
+        "dc_output_power",
+        "dc_output_voltage",
+        "dc_output_current",
+        "usb_a_power",
+        "usb_c_qc_power",
+        "typec1_power",
+        "typec2_power",
+        "typec3_power",
+        "typec4_power",
+        "remain_time",
+        "remain_charging_time",
+        "remaining_time",
+        "ac_switch",
+        "dc_switch",
+        "usb_switch",
+    )
+    for field in zero_fields:
+        data[field] = 0
+
+    # Also zero out numeric and string tags for remaining times and power
+    for tag in (2, 3, 4, 5, 11, 12):
+        data[tag] = 0
+        data[str(tag)] = 0
+
+    return data
+
+
 class OukitelDataCoordinator(DataUpdateCoordinator):
     """Fetches Oukitel station data; prefers LAN push, falls back to cloud polling."""
 
@@ -155,10 +192,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._paused = paused
         if paused:
             _LOGGER.warning(
-                "oukitel: Pausing integration — disconnecting LAN session and disabling wake/polling requests"
+                "oukitel: Pausing integration — disconnecting LAN, stopping wake requests, setting active power to 0W"
             )
             await self.async_shutdown_lan()
-            self.async_update_listeners()
+            paused_data = _build_paused_data(self.data or self._lan_state)
+            self._lan_state = paused_data
+            self.async_set_updated_data(paused_data)
         else:
             _LOGGER.warning(
                 "oukitel: Resuming integration — re-establishing connection and requesting refresh"
@@ -312,8 +351,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict:
         if self._paused:
-            _LOGGER.debug("oukitel: Polling skipped — integration is paused")
-            return dict(self.data or self._lan_state or {})
+            _LOGGER.debug("oukitel: Polling skipped — integration is paused (returning zeroed power metrics)")
+            return _build_paused_data(self.data or self._lan_state)
 
         if self.connection_mode == MODE_CLOUD:
             return await self._update_cloud()
@@ -325,7 +364,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def _update_lan(self) -> dict:
         if self._paused:
-            return dict(self._lan_state or self.data or {})
+            return _build_paused_data(self._lan_state or self.data)
 
         now = time.monotonic()
         stale = (
@@ -353,7 +392,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def _update_cloud(self) -> dict:
         if self._paused:
-            return dict(self.data or {})
+            return _build_paused_data(self.data)
 
         now = time.time()
         if now - self.last_wake_time >= DEFAULT_WAKE_INTERVAL:

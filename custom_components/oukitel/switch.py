@@ -65,6 +65,12 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        if self.coordinator.is_paused:
+            self._user_locked_state = None
+            self._attr_is_on = False
+            self.async_write_ha_state()
+            return
+
         now = time.time()
         # If user recently flipped the switch, ignore stale telemetry for 15s unless matched
         if self._user_locked_state is not None:

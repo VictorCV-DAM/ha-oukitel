@@ -49,6 +49,8 @@ class OukitelOnBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         """Return True if running on battery (actively discharging or inputs absent), False if net charging."""
+        if self.coordinator.is_paused:
+            return False
         if not self.coordinator.data:
             return None
 
