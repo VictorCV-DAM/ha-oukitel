@@ -21,8 +21,8 @@ _LOGGER = logging.getLogger(__name__)
 FREQ_MAP_TO_NAME = {"0": "50Hz", 0: "50Hz", "1": "60Hz", 1: "60Hz"}
 FREQ_MAP_TO_VAL = {"50Hz": 0, "60Hz": 1}
 
-# Voltage Mapping: Cloud string '200'..'240'
-VOLTAGE_OPTIONS = ["200V", "208V", "220V", "230V", "240V"]
+# Voltage Mapping: Firmware valid values: 220V, 230V, 240V
+VOLTAGE_OPTIONS = ["220V", "230V", "240V"]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -93,10 +93,9 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
             self.coordinator.async_set_user_override(self._key, cloud_val, ttl=60.0, min_hold=5.0)
             self.async_write_ha_state()
 
-            # 2. Send command to cloud
-            success = await self.hass.async_add_executor_job(
-                self.client.control_device,
-                [{self._key: cloud_val}, {"high_frequency_reporting": 3}],
+            # 2. Send command to LAN and cloud
+            success = await self.coordinator.async_send_select_command(
+                self._key, cloud_val, lan_tag=27, lan_kind="num", lan_val=cloud_val
             )
             if not success:
                 _LOGGER.error("oukitel: Failed to set output frequency to %s", option)
@@ -167,10 +166,9 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
             self.coordinator.async_set_user_override(self._key, clean_num, ttl=60.0, min_hold=5.0)
             self.async_write_ha_state()
 
-            # 2. Send command to cloud
-            success = await self.hass.async_add_executor_job(
-                self.client.control_device,
-                [{self._key: clean_num}, {"high_frequency_reporting": 3}],
+            # 2. Send command to LAN and cloud
+            success = await self.coordinator.async_send_select_command(
+                self._key, clean_num, lan_tag=28, lan_kind="num", lan_val=clean_num
             )
             if not success:
                 _LOGGER.error("oukitel: Failed to set output voltage to %s", option)

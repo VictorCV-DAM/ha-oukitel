@@ -240,6 +240,30 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         return lan_ok or cloud_ok
 
+    async def async_send_select_command(
+        self, key: str, cloud_val: Any, lan_tag: int, lan_kind: str, lan_val: Any
+    ) -> bool:
+        """Send setting change via instant LAN if active, and synchronize with Cloud."""
+        lan_ok = False
+        if self._lan_active and self._lan_session:
+            try:
+                await self._lan_session.send_write(lan_tag, lan_kind, lan_val)
+                lan_ok = True
+                _LOGGER.debug("oukitel: Instant LAN setting write: tag %s = %s", lan_tag, lan_val)
+            except Exception as exc:
+                _LOGGER.warning("oukitel: LAN setting write failed: %s", exc)
+
+        cloud_ok = False
+        try:
+            cloud_ok = await self.hass.async_add_executor_job(
+                self.client.control_device,
+                [{key: cloud_val}, {"high_frequency_reporting": 3}],
+            )
+        except Exception as exc:
+            _LOGGER.warning("oukitel: Cloud setting sync failed: %s", exc)
+
+        return lan_ok or cloud_ok
+
     def _apply_user_overrides(self, target: dict[str, Any]) -> None:
         """Apply active user overrides to incoming telemetry dictionary."""
         now = time.time()
@@ -402,6 +426,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             11: "ac_input",
             12: "dc_input",
             14: "temp",
+            27: "Frequency_Switchover",
+            28: "ACvoltage_Switchover",
             31: "AC_Version",
             33: "inverter_temp",
             34: "BMS_Version",
