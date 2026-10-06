@@ -95,7 +95,8 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
 
             # 2. Send command to cloud
             success = await self.hass.async_add_executor_job(
-                self.client.control_device, [{self._key: cloud_val}]
+                self.client.control_device,
+                [{self._key: cloud_val}, {"high_frequency_reporting": 3}],
             )
             if not success:
                 _LOGGER.error("oukitel: Failed to set output frequency to %s", option)
@@ -168,7 +169,8 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
 
             # 2. Send command to cloud
             success = await self.hass.async_add_executor_job(
-                self.client.control_device, [{self._key: clean_num}]
+                self.client.control_device,
+                [{self._key: clean_num}, {"high_frequency_reporting": 3}],
             )
             if not success:
                 _LOGGER.error("oukitel: Failed to set output voltage to %s", option)

@@ -227,10 +227,17 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             except Exception as exc:
                 _LOGGER.warning("oukitel: LAN write failed: %s", exc)
 
-        # Always dispatch to Cloud so Quectel cloud shadow and Wonderfree app update immediately
-        cloud_ok = await self.hass.async_add_executor_job(
-            self.client.control_device, [{key: value}]
-        )
+        # Always dispatch to Cloud with high_frequency_reporting so Quectel cloud
+        # shadow and Wonderfree app update immediately (< 1-2s)
+        cloud_ok = False
+        try:
+            cloud_ok = await self.hass.async_add_executor_job(
+                self.client.control_device,
+                [{key: value}, {"high_frequency_reporting": 3}],
+            )
+        except Exception as exc:
+            _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
+
         return lan_ok or cloud_ok
 
     def _apply_user_overrides(self, target: dict[str, Any]) -> None:

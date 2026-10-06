@@ -105,7 +105,8 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
             return
 
         success = await self.hass.async_add_executor_job(
-            self.client.control_device, [{self._key: target_val}]
+            self.client.control_device,
+            [{self._key: target_val}, {"high_frequency_reporting": 3}],
         )
         if not success:
             _LOGGER.error("oukitel: Failed to set %s to %s", self._key, target_val)
