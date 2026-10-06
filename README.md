@@ -19,10 +19,7 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 - **Author & Maintainer:** Víctor C. V. ([@VictorCV-DAM](https://github.com/VictorCV-DAM))
 - **Email:** `victorcvtrabajo@gmail.com`
 - **Copyright:** © 2024-2026 Víctor C. V. All rights reserved.
-- **License:** [Proprietary — All Rights Reserved](LICENSE). Pending adoption of an OSI-approved license.
-
-> [!NOTE]
-> **Pending OSI-approved license:** Until an OSI-approved open-source license is adopted, this project can only be installed as a **Custom Repository** in HACS and cannot be submitted to the official HACS default store. Functionality is not affected.
+- **License:** [MIT License](LICENSE) (OSI-approved Open Source).
 
 ---
 
