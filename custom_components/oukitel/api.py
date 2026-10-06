@@ -166,7 +166,7 @@ class AcceleronixCloudClient:
         payload = {
             "data": json.dumps(properties_list),
             "deviceList": [{"deviceKey": self.device_key, "productKey": self.product_key}],
-            "cacheTime": 60,
+            "cacheTime": 2,
             "isCache": 1,
             "isCover": 1,
             "dataFormat": 0,

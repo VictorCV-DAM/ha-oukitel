@@ -55,8 +55,8 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
             except (ValueError, TypeError):
                 initial_val = 100.0
         self._attr_native_value = initial_val
+        self._pending_task: asyncio.Task | None = None
 
-        # State tracking
     @property
     def device_info(self) -> DeviceInfo:
         return _build_device_info(self.coordinator, self.client)
@@ -70,6 +70,8 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Update from coordinator when new data arrives."""
+        if self._pending_task and not self._pending_task.done():
+            return
         if self.coordinator.data and self._key in self.coordinator.data:
             try:
                 self._attr_native_value = float(self.coordinator.data[self._key])
@@ -78,7 +80,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         super()._handle_coordinator_update()
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set new AC charging limit."""
+        """Set new AC charging limit with 500ms debounce to prevent slider jitter."""
         target_val = int(round(value))
         target_val = max(3, min(100, target_val))
 
@@ -87,7 +89,21 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         self.coordinator.async_set_user_override(self._key, target_val, ttl=60.0)
         self.async_write_ha_state()
 
-        # 2. Send command to cloud
+        # 2. Cancel any pending dispatch and schedule a new debounced send
+        if self._pending_task and not self._pending_task.done():
+            self._pending_task.cancel()
+
+        self._pending_task = self.hass.async_create_task(
+            self._async_dispatch_debounced(target_val)
+        )
+
+    async def _async_dispatch_debounced(self, target_val: int) -> None:
+        """Wait 500ms before firing hardware command to allow drag completion."""
+        try:
+            await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            return
+
         success = await self.hass.async_add_executor_job(
             self.client.control_device, [{self._key: target_val}]
         )

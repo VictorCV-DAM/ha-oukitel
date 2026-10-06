@@ -56,8 +56,8 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
         if coordinator.data and self._key in coordinator.data:
             initial_opt = FREQ_MAP_TO_NAME.get(str(coordinator.data[self._key]), "50Hz")
         self._attr_current_option = initial_opt
+        self._action_lock = asyncio.Lock()
 
-        # State tracking
     @property
     def device_info(self) -> DeviceInfo:
         return _build_device_info(self.coordinator, self.client)
@@ -71,32 +71,38 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Update from coordinator when new data arrives."""
+        if self._action_lock.locked():
+            return
         if self.coordinator.data and self._key in self.coordinator.data:
             self._attr_current_option = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]), "50Hz")
         super()._handle_coordinator_update()
 
     async def async_select_option(self, option: str) -> None:
         """Change output frequency."""
-        if option not in self._attr_options:
+        if option not in self._attr_options or option == self._attr_current_option:
             return
 
-        cloud_val = FREQ_MAP_TO_VAL[option]
+        async with self._action_lock:
+            if option == self._attr_current_option:
+                return
 
-        # 1. Update UI and coordinator cache immediately with active override
-        self._attr_current_option = option
-        self.coordinator.async_set_user_override(self._key, cloud_val, ttl=60.0)
-        self.async_write_ha_state()
+            cloud_val = FREQ_MAP_TO_VAL[option]
 
-        # 2. Send command to cloud
-        success = await self.hass.async_add_executor_job(
-            self.client.control_device, [{self._key: cloud_val}]
-        )
-        if not success:
-            _LOGGER.error("oukitel: Failed to set output frequency to %s", option)
-            self.coordinator.async_clear_user_override(self._key)
-            if self.coordinator.data and self._key in self.coordinator.data:
-                self._attr_current_option = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]), "50Hz")
+            # 1. Update UI and coordinator cache immediately with active override
+            self._attr_current_option = option
+            self.coordinator.async_set_user_override(self._key, cloud_val, ttl=60.0)
             self.async_write_ha_state()
+
+            # 2. Send command to cloud
+            success = await self.hass.async_add_executor_job(
+                self.client.control_device, [{self._key: cloud_val}]
+            )
+            if not success:
+                _LOGGER.error("oukitel: Failed to set output frequency to %s", option)
+                self.coordinator.async_clear_user_override(self._key)
+                if self.coordinator.data and self._key in self.coordinator.data:
+                    self._attr_current_option = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]), "50Hz")
+                self.async_write_ha_state()
 
 
 class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
@@ -120,8 +126,8 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
             if formatted in VOLTAGE_OPTIONS:
                 initial_opt = formatted
         self._attr_current_option = initial_opt
+        self._action_lock = asyncio.Lock()
 
-        # State tracking
     @property
     def device_info(self) -> DeviceInfo:
         return _build_device_info(self.coordinator, self.client)
@@ -135,6 +141,8 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Update from coordinator when new data arrives."""
+        if self._action_lock.locked():
+            return
         if self.coordinator.data and self._key in self.coordinator.data:
             raw = str(self.coordinator.data[self._key]).replace("V", "").strip()
             formatted = f"{raw}V"
@@ -144,26 +152,30 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change output voltage."""
-        if option not in self._attr_options:
+        if option not in self._attr_options or option == self._attr_current_option:
             return
 
-        clean_num = int(option.replace("V", ""))
+        async with self._action_lock:
+            if option == self._attr_current_option:
+                return
 
-        # 1. Update UI and coordinator cache immediately with active override
-        self._attr_current_option = option
-        self.coordinator.async_set_user_override(self._key, clean_num, ttl=60.0)
-        self.async_write_ha_state()
+            clean_num = int(option.replace("V", ""))
 
-        # 2. Send command to cloud
-        success = await self.hass.async_add_executor_job(
-            self.client.control_device, [{self._key: clean_num}]
-        )
-        if not success:
-            _LOGGER.error("oukitel: Failed to set output voltage to %s", option)
-            self.coordinator.async_clear_user_override(self._key)
-            if self.coordinator.data and self._key in self.coordinator.data:
-                raw = str(self.coordinator.data[self._key]).replace("V", "").strip()
-                formatted = f"{raw}V"
-                if formatted in VOLTAGE_OPTIONS:
-                    self._attr_current_option = formatted
+            # 1. Update UI and coordinator cache immediately with active override
+            self._attr_current_option = option
+            self.coordinator.async_set_user_override(self._key, clean_num, ttl=60.0)
             self.async_write_ha_state()
+
+            # 2. Send command to cloud
+            success = await self.hass.async_add_executor_job(
+                self.client.control_device, [{self._key: clean_num}]
+            )
+            if not success:
+                _LOGGER.error("oukitel: Failed to set output voltage to %s", option)
+                self.coordinator.async_clear_user_override(self._key)
+                if self.coordinator.data and self._key in self.coordinator.data:
+                    raw = str(self.coordinator.data[self._key]).replace("V", "").strip()
+                    formatted = f"{raw}V"
+                    if formatted in VOLTAGE_OPTIONS:
+                        self._attr_current_option = formatted
+                self.async_write_ha_state()

@@ -55,8 +55,8 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         if coordinator.data and key in coordinator.data:
             initial_val = bool(coordinator.data[key])
         self._attr_is_on = initial_val
+        self._action_lock = asyncio.Lock()
 
-        # State tracking
     @property
     def device_info(self) -> DeviceInfo:
         return _build_device_info(self.coordinator, self.client)
@@ -70,45 +70,55 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        if self._action_lock.locked():
+            return
         if self.coordinator.data and self._key in self.coordinator.data:
             self._attr_is_on = bool(self.coordinator.data[self._key])
         super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs) -> None:
-        """Turn the switch on."""
-        # 1. Update UI and coordinator cache immediately with active override
-        self._attr_is_on = True
-        self.coordinator.async_set_user_override(self._key, True, ttl=60.0)
-        self.async_write_ha_state()
+        """Turn the switch on with deduplication and reentrancy lock."""
+        async with self._action_lock:
+            if self._attr_is_on:
+                return
 
-        # 2. Fire hardware command to cloud API
-        success = await self.hass.async_add_executor_job(
-            self.client.control_device, [{self._key: True}]
-        )
-        if not success:
-            _LOGGER.error("oukitel: Failed to turn on %s", self._key)
-            self.coordinator.async_clear_user_override(self._key)
-            if self.coordinator.data and self._key in self.coordinator.data:
-                self._attr_is_on = bool(self.coordinator.data[self._key])
+            # 1. Update UI and coordinator cache immediately with active override
+            self._attr_is_on = True
+            self.coordinator.async_set_user_override(self._key, True, ttl=60.0)
             self.async_write_ha_state()
+
+            # 2. Fire hardware command to cloud API
+            success = await self.hass.async_add_executor_job(
+                self.client.control_device, [{self._key: True}]
+            )
+            if not success:
+                _LOGGER.error("oukitel: Failed to turn on %s", self._key)
+                self.coordinator.async_clear_user_override(self._key)
+                if self.coordinator.data and self._key in self.coordinator.data:
+                    self._attr_is_on = bool(self.coordinator.data[self._key])
+                self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs) -> None:
-        """Turn the switch off."""
-        # 1. Update UI and coordinator cache immediately with active override
-        self._attr_is_on = False
-        self.coordinator.async_set_user_override(self._key, False, ttl=60.0)
-        self.async_write_ha_state()
+        """Turn the switch off with deduplication and reentrancy lock."""
+        async with self._action_lock:
+            if not self._attr_is_on:
+                return
 
-        # 2. Fire hardware command to cloud API
-        success = await self.hass.async_add_executor_job(
-            self.client.control_device, [{self._key: False}]
-        )
-        if not success:
-            _LOGGER.error("oukitel: Failed to turn off %s", self._key)
-            self.coordinator.async_clear_user_override(self._key)
-            if self.coordinator.data and self._key in self.coordinator.data:
-                self._attr_is_on = bool(self.coordinator.data[self._key])
+            # 1. Update UI and coordinator cache immediately with active override
+            self._attr_is_on = False
+            self.coordinator.async_set_user_override(self._key, False, ttl=60.0)
             self.async_write_ha_state()
+
+            # 2. Fire hardware command to cloud API
+            success = await self.hass.async_add_executor_job(
+                self.client.control_device, [{self._key: False}]
+            )
+            if not success:
+                _LOGGER.error("oukitel: Failed to turn off %s", self._key)
+                self.coordinator.async_clear_user_override(self._key)
+                if self.coordinator.data and self._key in self.coordinator.data:
+                    self._attr_is_on = bool(self.coordinator.data[self._key])
+                self.async_write_ha_state()
 
 
 class OukitelPauseSwitch(CoordinatorEntity, SwitchEntity, RestoreEntity):
