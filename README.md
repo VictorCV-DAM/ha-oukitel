@@ -12,6 +12,10 @@
 
 Custom integration for Home Assistant to monitor and control **Oukitel Power Stations** (P2001 Plus, P2001, P5000, BP2000, etc.). Connects via **local LAN** when the device is on the same network, with automatic fallback to Cloud API — no phone, emulator, or ADB required.
 
+100% VERIFIED DEVICES:
+-P2001E PLUS
+-BP3000E
+
 ---
 
 ## 👨‍💻 Author & Intellectual Property
