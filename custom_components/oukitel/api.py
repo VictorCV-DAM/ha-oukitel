@@ -39,6 +39,20 @@ class AcceleronixCloudClient:
         self.product_key = None
         self.device_name = None
         self.auth_key = None
+        self.is_online: bool = True
+
+    def _parse_device_online_status(self, dev: dict) -> bool:
+        """Parse online/offline status from userDeviceList response."""
+        for key in ("onlineStatus", "isOnline", "deviceStatus", "online", "status"):
+            if key in dev and dev[key] is not None:
+                val = dev[key]
+                if isinstance(val, bool):
+                    return val
+                if isinstance(val, (int, float)):
+                    return int(val) == 1
+                if isinstance(val, str):
+                    return val.strip().lower() in ("1", "true", "online")
+        return True
 
     def _encrypt_password(self, password: str, random_str: str) -> str:
         md5_hash = hashlib.md5(random_str.encode("utf-8")).hexdigest().upper()
@@ -122,7 +136,12 @@ class AcceleronixCloudClient:
                     self.product_key = dev["productKey"]
                     self.device_name = dev.get("deviceName", "Oukitel P2001")
                     self.auth_key = dev.get("authKey")
-                    _LOGGER.debug("oukitel: Device ready — authKey present: %s", bool(self.auth_key))
+                    self.is_online = self._parse_device_online_status(dev)
+                    _LOGGER.debug(
+                        "oukitel: Device ready — authKey present: %s, is_online: %s",
+                        bool(self.auth_key),
+                        self.is_online,
+                    )
                     return True
                 _LOGGER.error("oukitel: No bound devices found in account.")
                 return False
@@ -201,9 +220,19 @@ class AcceleronixCloudClient:
             device_data = data.get("deviceData", {})
             tsl_list = data.get("customizeTslInfo", [])
 
-            is_online = bool(
-                device_data.get("isOnline", device_data.get("onlineStatus", device_data.get("online", True)))
-            )
+            is_online = self.is_online
+            for key in ("isOnline", "onlineStatus", "online"):
+                if key in device_data and device_data[key] is not None:
+                    val = device_data[key]
+                    if isinstance(val, bool):
+                        is_online = val
+                        break
+                    if isinstance(val, (int, float)):
+                        is_online = int(val) == 1
+                        break
+                    if isinstance(val, str):
+                        is_online = val.strip().lower() in ("1", "true", "online")
+                        break
 
             metrics = {
                 "online": is_online,

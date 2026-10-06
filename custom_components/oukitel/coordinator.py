@@ -186,6 +186,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_active = False
         self._paused: bool = False
         self._user_overrides: dict[str, tuple[Any, float]] = {}
+        self._last_device_list_check: float = 0.0
 
     @property
     def is_paused(self) -> bool:
@@ -445,12 +446,32 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             return _build_paused_data(self.data)
 
         now = time.time()
+        # Periodically refresh device list from cloud (every 60s) to keep onlineStatus accurate
+        if now - self._last_device_list_check >= 60.0:
+            self._last_device_list_check = now
+            await self.hass.async_add_executor_job(self.client.fetch_device_info)
+
+        # If device is reported offline in userDeviceList, do not send keep-alive or expect live telemetry
+        if not getattr(self.client, "is_online", True):
+            _LOGGER.debug("oukitel: Device is offline on Cloud gateway")
+            offline_data = _build_paused_data(self.data)
+            offline_data["online"] = False
+            return offline_data
+
         if now - self.last_wake_time >= DEFAULT_WAKE_INTERVAL:
             await self.hass.async_add_executor_job(self.client.wake_device)
             self.last_wake_time = now
 
         data = await self.hass.async_add_executor_job(self.client.get_telemetry)
         if not data:
+            # Device might have just gone offline, verify immediately via userDeviceList
+            await self.hass.async_add_executor_job(self.client.fetch_device_info)
+            if not getattr(self.client, "is_online", True):
+                _LOGGER.info("oukitel: Device confirmed offline via userDeviceList")
+                offline_data = _build_paused_data(self.data)
+                offline_data["online"] = False
+                return offline_data
+
             await self.hass.async_add_executor_job(self.client.wake_device)
             self.last_wake_time = time.time()
             data = await self.hass.async_add_executor_job(self.client.get_telemetry)

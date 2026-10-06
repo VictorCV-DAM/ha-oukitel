@@ -5,6 +5,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
+from homeassistant.const import EntityCategory
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
@@ -24,7 +25,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     coordinator: OukitelDataCoordinator = data["coordinator"]
     client = data["client"]
 
-    async_add_entities([OukitelOnBatteryBinarySensor(coordinator, client)])
+    async_add_entities([
+        OukitelOnBatteryBinarySensor(coordinator, client),
+        OukitelConnectionBinarySensor(coordinator, client),
+    ])
 
 
 class OukitelOnBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
@@ -66,3 +70,31 @@ class OukitelOnBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
         # On battery when load exceeds input by >5W (draining battery) or when inputs are absent (<= 5W)
         return real_out > real_in + 5.0 or real_in <= 5.0
+
+
+class OukitelConnectionBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Binary sensor indicating if the power station is currently online/connected."""
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = f"{client.device_name} Device Online"
+        self._attr_unique_id = f"oukitel_{client.device_key}_online"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_device_info(self.coordinator, self.client)
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if device is online and communication is active."""
+        if self.coordinator.is_paused:
+            return False
+        if self.coordinator.connection_mode != "cloud" and self.coordinator._lan_active:
+            return True
+        if self.coordinator.data and "online" in self.coordinator.data:
+            return bool(self.coordinator.data["online"])
+        return bool(getattr(self.client, "is_online", True))
