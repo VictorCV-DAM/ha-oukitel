@@ -73,8 +73,10 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
         """Update from coordinator when new data arrives."""
         if self._action_lock.locked():
             return
-        if self.coordinator.data and self._key in self.coordinator.data:
-            self._attr_current_option = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]), "50Hz")
+        if self.coordinator.data:
+            val = self.coordinator.data.get(self._key) or self.coordinator.data.get("27") or self.coordinator.data.get(27)
+            if val is not None:
+                self._attr_current_option = FREQ_MAP_TO_NAME.get(str(val), "50Hz")
         super()._handle_coordinator_update()
 
     async def async_select_option(self, option: str) -> None:
@@ -96,16 +98,26 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
 
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_current_option = option
-            self.coordinator.async_set_user_override(self._key, cloud_val, ttl=60.0, min_hold=5.0)
+            self.coordinator.async_set_user_override(self._key, str(cloud_val), ttl=60.0, min_hold=5.0)
+            self.coordinator.async_set_user_override("27", cloud_val, ttl=60.0, min_hold=5.0)
             self.async_write_ha_state()
 
-            # 2. Send clean command to cloud (proven method from commit 50a10e6)
+            # 2. Write via local LAN if active
+            if self.coordinator._lan_active and self.coordinator._lan_session:
+                try:
+                    await self.coordinator._lan_session.send_write(27, "num", cloud_val)
+                    _LOGGER.debug("oukitel: Instant LAN frequency write: tag 27 = %s", cloud_val)
+                except Exception as exc:
+                    _LOGGER.warning("oukitel: LAN frequency write failed: %s", exc)
+
+            # 3. Send command to cloud formatted as TSL string
             success = await self.hass.async_add_executor_job(
-                self.client.control_device, [{self._key: cloud_val}]
+                self.client.control_device, [{self._key: str(cloud_val)}]
             )
             if not success:
                 _LOGGER.error("oukitel: Failed to set output frequency to %s", option)
                 self.coordinator.async_clear_user_override(self._key)
+                self.coordinator.async_clear_user_override("27")
                 if self.coordinator.data and self._key in self.coordinator.data:
                     self._attr_current_option = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]), "50Hz")
                 self.async_write_ha_state()
@@ -149,11 +161,13 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
         """Update from coordinator when new data arrives."""
         if self._action_lock.locked():
             return
-        if self.coordinator.data and self._key in self.coordinator.data:
-            raw = str(self.coordinator.data[self._key]).replace("V", "").strip()
-            formatted = f"{raw}V"
-            if formatted in VOLTAGE_OPTIONS:
-                self._attr_current_option = formatted
+        if self.coordinator.data:
+            val = self.coordinator.data.get(self._key) or self.coordinator.data.get("28") or self.coordinator.data.get(28)
+            if val is not None:
+                raw = str(val).replace("V", "").strip()
+                formatted = f"{raw}V"
+                if formatted in VOLTAGE_OPTIONS:
+                    self._attr_current_option = formatted
         super()._handle_coordinator_update()
 
     async def async_select_option(self, option: str) -> None:
@@ -175,16 +189,26 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
 
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_current_option = option
-            self.coordinator.async_set_user_override(self._key, clean_num, ttl=60.0, min_hold=5.0)
+            self.coordinator.async_set_user_override(self._key, str(clean_num), ttl=60.0, min_hold=5.0)
+            self.coordinator.async_set_user_override("28", clean_num, ttl=60.0, min_hold=5.0)
             self.async_write_ha_state()
 
-            # 2. Send clean command to cloud (proven method from commit 50a10e6)
+            # 2. Write via local LAN if active
+            if self.coordinator._lan_active and self.coordinator._lan_session:
+                try:
+                    await self.coordinator._lan_session.send_write(28, "num", clean_num)
+                    _LOGGER.debug("oukitel: Instant LAN voltage write: tag 28 = %s", clean_num)
+                except Exception as exc:
+                    _LOGGER.warning("oukitel: LAN voltage write failed: %s", exc)
+
+            # 3. Send command to cloud formatted as TSL string
             success = await self.hass.async_add_executor_job(
-                self.client.control_device, [{self._key: clean_num}]
+                self.client.control_device, [{self._key: str(clean_num)}]
             )
             if not success:
                 _LOGGER.error("oukitel: Failed to set output voltage to %s", option)
                 self.coordinator.async_clear_user_override(self._key)
+                self.coordinator.async_clear_user_override("28")
                 if self.coordinator.data and self._key in self.coordinator.data:
                     raw = str(self.coordinator.data[self._key]).replace("V", "").strip()
                     formatted = f"{raw}V"

@@ -227,18 +227,20 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             except Exception as exc:
                 _LOGGER.warning("oukitel: LAN write failed: %s", exc)
 
-        # Always dispatch to Cloud with high_frequency_reporting so Quectel cloud
-        # shadow and Wonderfree app update immediately (< 1-2s)
-        cloud_ok = False
-        try:
-            cloud_ok = await self.hass.async_add_executor_job(
-                self.client.control_device,
-                [{key: value}, {"high_frequency_reporting": 3}],
-            )
-        except Exception as exc:
-            _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
+        # Only fallback to Cloud if LAN is not active or write failed,
+        # preventing dual-channel command clashes that cause WonderFree app switches to bounce/dance
+        if not lan_ok:
+            cloud_ok = False
+            try:
+                cloud_ok = await self.hass.async_add_executor_job(
+                    self.client.control_device,
+                    [{key: value}],
+                )
+            except Exception as exc:
+                _LOGGER.warning("oukitel: Cloud switch command failed: %s", exc)
+            return cloud_ok
 
-        return lan_ok or cloud_ok
+        return True
 
     def _apply_user_overrides(self, target: dict[str, Any]) -> None:
         """Apply active user overrides to incoming telemetry dictionary."""
@@ -402,6 +404,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             11: "ac_input",
             12: "dc_input",
             14: "temp",
+            20: "ac_charging_limit",
+            27: "Frequency_Switchover",
+            28: "ACvoltage_Switchover",
             31: "AC_Version",
             33: "inverter_temp",
             34: "BMS_Version",

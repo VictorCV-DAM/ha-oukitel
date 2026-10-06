@@ -104,16 +104,26 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         except asyncio.CancelledError:
             return
 
-        success = await self.hass.async_add_executor_job(
-            self.client.control_device,
-            [{self._key: target_val}, {"high_frequency_reporting": 3}],
-        )
-        if not success:
-            _LOGGER.error("oukitel: Failed to set %s to %s", self._key, target_val)
-            self.coordinator.async_clear_user_override(self._key)
-            if self.coordinator.data and self._key in self.coordinator.data:
-                try:
-                    self._attr_native_value = float(self.coordinator.data[self._key])
-                except (ValueError, TypeError):
-                    pass
-            self.async_write_ha_state()
+        lan_ok = False
+        if self.coordinator._lan_active and self.coordinator._lan_session:
+            try:
+                await self.coordinator._lan_session.send_write(20, "num", target_val)
+                lan_ok = True
+                _LOGGER.debug("oukitel: Instant LAN write for AC charging limit: 20 = %s", target_val)
+            except Exception as exc:
+                _LOGGER.warning("oukitel: LAN write failed for charging limit: %s", exc)
+
+        if not lan_ok:
+            success = await self.hass.async_add_executor_job(
+                self.client.control_device,
+                [{self._key: target_val}],
+            )
+            if not success:
+                _LOGGER.error("oukitel: Failed to set %s to %s", self._key, target_val)
+                self.coordinator.async_clear_user_override(self._key)
+                if self.coordinator.data and self._key in self.coordinator.data:
+                    try:
+                        self._attr_native_value = float(self.coordinator.data[self._key])
+                    except (ValueError, TypeError):
+                        pass
+                self.async_write_ha_state()
