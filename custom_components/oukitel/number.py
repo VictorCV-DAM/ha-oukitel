@@ -64,6 +64,13 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
     def device_info(self) -> DeviceInfo:
         return _build_device_info(self.coordinator, self.client)
 
+    @property
+    def available(self) -> bool:
+        """Return True if slider is available; disabled and greyed out when paused."""
+        if self.coordinator.is_paused:
+            return False
+        return super().available
+
     def _handle_coordinator_update(self) -> None:
         """Update from coordinator when new data arrives."""
         now = time.time()

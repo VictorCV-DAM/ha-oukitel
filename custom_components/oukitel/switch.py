@@ -64,6 +64,13 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
     def device_info(self) -> DeviceInfo:
         return _build_device_info(self.coordinator, self.client)
 
+    @property
+    def available(self) -> bool:
+        """Return True if switch is available; disabled and greyed out when paused."""
+        if self.coordinator.is_paused:
+            return False
+        return super().available
+
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         now = time.time()
@@ -142,6 +149,11 @@ class OukitelPauseSwitch(CoordinatorEntity, SwitchEntity, RestoreEntity):
     @property
     def device_info(self) -> DeviceInfo:
         return _build_device_info(self.coordinator, self.client)
+
+    @property
+    def available(self) -> bool:
+        """Always available so user can toggle pause state."""
+        return True
 
     @property
     def is_on(self) -> bool:
