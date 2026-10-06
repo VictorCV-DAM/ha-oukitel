@@ -18,9 +18,9 @@ jobs:
 
       - name: Zip integration for HACS
         run: |
-          cd custom_components
-          zip -r ../oukitel.zip oukitel -x "*.pyc" -x "*/__pycache__/*"
-          cd ..
+          cd custom_components/oukitel
+          zip -r ../../oukitel.zip . -x "*.pyc" -x "*/__pycache__/*"
+          cd ../..
 
       - name: Upload zip to Release
         uses: softprops/action-gh-release@v2
