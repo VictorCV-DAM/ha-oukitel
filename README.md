@@ -182,6 +182,7 @@ Unlike native station firmware which can confuse charging and discharging when s
 - `sensor.oukitel_inverter_version`: Inverter firmware version · *Diagnostic*.
 
 ### 🔌 Binary Sensors & Quick Actions
+- `binary_sensor.oukitel_device_online`: Real-time connectivity sensor (`Connectivity` diagnostic class). Reports whether the power station is online and actively communicating via LAN socket or Cloud gateway. Automatically zeros out active wattages when offline to prevent stale ghost telemetry while preserving SoC and temperatures.
 - `binary_sensor.oukitel_battery_powered_inferred`: Detects whether the station is actively running on battery (net discharging or mains/solar input absent).
 - `button.oukitel_reload`: Instantly reloads the integration session without restarting Home Assistant.
 
