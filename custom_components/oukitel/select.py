@@ -102,10 +102,12 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
             self.coordinator.async_set_user_override("27", cloud_val, ttl=60.0, min_hold=5.0)
             self.async_write_ha_state()
 
+            lan_ok = False
             # 2. Write via local LAN if active
             if self.coordinator._lan_active and self.coordinator._lan_session:
                 try:
                     await self.coordinator._lan_session.send_write(27, "num", cloud_val)
+                    lan_ok = True
                     _LOGGER.debug("oukitel: Instant LAN frequency write: tag 27 = %s", cloud_val)
                 except Exception as exc:
                     _LOGGER.warning("oukitel: LAN frequency write failed: %s", exc)
@@ -114,7 +116,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
             success = await self.hass.async_add_executor_job(
                 self.client.control_device, [{self._key: str(cloud_val)}]
             )
-            if not success:
+            if not success and not lan_ok:
                 _LOGGER.error("oukitel: Failed to set output frequency to %s", option)
                 self.coordinator.async_clear_user_override(self._key)
                 self.coordinator.async_clear_user_override("27")
@@ -193,10 +195,12 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
             self.coordinator.async_set_user_override("28", clean_num, ttl=60.0, min_hold=5.0)
             self.async_write_ha_state()
 
+            lan_ok = False
             # 2. Write via local LAN if active
             if self.coordinator._lan_active and self.coordinator._lan_session:
                 try:
                     await self.coordinator._lan_session.send_write(28, "num", clean_num)
+                    lan_ok = True
                     _LOGGER.debug("oukitel: Instant LAN voltage write: tag 28 = %s", clean_num)
                 except Exception as exc:
                     _LOGGER.warning("oukitel: LAN voltage write failed: %s", exc)
@@ -205,7 +209,7 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
             success = await self.hass.async_add_executor_job(
                 self.client.control_device, [{self._key: str(clean_num)}]
             )
-            if not success:
+            if not success and not lan_ok:
                 _LOGGER.error("oukitel: Failed to set output voltage to %s", option)
                 self.coordinator.async_clear_user_override(self._key)
                 self.coordinator.async_clear_user_override("28")
