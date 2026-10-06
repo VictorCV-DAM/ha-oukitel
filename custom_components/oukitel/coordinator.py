@@ -210,6 +210,29 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         """Cancel user command override immediately (e.g. if cloud command failed)."""
         self._user_overrides.pop(key, None)
 
+    async def async_send_switch_command(self, key: str, value: bool) -> bool:
+        """Send switch command immediately via LAN if active, and synchronize with Cloud."""
+        tag_map = {
+            "ac_switch": 43,
+            "usb_switch": 44,
+            "dc_switch": 46,
+        }
+        tag = tag_map.get(key)
+        lan_ok = False
+        if tag is not None and self._lan_active and self._lan_session:
+            try:
+                await self._lan_session.send_write(tag, "bool", value)
+                lan_ok = True
+                _LOGGER.debug("oukitel: Instant LAN switch write: tag %s = %s", tag, value)
+            except Exception as exc:
+                _LOGGER.warning("oukitel: LAN write failed: %s", exc)
+
+        # Always dispatch to Cloud so Quectel cloud shadow and Wonderfree app update immediately
+        cloud_ok = await self.hass.async_add_executor_job(
+            self.client.control_device, [{key: value}]
+        )
+        return lan_ok or cloud_ok
+
     def _apply_user_overrides(self, target: dict[str, Any]) -> None:
         """Apply active user overrides to incoming telemetry dictionary."""
         now = time.time()
@@ -449,6 +472,14 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         if not self._lan_state:
             raise UpdateFailed("LAN session connected but no telemetry received yet")
+
+        now_ts = time.time()
+        if now_ts - self.last_wake_time >= DEFAULT_WAKE_INTERVAL:
+            try:
+                await self.hass.async_add_executor_job(self.client.wake_device)
+                self.last_wake_time = now_ts
+            except Exception:
+                pass
 
         data = dict(self._lan_state)
         self._apply_user_overrides(data)
