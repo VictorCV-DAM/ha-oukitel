@@ -65,12 +65,6 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        if self.coordinator.is_paused:
-            self._user_locked_state = None
-            self._attr_is_on = False
-            self.async_write_ha_state()
-            return
-
         now = time.time()
         # If user recently flipped the switch, ignore stale telemetry for 15s unless matched
         if self._user_locked_state is not None:
@@ -91,10 +85,6 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
-        if self.coordinator.is_paused:
-            _LOGGER.warning("oukitel: Cannot control output switch %s while integration is paused", self._key)
-            return
-
         # 1. Lock switch ON for 15s to guarantee no bounce
         self._user_locked_state = True
         self._user_locked_until = time.time() + 15
@@ -116,10 +106,6 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
-        if self.coordinator.is_paused:
-            _LOGGER.warning("oukitel: Cannot control output switch %s while integration is paused", self._key)
-            return
-
         # 1. Lock switch OFF for 15s to guarantee no bounce
         self._user_locked_state = False
         self._user_locked_until = time.time() + 15

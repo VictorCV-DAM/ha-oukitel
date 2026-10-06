@@ -136,9 +136,6 @@ def _build_paused_data(source: dict[str, Any] | None) -> dict[str, Any]:
         "remain_time",
         "remain_charging_time",
         "remaining_time",
-        "ac_switch",
-        "dc_switch",
-        "usb_switch",
     )
     for field in zero_fields:
         data[field] = 0

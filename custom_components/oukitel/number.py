@@ -92,10 +92,6 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new AC charging limit."""
-        if self.coordinator.is_paused:
-            _LOGGER.warning("oukitel: Cannot set charging limit while integration is paused")
-            return
-
         target_val = int(round(value))
         target_val = max(3, min(100, target_val))
 

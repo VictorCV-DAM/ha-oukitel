@@ -83,10 +83,6 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change output frequency."""
-        if self.coordinator.is_paused:
-            _LOGGER.warning("oukitel: Cannot set output frequency while integration is paused")
-            return
-
         if option not in self._attr_options:
             return
 
@@ -163,10 +159,6 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change output voltage."""
-        if self.coordinator.is_paused:
-            _LOGGER.warning("oukitel: Cannot set output voltage while integration is paused")
-            return
-
         if option not in self._attr_options:
             return
 
