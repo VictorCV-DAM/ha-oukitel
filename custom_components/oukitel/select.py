@@ -86,6 +86,12 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
             if option == self._attr_current_option:
                 return
 
+            if self.coordinator.data and self.coordinator.data.get("ac_switch"):
+                _LOGGER.warning(
+                    "oukitel: Output frequency change to %s requested while AC output is ON. Inverter firmware requires AC to be OFF to switch frequency.",
+                    option,
+                )
+
             cloud_val = FREQ_MAP_TO_VAL[option]
 
             # 1. Update UI and coordinator cache immediately with active override
@@ -158,6 +164,12 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
         async with self._action_lock:
             if option == self._attr_current_option:
                 return
+
+            if self.coordinator.data and self.coordinator.data.get("ac_switch"):
+                _LOGGER.warning(
+                    "oukitel: Output voltage change to %s requested while AC output is ON. Inverter firmware requires AC to be OFF to switch voltage.",
+                    option,
+                )
 
             clean_num = int(option.replace("V", ""))
 
