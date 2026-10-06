@@ -113,17 +113,18 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
             except Exception as exc:
                 _LOGGER.warning("oukitel: LAN write failed for charging limit: %s", exc)
 
-        if not lan_ok:
-            success = await self.hass.async_add_executor_job(
-                self.client.control_device,
-                [{self._key: target_val}],
-            )
-            if not success:
-                _LOGGER.error("oukitel: Failed to set %s to %s", self._key, target_val)
-                self.coordinator.async_clear_user_override(self._key)
-                if self.coordinator.data and self._key in self.coordinator.data:
-                    try:
-                        self._attr_native_value = float(self.coordinator.data[self._key])
-                    except (ValueError, TypeError):
-                        pass
-                self.async_write_ha_state()
+        # Always synchronize clean single-property charging limit to Cloud
+        # (exact same method as voltage), so Quectel cloud shadow aligns immediately and WonderFree stops bouncing
+        success = await self.hass.async_add_executor_job(
+            self.client.control_device,
+            [{self._key: target_val}],
+        )
+        if not success and not lan_ok:
+            _LOGGER.error("oukitel: Failed to set %s to %s", self._key, target_val)
+            self.coordinator.async_clear_user_override(self._key)
+            if self.coordinator.data and self._key in self.coordinator.data:
+                try:
+                    self._attr_native_value = float(self.coordinator.data[self._key])
+                except (ValueError, TypeError):
+                    pass
+            self.async_write_ha_state()
