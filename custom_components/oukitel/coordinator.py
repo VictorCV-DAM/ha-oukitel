@@ -141,13 +141,42 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_last_report: float | None = None
         self._lan_connected_at: float | None = None
         self._lan_active = False
+        self._paused: bool = False
+
+    @property
+    def is_paused(self) -> bool:
+        """Return True if communication with the power station is paused."""
+        return self._paused
+
+    async def async_set_paused(self, paused: bool) -> None:
+        """Pause or resume polling, LAN connection, and wake-up commands."""
+        if self._paused == paused:
+            return
+        self._paused = paused
+        if paused:
+            _LOGGER.warning(
+                "oukitel: Pausing integration — disconnecting LAN session and disabling wake/polling requests"
+            )
+            await self.async_shutdown_lan()
+            self.async_update_listeners()
+        else:
+            _LOGGER.warning(
+                "oukitel: Resuming integration — re-establishing connection and requesting refresh"
+            )
+            if self.connection_mode != MODE_CLOUD:
+                self.hass.async_create_task(self.async_setup_lan())
+            await self.async_request_refresh()
 
     # ------------------------------------------------------------------
     # LAN lifecycle
     # ------------------------------------------------------------------
 
     async def async_setup_lan(self) -> None:
-        """Try to start LAN mode; silently skips if device not found on LAN."""
+        """Try to start LAN mode; silently skips if device not found on LAN or paused."""
+        if self._paused:
+            _LOGGER.debug("oukitel: Skipping LAN setup — integration is paused")
+            return
+
         if self.connection_mode == MODE_CLOUD:
             _LOGGER.warning("oukitel: Connection mode set to Cloud Only — skipping LAN setup")
             return
@@ -190,6 +219,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def _lan_read_loop(self, host: str, auth_key: str) -> None:
         while True:
+            if self._paused:
+                _LOGGER.debug("oukitel: LAN read loop stopped because integration is paused")
+                break
             try:
                 await self._lan_session.read_loop()
             except Exception as exc:
@@ -199,8 +231,14 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 await self._lan_session.close()
                 self._lan_session = None
 
+            if self._paused:
+                break
+
             _LOGGER.info("oukitel: LAN disconnected — reconnecting in %ss", _LAN_RECONNECT_DELAY)
             await asyncio.sleep(_LAN_RECONNECT_DELAY)
+
+            if self._paused:
+                break
 
             # Re-scan: device IP may have changed
             host_new = await find_device_on_lan(self.client.device_key or "")
@@ -220,6 +258,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 return
 
     def _on_lan_telemetry(self, fields: dict[int, Any]) -> None:
+        if self._paused:
+            return
         self._lan_last_report = time.monotonic()
         
         # Base LAN tag mapping to HA sensor keys
@@ -271,6 +311,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
     # ------------------------------------------------------------------
 
     async def _async_update_data(self) -> dict:
+        if self._paused:
+            _LOGGER.debug("oukitel: Polling skipped — integration is paused")
+            return dict(self.data or self._lan_state or {})
+
         if self.connection_mode == MODE_CLOUD:
             return await self._update_cloud()
         if self._lan_active:
@@ -280,6 +324,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         return await self._update_cloud()
 
     async def _update_lan(self) -> dict:
+        if self._paused:
+            return dict(self._lan_state or self.data or {})
+
         now = time.monotonic()
         stale = (
             self._lan_last_report is not None
@@ -305,6 +352,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         return dict(self._lan_state)
 
     async def _update_cloud(self) -> dict:
+        if self._paused:
+            return dict(self.data or {})
+
         now = time.time()
         if now - self.last_wake_time >= DEFAULT_WAKE_INTERVAL:
             await self.hass.async_add_executor_job(self.client.wake_device)

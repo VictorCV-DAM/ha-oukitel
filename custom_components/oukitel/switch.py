@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -29,10 +30,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     coordinator: OukitelDataCoordinator = data["coordinator"]
     client = data["client"]
 
-    entities = [
+    entities: list[SwitchEntity] = [
         OukitelSwitch(coordinator, client, key, name, icon)
         for key, name, icon in SWITCH_TYPES
     ]
+    entities.append(OukitelPauseSwitch(coordinator, client))
     async_add_entities(entities)
 
 
@@ -83,6 +85,10 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on."""
+        if self.coordinator.is_paused:
+            _LOGGER.warning("oukitel: Cannot control output switch %s while integration is paused", self._key)
+            return
+
         # 1. Lock switch ON for 15s to guarantee no bounce
         self._user_locked_state = True
         self._user_locked_until = time.time() + 15
@@ -104,6 +110,10 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off."""
+        if self.coordinator.is_paused:
+            _LOGGER.warning("oukitel: Cannot control output switch %s while integration is paused", self._key)
+            return
+
         # 1. Lock switch OFF for 15s to guarantee no bounce
         self._user_locked_state = False
         self._user_locked_until = time.time() + 15
@@ -122,3 +132,46 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
             if self.coordinator.data and self._key in self.coordinator.data:
                 self._attr_is_on = bool(self.coordinator.data[self._key])
             self.async_write_ha_state()
+
+
+class OukitelPauseSwitch(CoordinatorEntity, SwitchEntity, RestoreEntity):
+    """Switch to pause/resume integration requests, disconnect LAN and stop wake-up calls."""
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = f"{client.device_name} Pause Integration"
+        self._attr_unique_id = f"oukitel_{client.device_key}_pause_integration"
+        self._attr_icon = "mdi:pause-circle"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_device_info(self.coordinator, self.client)
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if integration is currently paused."""
+        return self.coordinator.is_paused
+
+    @property
+    def icon(self) -> str:
+        """Dynamic icon."""
+        return "mdi:pause-circle" if self.coordinator.is_paused else "mdi:play-circle-outline"
+
+    async def async_added_to_hass(self) -> None:
+        """Restore previous state on reload/restart."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state == "on":
+            _LOGGER.info("oukitel: Restoring paused integration state from previous session")
+            await self.coordinator.async_set_paused(True)
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Turn on pause (pauses polling, disconnects LAN, stops wake-up calls)."""
+        await self.coordinator.async_set_paused(True)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Turn off pause (resumes normal communication)."""
+        await self.coordinator.async_set_paused(False)
+        self.async_write_ha_state()

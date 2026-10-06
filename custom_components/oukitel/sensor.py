@@ -421,10 +421,14 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
+        if self.coordinator.is_paused:
+            return "Paused"
         return "LAN" if self.coordinator._lan_active else "Cloud"
 
     @property
     def icon(self) -> str:
+        if self.coordinator.is_paused:
+            return "mdi:pause-circle-outline"
         return "mdi:lan-connect" if self.coordinator._lan_active else "mdi:cloud-outline"
 
     @property
@@ -433,6 +437,7 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
             "configured_mode": getattr(self.coordinator, "connection_mode", "auto"),
             "lan_ip": getattr(self.coordinator, "lan_host", None),
             "device_mac": _format_mac(self.client.device_key or ""),
+            "is_paused": self.coordinator.is_paused,
         }
         if self.coordinator._lan_active and self.coordinator._lan_last_report:
             import time

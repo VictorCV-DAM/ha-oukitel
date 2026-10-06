@@ -183,6 +183,7 @@ Unlike native station firmware which can confuse charging and discharging when s
 - `switch.oukitel_ac_output`: Toggle 230V AC inverter output with optimistic latching.
 - `switch.oukitel_dc_12v_output`: Toggle 12V DC car/barrel port output.
 - `switch.oukitel_usb_output`: Toggle USB & Type-C power bank outputs.
+- `switch.oukitel_pause_integration`: Master toggle to pause all polling, disconnect the LAN socket, and stop keep-alive/wake commands. Allows the station to enter deep sleep without Home Assistant waking it up. Fully actionable via automations (`switch.turn_on` / `switch.turn_off`).
 - `number.oukitel_ac_charging_limit`: AC Upper Limit Charging Power slider (3% to 100%).
 - `select.oukitel_output_frequency`: Output Frequency setting (`50Hz` / `60Hz`).
 - `select.oukitel_output_voltage`: Output Voltage setting (`200V`, `208V`, `220V`, `230V`, `240V`).
