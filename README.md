@@ -64,8 +64,10 @@ Click the button below to add this repository directly to your HACS:
 
 <div align="center">
   <h3>⚡ Full Device Dashboard & Interactive Controls</h3>
-  <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/05_device_dashboard.png" alt="Oukitel Device Dashboard" width="510" />
-  <p><i>Live telemetry: real-time battery status, bidirectional switches (AC, 12V DC, USB), input/output power, diagnostics, and frequency/voltage controls.</i></p>
+  <a href="docs/images/05_device_dashboard.png" target="_blank">
+    <img src="docs/images/05_device_dashboard.png" alt="Oukitel Device Dashboard" width="750" />
+  </a>
+  <p><i>Live telemetry: real-time battery status, bidirectional switches (AC, 12V DC, USB), input/output power, diagnostics, and frequency/voltage controls. (Click image to view in full resolution)</i></p>
 </div>
 
 <br/>
