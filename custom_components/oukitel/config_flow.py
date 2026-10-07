@@ -11,20 +11,26 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
 )
 
 from .api import AcceleronixCloudClient
 from .const import (
     CONF_CONNECTION_MODE,
+    CONF_CURRENCY,
     CONF_EMAIL,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
     CONF_PRICE_SENSOR,
     CONF_FIXED_PRICE,
-    DEFAULT_FIXED_PRICE,
     CONF_REGION,
     CONNECTION_MODES,
+    CURRENCY_OPTIONS,
     DEFAULT_CONNECTION_MODE,
+    DEFAULT_CURRENCY,
+    DEFAULT_FIXED_PRICE,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_REGION,
     DOMAIN,
@@ -120,6 +126,27 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
             self._config_entry.data.get(CONF_FIXED_PRICE, DEFAULT_FIXED_PRICE)
         )
 
+        hass_currency = getattr(self.hass.config, "currency", "EUR")
+        default_currency_symbol = {
+            "EUR": "€",
+            "USD": "$",
+            "GBP": "£",
+            "CHF": "CHF",
+            "JPY": "¥",
+            "CNY": "¥",
+            "BRL": "R$",
+            "PLN": "zł",
+            "SEK": "kr",
+            "NOK": "kr",
+            "DKK": "kr",
+        }.get(hass_currency, hass_currency or DEFAULT_CURRENCY)
+
+        current_currency = (
+            self._config_entry.options.get(CONF_CURRENCY)
+            or self._config_entry.data.get(CONF_CURRENCY)
+            or default_currency_symbol
+        )
+
         options_schema = vol.Schema(
             {
                 vol.Required(
@@ -137,6 +164,16 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                     EntitySelectorConfig(domain="sensor")
                 ),
                 vol.Optional(
+                    CONF_CURRENCY,
+                    default=current_currency,
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=CURRENCY_OPTIONS,
+                        custom_value=True,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+                vol.Optional(
                     CONF_FIXED_PRICE,
                     default=float(current_fixed_price),
                 ): NumberSelector(
@@ -145,7 +182,7 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                         max=5.0,
                         step=0.01,
                         mode=NumberSelectorMode.BOX,
-                        unit_of_measurement="€/kWh",
+                        unit_of_measurement=f"{current_currency}/kWh",
                     )
                 ),
             }

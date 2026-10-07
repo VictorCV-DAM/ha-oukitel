@@ -25,12 +25,13 @@
     "step": {
       "init": {
         "title": "Opciones del Dispositivo",
-        "description": "Ajusta la frecuencia con la que Home Assistant consulta los datos de esta batería.",
+        "description": "Ajusta la configuración, tarifas y frecuencia de actualización de esta batería Oukitel.",
         "data": {
           "connection_mode": "Modo de conexión",
           "poll_interval": "Intervalo de actualización Cloud (segundos, 3-120s)",
           "price_sensor": "Sensor de precio de la luz dinámico (Opcional, ej. PVPC)",
-          "fixed_price": "Tarifa fija o precio de reserva (€/kWh)"
+          "currency": "Divisa o Símbolo Monetario (ej. €, $, £, CHF)",
+          "fixed_price": "Tarifa fija o precio de reserva"
         }
       }
     }

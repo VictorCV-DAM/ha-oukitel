@@ -25,7 +25,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_FIXED_PRICE, CONF_PRICE_SENSOR, DEFAULT_FIXED_PRICE, DOMAIN, VERSION
+from .const import (
+    CONF_CURRENCY,
+    CONF_FIXED_PRICE,
+    CONF_PRICE_SENSOR,
+    DEFAULT_CURRENCY,
+    DEFAULT_FIXED_PRICE,
+    DOMAIN,
+    VERSION,
+)
 from .coordinator import OukitelDataCoordinator
 
 
@@ -176,13 +184,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             )
         )
 
-    # 2. Calculated Financial Savings Sensors (€) - Linked device
+    # 2. Calculated Financial Sensors - Charging Cost, Solar Savings & Net Balance
+    hass_curr = getattr(hass.config, "currency", "EUR")
+    default_curr = "€" if hass_curr == "EUR" else (hass_curr or DEFAULT_CURRENCY)
+    currency = (
+        entry.options.get(CONF_CURRENCY)
+        or entry.data.get(CONF_CURRENCY)
+        or default_curr
+    )
+
     calc_savings_specs = [
-        ("Daily Savings (€)", "calc_daily_savings_eur", "daily"),
-        ("Monthly Savings (€)", "calc_monthly_savings_eur", "monthly"),
-        ("Lifetime Savings (€)", "calc_lifetime_savings_eur", "lifetime"),
+        (f"Daily Charging Cost ({currency})", "calc_daily_charging_cost_eur", "daily", "charging_cost", "mdi:cash-minus"),
+        (f"Monthly Charging Cost ({currency})", "calc_monthly_charging_cost_eur", "monthly", "charging_cost", "mdi:cash-minus"),
+        (f"Daily Solar Savings ({currency})", "calc_daily_savings_eur", "daily", "solar_savings", "mdi:cash-plus"),
+        (f"Monthly Solar Savings ({currency})", "calc_monthly_savings_eur", "monthly", "solar_savings", "mdi:cash-plus"),
+        (f"Daily Net Savings ({currency})", "calc_daily_net_savings_eur", "daily", "net_savings", "mdi:scale-balance"),
+        (f"Lifetime Solar Savings ({currency})", "calc_lifetime_savings_eur", "lifetime", "solar_savings", "mdi:cash-multiple"),
+        (f"Lifetime Charging Cost ({currency})", "calc_lifetime_charging_cost_eur", "lifetime", "charging_cost", "mdi:cash-refund"),
     ]
-    for name_sfx, u_sfx, period in calc_savings_specs:
+    for name_sfx, u_sfx, period, m_kind, m_icon in calc_savings_specs:
         entities.append(
             OukitelCalculatedSavingsSensor(
                 coordinator,
@@ -190,8 +210,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 name_suffix=name_sfx,
                 unique_suffix=u_sfx,
                 period_type=period,
+                metric_kind=m_kind,
+                icon=m_icon,
                 price_sensor=price_sensor,
                 fixed_price=float(fixed_price or DEFAULT_FIXED_PRICE),
+                currency=currency,
                 enabled_default=True,
             )
         )
@@ -590,12 +613,14 @@ class OukitelCalculatedEnergySensor(CoordinatorEntity, RestoreEntity, SensorEnti
         if not self.coordinator.data:
             return 0.0
         if self._source_key == "battery_discharged":
+            batt_p = float(self.coordinator.data.get("battery_power") or 0.0)
+            if batt_p > 0:
+                return batt_p
             tot_in = float(self.coordinator.data.get("total_input_power") or 0.0)
             tot_out = float(self.coordinator.data.get("total_output_power") or 0.0)
             ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
-            batt_p = float(self.coordinator.data.get("battery_power") or 0.0)
-            if ac_in <= 10.0 and tot_out > 5.0:
-                return max(0.0, batt_p if batt_p > 0 else tot_out - tot_in)
+            if ac_in <= 10.0 and tot_out > tot_in:
+                return max(0.0, tot_out - tot_in)
             return 0.0
         val = self.coordinator.data.get(self._source_key)
         try:
@@ -629,7 +654,7 @@ class OukitelCalculatedEnergySensor(CoordinatorEntity, RestoreEntity, SensorEnti
 
 
 class OukitelCalculatedSavingsSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
-    """Calculated financial savings sensor in Euros based on avoided grid consumption."""
+    """Calculated financial sensor: Charging Cost, Solar Savings, or Net Balance."""
 
     def __init__(
         self,
@@ -638,27 +663,32 @@ class OukitelCalculatedSavingsSensor(CoordinatorEntity, RestoreEntity, SensorEnt
         name_suffix: str,
         unique_suffix: str,
         period_type: str,
+        metric_kind: str,
+        icon: str,
         price_sensor: str,
         fixed_price: float,
+        currency: str = DEFAULT_CURRENCY,
         enabled_default: bool = True,
     ):
         super().__init__(coordinator)
         self.client = client
         self._period_type = period_type
+        self._metric_kind = metric_kind
         self._price_sensor = price_sensor
         self._fixed_price = fixed_price
+        self._currency = currency
         self._attr_name = f"{client.device_name} {name_suffix}"
         self._attr_unique_id = f"oukitel_{client.device_key}_{unique_suffix}"
-        self._attr_native_unit_of_measurement = "€"
+        self._attr_native_unit_of_measurement = currency
         self._attr_device_class = SensorDeviceClass.MONETARY
         self._attr_state_class = SensorStateClass.TOTAL if period_type in ("daily", "monthly") else SensorStateClass.TOTAL_INCREASING
-        self._attr_icon = "mdi:cash-multiple"
+        self._attr_icon = icon
         self._attr_suggested_display_precision = 2
         self._attr_entity_registry_enabled_default = enabled_default
 
         self._state: float = 0.0
         self._last_time: float | None = None
-        self._last_saved_power: float | None = None
+        self._last_power: float | None = None
         self._last_reset_day: int | None = None
         self._last_reset_month: int | None = None
 
@@ -673,8 +703,10 @@ class OukitelCalculatedSavingsSensor(CoordinatorEntity, RestoreEntity, SensorEnt
     @property
     def extra_state_attributes(self) -> dict:
         attrs = {
+            "metric_kind": self._metric_kind,
+            "currency": self._currency,
             "price_sensor_configured": self._price_sensor or "None (Fixed fallback)",
-            "effective_price_eur_kwh": self._get_current_price(),
+            "effective_price_per_kwh": self._get_current_price(),
         }
         if self._period_type == "daily":
             attrs["last_reset_day"] = self._last_reset_day
@@ -708,20 +740,19 @@ class OukitelCalculatedSavingsSensor(CoordinatorEntity, RestoreEntity, SensorEnt
                     pass
         return self._fixed_price
 
-    def _get_saved_power(self) -> float:
+    def _get_metric_power(self) -> float:
         if not self.coordinator.data:
             return 0.0
-        dc_solar = float(self.coordinator.data.get("dc_input") or 0.0)
-        tot_out = float(self.coordinator.data.get("total_output_power") or 0.0)
-        ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
-        batt_p = float(self.coordinator.data.get("battery_power") or 0.0)
+        dc_solar = max(0.0, float(self.coordinator.data.get("dc_input") or 0.0))
+        ac_in = max(0.0, float(self.coordinator.data.get("ac_input") or 0.0))
 
-        solar_saved = max(0.0, dc_solar)
-        bat_saved = 0.0
-        if ac_in <= 10.0 and tot_out > 5.0:
-            bat_saved = max(0.0, batt_p if batt_p > 0 else tot_out)
-
-        return solar_saved + bat_saved
+        if self._metric_kind == "charging_cost":
+            return ac_in
+        elif self._metric_kind == "solar_savings":
+            return dc_solar
+        elif self._metric_kind == "net_savings":
+            return dc_solar - ac_in
+        return 0.0
 
     def _handle_coordinator_update(self) -> None:
         now_dt = dt_util.now()
@@ -741,16 +772,16 @@ class OukitelCalculatedSavingsSensor(CoordinatorEntity, RestoreEntity, SensorEnt
                 self._state = 0.0
                 self._last_reset_month = now_dt.month
 
-        current_saved_w = self._get_saved_power()
+        current_w = self._get_metric_power()
         cur_price = self._get_current_price()
 
-        if self._last_time is not None and self._last_saved_power is not None:
+        if self._last_time is not None and self._last_power is not None:
             delta_s = cur_time - self._last_time
             if 0 < delta_s < 120.0:
-                avg_watts = (self._last_saved_power + current_saved_w) / 2.0
+                avg_watts = (self._last_power + current_w) / 2.0
                 delta_kwh = (avg_watts * delta_s) / 3600000.0
                 self._state += delta_kwh * cur_price
 
         self._last_time = cur_time
-        self._last_saved_power = current_saved_w
+        self._last_power = current_w
         self.async_write_ha_state()

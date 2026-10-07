@@ -1,0 +1,203 @@
+blueprint:
+  name: Oukitel Solar & Battery Manager (Smart Energy Shifting)
+  description: >
+    ## ☀️ Gestión Solar Inteligente y Protección de Batería Oukitel
+
+    Esta plantilla automatiza el control de carga de la estación desde la red eléctrica para maximizar el aprovechamiento solar gratuito y alargar la vida útil de las celdas LiFePO4 de tu estación Oukitel (P2001 Plus, P1000E, BP3000E, etc.).
+
+
+    ### ⚙️ Reglas y Lógica Interna que Ejecuta:
+
+    * 🛡️ **Protección de Batería Crítica:** Si la batería cae por debajo del umbral crítico durante 10 minutos seguidos, enciende la toma de red automáticamente para proteger la química interna de las celdas LiFePO4.
+
+    * 🌅 **Amanecer (Prioridad Solar):** Al salir el sol, si la batería supera el nivel mínimo de seguridad (por defecto 35%), apaga el enchufe de red para dar paso exclusivo a la generación de las placas solares.
+
+    * ☀️ **Límite de Carga con Sol al 50%:** Si la previsión meteorológica anuncia día soleado o con nubes dispersas (`sunny` o `partlycloudy`), corta la red en cuanto la batería alcanza el 50% para que el resto se llene gratis con energía solar.
+
+    * 🛑 **Corte de Red Preventivo:** Al alcanzar el 90% o el 100%, desconecta la toma de red automáticamente para evitar sobrecargas continuas.
+
+    * 🔋 **Calibración Mensual BMS:** El día 1 de cada mes (o el día mensual que configures) al anochecer, enciende la red si la batería está por debajo del 80% para realizar una carga completa al 100% que equilibre y calibre las celdas del BMS.
+
+
+    ---
+
+    🛠️ **¿Quieres personalizar la automatización o añadir tus propias acciones (notificaciones, avisos, etc.)?**  
+    Pulsa en el menú de los **3 puntos (arriba a la derecha)** y selecciona **"Take control" (Tomar el control)**. Home Assistant convertirá automáticamente esta plantilla en una automatización normal independiente con todas las tarjetas de disparadores, condiciones y acciones totalmente desbloqueadas y editables en la interfaz visual.
+
+    📂 *(Ruta física del archivo en Home Assistant: `config/blueprints/automation/oukitel/solar_battery_manager.yaml`)*.
+
+    🔍 *(Nota: Puedes auditar en tiempo real el árbol de decisiones y disparadores de esta automatización desde **Historial de ejecuciones / Trazas** en Home Assistant).*
+  domain: automation
+  input:
+    battery_sensor:
+      name: Sensor de Batería Oukitel
+      description: Entidad del sensor de porcentaje de batería de la estación (ej. sensor.p2001_plus_battery).
+      selector:
+        entity:
+          domain: sensor
+          device_class: battery
+    grid_plug:
+      name: Enchufe Inteligente de Red (Grid AC)
+      description: Enchufe inteligente (Shelly, Sonoff, Tuya, Zigbee, etc.) en la toma de pared que alimenta la estación.
+      selector:
+        entity:
+          domain: switch
+    weather_entity:
+      name: Entidad Meteorológica (Opcional)
+      description: Sensor meteorológico para detectar si hará sol hoy (soleado o parcialmente nublado).
+      default: ""
+      selector:
+        entity:
+          domain: weather
+    critical_battery:
+      name: Umbral de Batería Crítica (%)
+      description: Si la batería baja de este porcentaje durante 10 minutos, se enciende la red para proteger las celdas.
+      default: 23
+      selector:
+        number:
+          min: 10
+          max: 40
+          unit_of_measurement: "%"
+          mode: slider
+    sunrise_min_battery:
+      name: Batería Mínima al Amanecer (%)
+      description: Al amanecer, solo se corta la red si la batería está por encima de este valor para garantizar suministro.
+      default: 35
+      selector:
+        number:
+          min: 20
+          max: 60
+          unit_of_measurement: "%"
+          mode: slider
+    solar_stop_battery:
+      name: Límite de Carga de Red con Sol (%)
+      description: Si hay sol pronosticado, se corta la red al alcanzar este porcentaje para que el resto se llene gratis con energía solar.
+      default: 50
+      selector:
+        number:
+          min: 40
+          max: 80
+          unit_of_measurement: "%"
+          mode: slider
+    monthly_balance_day:
+      name: Día del Mes para Balanceo al 100%
+      description: Día mensual en el que se forzará la carga completa al 100% para calibrar y balancear las celdas del BMS.
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 28
+          mode: box
+
+variables:
+  battery_sensor: !input battery_sensor
+  grid_plug: !input grid_plug
+  weather_entity: !input weather_entity
+  critical_battery: !input critical_battery
+  sunrise_min_battery: !input sunrise_min_battery
+  solar_stop_battery: !input solar_stop_battery
+  monthly_balance_day: !input monthly_balance_day
+
+trigger:
+  - platform: numeric_state
+    entity_id: !input battery_sensor
+    below: !input critical_battery
+    for:
+      minutes: 10
+    id: bateria_critica
+  - platform: numeric_state
+    entity_id: !input battery_sensor
+    above: !input solar_stop_battery
+    id: punto_solar
+  - platform: numeric_state
+    entity_id: !input battery_sensor
+    above: 90
+    id: punto_90
+  - platform: numeric_state
+    entity_id: !input battery_sensor
+    above: 99
+    id: punto_100
+  - platform: sun
+    event: sunrise
+    id: amanecer
+  - platform: sun
+    event: sunset
+    id: anochecer
+
+condition: []
+
+action:
+  - choose:
+      # 1. Batería crítica: encender red inmediatamente para no agotar la batería
+      - conditions:
+          - condition: trigger
+            id: bateria_critica
+        sequence:
+          - action: switch.turn_on
+            target:
+              entity_id: !input grid_plug
+
+      # 2. Amanecer: si la batería tiene margen suficiente, cortar red para usar sol
+      - conditions:
+          - condition: trigger
+            id: amanecer
+          - condition: template
+            value_template: "{{ states(battery_sensor) | float(0) > (sunrise_min_battery | float) }}"
+        sequence:
+          - action: switch.turn_off
+            target:
+              entity_id: !input grid_plug
+
+      # 3. Anochecer en día de balanceo mensual (ej. día 1): encender red para calibrar al 100%
+      - conditions:
+          - condition: trigger
+            id: anochecer
+          - condition: template
+            value_template: "{{ now().day == (monthly_balance_day | int) }}"
+          - condition: template
+            value_template: "{{ states(battery_sensor) | float(0) < 80 }}"
+        sequence:
+          - action: switch.turn_on
+            target:
+              entity_id: !input grid_plug
+
+      # 4. Umbral con sol: si hace sol y no es día de balanceo, cortar red para llenar gratis con sol
+      - conditions:
+          - condition: trigger
+            id: punto_solar
+          - condition: template
+            value_template: "{{ now().day != (monthly_balance_day | int) }}"
+          - condition: template
+            value_template: >-
+              {% if weather_entity != "" and states(weather_entity) is defined %}
+                {{ states(weather_entity) in ['sunny', 'partlycloudy', 'clear-night'] }}
+              {% else %}
+                true
+              {% endif %}
+        sequence:
+          - action: switch.turn_off
+            target:
+              entity_id: !input grid_plug
+
+      # 5. Punto 90% en días normales: cortar red
+      - conditions:
+          - condition: trigger
+            id: punto_90
+          - condition: template
+            value_template: "{{ now().day != (monthly_balance_day | int) }}"
+        sequence:
+          - action: switch.turn_off
+            target:
+              entity_id: !input grid_plug
+
+      # 6. Punto 100%: cortar red siempre
+      - conditions:
+          - condition: trigger
+            id: punto_100
+        sequence:
+          - action: switch.turn_off
+            target:
+              entity_id: !input grid_plug
+
+mode: queued
+max: 5

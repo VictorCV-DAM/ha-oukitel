@@ -30,7 +30,8 @@
           "connection_mode": "Connection Mode",
           "poll_interval": "Cloud Update Interval (seconds, 3-120s)",
           "price_sensor": "Dynamic Electricity Price Sensor (Optional, e.g. PVPC / Nord Pool)",
-          "fixed_price": "Fixed Tariff or Fallback Price (€/kWh)"
+          "currency": "Currency Symbol / Code (e.g. €, $, £, CHF)",
+          "fixed_price": "Fixed Tariff or Fallback Price"
         }
       }
     }

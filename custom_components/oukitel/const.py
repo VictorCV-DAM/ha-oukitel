@@ -11,6 +11,9 @@ CONF_CONNECTION_MODE = "connection_mode"
 CONF_PRICE_SENSOR = "price_sensor"
 CONF_FIXED_PRICE = "fixed_price"
 DEFAULT_FIXED_PRICE = 0.15
+CONF_CURRENCY = "currency"
+DEFAULT_CURRENCY = "€"
+CURRENCY_OPTIONS = ["€", "$", "£", "CHF", "kr", "¥", "zł", "R$", "MX$"]
 
 MODE_AUTO = "auto"
 MODE_LAN = "lan"
