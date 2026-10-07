@@ -1,4 +1,4 @@
-"""Sensor platform for Oukitel Power Station."""
+import time
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -12,6 +12,7 @@ from homeassistant.const import (
     SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
+    UnitOfEnergy,
     UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
@@ -21,8 +22,10 @@ from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, VERSION
+from .const import CONF_FIXED_PRICE, CONF_PRICE_SENSOR, DEFAULT_FIXED_PRICE, DOMAIN, VERSION
 from .coordinator import OukitelDataCoordinator
 
 
@@ -68,6 +71,18 @@ def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInf
         configuration_url=f"http://{host}" if host else None,
     )
 
+
+def _build_calculated_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInfo:
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{client.device_key}_calculated")},
+        via_device=(DOMAIN, client.device_key),
+        name=f"{client.device_name} Calculated Sensors",
+        manufacturer="OUKITEL",
+        model="Calculated Energy & Financial Metrics",
+        sw_version=f"Cloud+LAN {VERSION}",
+    )
+
+
 FAULT_STATUS_OPTIONS = [
     "Normal",
     "High Temperature Warning",
@@ -91,22 +106,22 @@ SENSOR_TYPES = [
     ("inverter_temp", "Inverter Temperature", UnitOfTemperature.CELSIUS, SensorDeviceClass.TEMPERATURE, SensorStateClass.MEASUREMENT, "mdi:thermometer-lines", None, True),
 
     # Time calculations (LCD display, distinct discharge vs charging)
-    ("remaining_time", "Remaining Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-outline", None, True),
+    ("remaining_time", "Remaining Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-outline", None, False),
     ("remain_time", "Remaining Discharge Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-outline", None, True),
     ("remain_charging_time", "Remaining Charge Time", UnitOfTime.MINUTES, SensorDeviceClass.DURATION, SensorStateClass.MEASUREMENT, "mdi:timer-sand", None, True),
 
     # Per-port Individual Outputs (W / V / A)
     ("ac_output_power", "AC Output Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:lightning-bolt", None, True),
     ("ac_output_voltage", "AC Output Voltage", UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "mdi:sine-wave", None, True),
-    ("usb_a_power", "USB-A Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-port", None, True),
-    ("usb_c_qc_power", "USB-C (QC) Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, True),
-    ("typec1_power", "Type-C 1 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, True),
-    ("typec2_power", "Type-C 2 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, True),
-    ("typec3_power", "Type-C 3 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, True),
-    ("typec4_power", "Type-C 4 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, True),
+    ("usb_a_power", "USB-A Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-port", None, False),
+    ("usb_c_qc_power", "USB-C (QC) Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, False),
+    ("typec1_power", "Type-C 1 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, False),
+    ("typec2_power", "Type-C 2 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, False),
+    ("typec3_power", "Type-C 3 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, False),
+    ("typec4_power", "Type-C 4 Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:usb-c-port", None, False),
     ("dc_output_power", "DC (Car) Output Power", UnitOfPower.WATT, SensorDeviceClass.POWER, SensorStateClass.MEASUREMENT, "mdi:car-electric", None, True),
-    ("dc_output_voltage", "DC (Car) Output Voltage", UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "mdi:car-battery", None, True),
-    ("dc_output_current", "DC (Car) Output Current", UnitOfElectricCurrent.AMPERE, SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, "mdi:current-dc", None, True),
+    ("dc_output_voltage", "DC (Car) Output Voltage", UnitOfElectricPotential.VOLT, SensorDeviceClass.VOLTAGE, SensorStateClass.MEASUREMENT, "mdi:car-battery", None, False),
+    ("dc_output_current", "DC (Car) Output Current", UnitOfElectricCurrent.AMPERE, SensorDeviceClass.CURRENT, SensorStateClass.MEASUREMENT, "mdi:current-dc", None, False),
 
     # Diagnostic & Health
     ("wifi_signal", "WiFi Signal", SIGNAL_STRENGTH_DECIBELS_MILLIWATT, SensorDeviceClass.SIGNAL_STRENGTH, SensorStateClass.MEASUREMENT, "mdi:wifi", EntityCategory.DIAGNOSTIC, True),
@@ -127,6 +142,60 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         for key, name, unit, dev_class, state_class, icon, category, enabled_default in SENSOR_TYPES
     ]
     entities.append(OukitelConnectionModeSensor(coordinator, client))
+
+    # Options for dynamic electricity pricing
+    price_sensor = entry.options.get(
+        CONF_PRICE_SENSOR,
+        entry.data.get(CONF_PRICE_SENSOR, "")
+    )
+    fixed_price = entry.options.get(
+        CONF_FIXED_PRICE,
+        entry.data.get(CONF_FIXED_PRICE, DEFAULT_FIXED_PRICE)
+    )
+
+    # 1. Calculated Energy Sensors (kWh) - Linked device
+    calc_energy_specs = [
+        ("ac_input", "AC Input (kWh)", "calc_ac_input_kwh", "mdi:transmission-tower", False),
+        ("dc_input", "DC Solar Input (kWh)", "calc_dc_input_kwh", "mdi:solar-power", False),
+        ("total_output_power", "Total Output (kWh)", "calc_total_output_kwh", "mdi:flash", False),
+        ("ac_output_power", "AC Output (kWh)", "calc_ac_output_kwh", "mdi:lightning-bolt", False),
+        ("battery_discharged", "Battery Discharged (kWh)", "calc_battery_discharged_kwh", "mdi:battery-arrow-down", False),
+        ("ac_input", "Daily AC Input (kWh)", "calc_daily_ac_input_kwh", "mdi:calendar-today", True),
+    ]
+    for src, name_sfx, u_sfx, icon, is_d in calc_energy_specs:
+        entities.append(
+            OukitelCalculatedEnergySensor(
+                coordinator,
+                client,
+                source_key=src,
+                name_suffix=name_sfx,
+                unique_suffix=u_sfx,
+                icon=icon,
+                is_daily=is_d,
+                enabled_default=True,
+            )
+        )
+
+    # 2. Calculated Financial Savings Sensors (€) - Linked device
+    calc_savings_specs = [
+        ("Daily Savings (€)", "calc_daily_savings_eur", "daily"),
+        ("Monthly Savings (€)", "calc_monthly_savings_eur", "monthly"),
+        ("Lifetime Savings (€)", "calc_lifetime_savings_eur", "lifetime"),
+    ]
+    for name_sfx, u_sfx, period in calc_savings_specs:
+        entities.append(
+            OukitelCalculatedSavingsSensor(
+                coordinator,
+                client,
+                name_suffix=name_sfx,
+                unique_suffix=u_sfx,
+                period_type=period,
+                price_sensor=price_sensor,
+                fixed_price=float(fixed_price or DEFAULT_FIXED_PRICE),
+                enabled_default=True,
+            )
+        )
+
     async_add_entities(entities)
 
 
@@ -457,3 +526,231 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
             age = round(time.monotonic() - self.coordinator._lan_last_report, 1)
             attrs["last_lan_report_ago_s"] = age
         return attrs
+
+
+class OukitelCalculatedEnergySensor(CoordinatorEntity, RestoreEntity, SensorEntity):
+    """Calculated energy sensor using trapezoidal Riemann integration in kWh."""
+
+    def __init__(
+        self,
+        coordinator: OukitelDataCoordinator,
+        client,
+        source_key: str,
+        name_suffix: str,
+        unique_suffix: str,
+        icon: str,
+        is_daily: bool = False,
+        enabled_default: bool = True,
+    ):
+        super().__init__(coordinator)
+        self.client = client
+        self._source_key = source_key
+        self._is_daily = is_daily
+        self._attr_name = f"{client.device_name} {name_suffix}"
+        self._attr_unique_id = f"oukitel_{client.device_key}_{unique_suffix}"
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_state_class = SensorStateClass.TOTAL if is_daily else SensorStateClass.TOTAL_INCREASING
+        self._attr_icon = icon
+        self._attr_suggested_display_precision = 3
+        self._attr_entity_registry_enabled_default = enabled_default
+
+        self._state: float = 0.0
+        self._last_time: float | None = None
+        self._last_power: float | None = None
+        self._last_reset_day: int | None = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_calculated_device_info(self.coordinator, self.client)
+
+    @property
+    def native_value(self) -> float:
+        return round(self._state, 3)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        attrs = {}
+        if self._is_daily:
+            attrs["last_reset_day"] = self._last_reset_day
+        return attrs
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state not in (None, "unknown", "unavailable"):
+            try:
+                self._state = float(last_state.state)
+            except ValueError:
+                self._state = 0.0
+        if last_state and last_state.attributes:
+            self._last_reset_day = last_state.attributes.get("last_reset_day")
+
+    def _get_current_power(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        if self._source_key == "battery_discharged":
+            tot_in = float(self.coordinator.data.get("total_input_power") or 0.0)
+            tot_out = float(self.coordinator.data.get("total_output_power") or 0.0)
+            ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
+            batt_p = float(self.coordinator.data.get("battery_power") or 0.0)
+            if ac_in <= 10.0 and tot_out > 5.0:
+                return max(0.0, batt_p if batt_p > 0 else tot_out - tot_in)
+            return 0.0
+        val = self.coordinator.data.get(self._source_key)
+        try:
+            return max(0.0, float(val or 0.0))
+        except (ValueError, TypeError):
+            return 0.0
+
+    def _handle_coordinator_update(self) -> None:
+        now_dt = dt_util.now()
+        cur_time = time.monotonic()
+
+        if self._is_daily:
+            if self._last_reset_day is None:
+                self._last_reset_day = now_dt.day
+            elif self._last_reset_day != now_dt.day:
+                self._state = 0.0
+                self._last_reset_day = now_dt.day
+
+        current_power = self._get_current_power()
+
+        if self._last_time is not None and self._last_power is not None:
+            delta_s = cur_time - self._last_time
+            if 0 < delta_s < 120.0:
+                avg_watts = (self._last_power + current_power) / 2.0
+                delta_kwh = (avg_watts * delta_s) / 3600000.0
+                self._state += delta_kwh
+
+        self._last_time = cur_time
+        self._last_power = current_power
+        self.async_write_ha_state()
+
+
+class OukitelCalculatedSavingsSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
+    """Calculated financial savings sensor in Euros based on avoided grid consumption."""
+
+    def __init__(
+        self,
+        coordinator: OukitelDataCoordinator,
+        client,
+        name_suffix: str,
+        unique_suffix: str,
+        period_type: str,
+        price_sensor: str,
+        fixed_price: float,
+        enabled_default: bool = True,
+    ):
+        super().__init__(coordinator)
+        self.client = client
+        self._period_type = period_type
+        self._price_sensor = price_sensor
+        self._fixed_price = fixed_price
+        self._attr_name = f"{client.device_name} {name_suffix}"
+        self._attr_unique_id = f"oukitel_{client.device_key}_{unique_suffix}"
+        self._attr_native_unit_of_measurement = "€"
+        self._attr_device_class = SensorDeviceClass.MONETARY
+        self._attr_state_class = SensorStateClass.TOTAL if period_type in ("daily", "monthly") else SensorStateClass.TOTAL_INCREASING
+        self._attr_icon = "mdi:cash-multiple"
+        self._attr_suggested_display_precision = 2
+        self._attr_entity_registry_enabled_default = enabled_default
+
+        self._state: float = 0.0
+        self._last_time: float | None = None
+        self._last_saved_power: float | None = None
+        self._last_reset_day: int | None = None
+        self._last_reset_month: int | None = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_calculated_device_info(self.coordinator, self.client)
+
+    @property
+    def native_value(self) -> float:
+        return round(self._state, 2)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        attrs = {
+            "price_sensor_configured": self._price_sensor or "None (Fixed fallback)",
+            "effective_price_eur_kwh": self._get_current_price(),
+        }
+        if self._period_type == "daily":
+            attrs["last_reset_day"] = self._last_reset_day
+        elif self._period_type == "monthly":
+            attrs["last_reset_month"] = self._last_reset_month
+        return attrs
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state not in (None, "unknown", "unavailable"):
+            try:
+                self._state = float(last_state.state)
+            except ValueError:
+                self._state = 0.0
+        if last_state and last_state.attributes:
+            self._last_reset_day = last_state.attributes.get("last_reset_day")
+            self._last_reset_month = last_state.attributes.get("last_reset_month")
+
+    def _get_current_price(self) -> float:
+        if self._price_sensor and self.hass:
+            st = self.hass.states.get(self._price_sensor)
+            if st and st.state not in (None, "unknown", "unavailable"):
+                try:
+                    price_val = float(st.state)
+                    unit = str(st.attributes.get("unit_of_measurement", "")).lower()
+                    if "c" in unit or "cent" in unit:
+                        return price_val / 100.0
+                    return price_val
+                except (ValueError, TypeError):
+                    pass
+        return self._fixed_price
+
+    def _get_saved_power(self) -> float:
+        if not self.coordinator.data:
+            return 0.0
+        dc_solar = float(self.coordinator.data.get("dc_input") or 0.0)
+        tot_out = float(self.coordinator.data.get("total_output_power") or 0.0)
+        ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
+        batt_p = float(self.coordinator.data.get("battery_power") or 0.0)
+
+        solar_saved = max(0.0, dc_solar)
+        bat_saved = 0.0
+        if ac_in <= 10.0 and tot_out > 5.0:
+            bat_saved = max(0.0, batt_p if batt_p > 0 else tot_out)
+
+        return solar_saved + bat_saved
+
+    def _handle_coordinator_update(self) -> None:
+        now_dt = dt_util.now()
+        cur_time = time.monotonic()
+
+        if self._period_type == "daily":
+            if self._last_reset_day is None:
+                self._last_reset_day = now_dt.day
+            elif self._last_reset_day != now_dt.day:
+                self._state = 0.0
+                self._last_reset_day = now_dt.day
+
+        if self._period_type == "monthly":
+            if self._last_reset_month is None:
+                self._last_reset_month = now_dt.month
+            elif self._last_reset_month != now_dt.month:
+                self._state = 0.0
+                self._last_reset_month = now_dt.month
+
+        current_saved_w = self._get_saved_power()
+        cur_price = self._get_current_price()
+
+        if self._last_time is not None and self._last_saved_power is not None:
+            delta_s = cur_time - self._last_time
+            if 0 < delta_s < 120.0:
+                avg_watts = (self._last_saved_power + current_saved_w) / 2.0
+                delta_kwh = (avg_watts * delta_s) / 3600000.0
+                self._state += delta_kwh * cur_price
+
+        self._last_time = cur_time
+        self._last_saved_power = current_saved_w
+        self.async_write_ha_state()

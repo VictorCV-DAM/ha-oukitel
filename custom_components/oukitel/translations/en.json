@@ -28,7 +28,9 @@
         "description": "Adjust the telemetry update frequency for this Oukitel device.",
         "data": {
           "connection_mode": "Connection Mode",
-          "poll_interval": "Cloud Update Interval (seconds, 3-120s)"
+          "poll_interval": "Cloud Update Interval (seconds, 3-120s)",
+          "price_sensor": "Dynamic Electricity Price Sensor (Optional, e.g. PVPC / Nord Pool)",
+          "fixed_price": "Fixed Tariff or Fallback Price (€/kWh)"
         }
       }
     }

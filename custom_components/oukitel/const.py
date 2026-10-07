@@ -8,6 +8,9 @@ CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_CONNECTION_MODE = "connection_mode"
+CONF_PRICE_SENSOR = "price_sensor"
+CONF_FIXED_PRICE = "fixed_price"
+DEFAULT_FIXED_PRICE = 0.15
 
 MODE_AUTO = "auto"
 MODE_LAN = "lan"

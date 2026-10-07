@@ -5,6 +5,13 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.selector import (
+    EntitySelector,
+    EntitySelectorConfig,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+)
 
 from .api import AcceleronixCloudClient
 from .const import (
@@ -12,6 +19,9 @@ from .const import (
     CONF_EMAIL,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
+    CONF_PRICE_SENSOR,
+    CONF_FIXED_PRICE,
+    DEFAULT_FIXED_PRICE,
     CONF_REGION,
     CONNECTION_MODES,
     DEFAULT_CONNECTION_MODE,
@@ -101,6 +111,14 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
             CONF_POLL_INTERVAL,
             self._config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
         )
+        current_price_sensor = self._config_entry.options.get(
+            CONF_PRICE_SENSOR,
+            self._config_entry.data.get(CONF_PRICE_SENSOR, "")
+        )
+        current_fixed_price = self._config_entry.options.get(
+            CONF_FIXED_PRICE,
+            self._config_entry.data.get(CONF_FIXED_PRICE, DEFAULT_FIXED_PRICE)
+        )
 
         options_schema = vol.Schema(
             {
@@ -112,6 +130,24 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_POLL_INTERVAL,
                     default=current_interval,
                 ): vol.All(cv.positive_int, vol.Range(min=3, max=120)),
+                vol.Optional(
+                    CONF_PRICE_SENSOR,
+                    description={"suggested_value": current_price_sensor} if current_price_sensor else {},
+                ): EntitySelector(
+                    EntitySelectorConfig(domain="sensor")
+                ),
+                vol.Optional(
+                    CONF_FIXED_PRICE,
+                    default=float(current_fixed_price),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=0.0,
+                        max=5.0,
+                        step=0.01,
+                        mode=NumberSelectorMode.BOX,
+                        unit_of_measurement="€/kWh",
+                    )
+                ),
             }
         )
 
