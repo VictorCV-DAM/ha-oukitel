@@ -4,6 +4,7 @@
 
   [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/default)
   [![GitHub Release](https://img.shields.io/github/v/release/VictorCV-DAM/ha-oukitel)](https://github.com/VictorCV-DAM/ha-oukitel/releases)
+  [![Total Downloads](https://img.shields.io/github/downloads/VictorCV-DAM/ha-oukitel/total.svg?color=brightgreen)](https://github.com/VictorCV-DAM/ha-oukitel/releases)
   [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
   [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-orange?logo=buy-me-a-coffee)](https://buymeacoffee.com/VictorCV)
   [![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?logo=paypal)](https://paypal.me/victorcava)
