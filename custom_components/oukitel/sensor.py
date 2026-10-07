@@ -36,7 +36,9 @@ def _clean_model_name(raw: str | None) -> str:
     if not raw:
         return "Oukitel Power Station"
     name = raw.replace("-PLUS-", " Plus ").replace("-PLUS", " Plus").replace("PLUS", " Plus")
-    name = name.replace("-TT", "").replace("_", " ").replace("/", " / ")
+    name = name.replace("-TT", "").replace(" TT", "").replace("_", " ").replace("/", " / ")
+    parts = [p for p in name.split() if p.upper() != "TT" and not (len(p) == 4 and all(c in "0123456789ABCDEFabcdef" for c in p))]
+    name = " ".join(parts)
     while "  " in name:
         name = name.replace("  ", " ")
     return name.strip() or "Oukitel Power Station"
