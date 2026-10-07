@@ -14,6 +14,7 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 
 100% VERIFIED DEVICES:
 - P2001E PLUS
+- P1000E PLUS (Verified by community)
 - BP3000E
 - P1000E PLUS
 

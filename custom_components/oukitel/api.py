@@ -38,6 +38,7 @@ class AcceleronixCloudClient:
         self.device_key = None
         self.product_key = None
         self.device_name = None
+        self.product_name = None
         self.auth_key = None
         self.is_online: bool = True
 
@@ -135,6 +136,7 @@ class AcceleronixCloudClient:
                     self.device_key = dev["deviceKey"]
                     self.product_key = dev["productKey"]
                     self.device_name = dev.get("deviceName", "Oukitel P2001")
+                    self.product_name = dev.get("productName") or dev.get("deviceName", "Oukitel Power Station")
                     self.auth_key = dev.get("authKey")
                     self.is_online = self._parse_device_online_status(dev)
                     _LOGGER.debug(

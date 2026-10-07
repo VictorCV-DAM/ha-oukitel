@@ -39,6 +39,7 @@ class OukitelOnBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self.client = client
         self._attr_name = f"{client.device_name} Battery-powered (Inferred)"
         self._attr_unique_id = f"oukitel_{client.device_key}_on_battery"
+        self._last_state: bool = False
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -68,8 +69,23 @@ class OukitelOnBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
         real_in = max(total_in, ac_in + dc_in)
         real_out = max(total_out, ac_out + dc_out)
 
-        # On battery when load exceeds input by >5W (draining battery) or when inputs are absent (<= 5W)
-        return real_out > real_in + 5.0 or real_in <= 5.0
+        # 1. Inputs absent (<= 5W): running on battery
+        if real_in <= 5.0:
+            self._last_state = True
+            return True
+
+        # 2. Inputs present: apply hysteresis around net balance to prevent flutter
+        delta = real_out - real_in
+        if self._last_state:
+            # Currently on battery -> only switch to charging if inputs clearly exceed load (>10W)
+            if delta < -10.0:
+                self._last_state = False
+        else:
+            # Currently on mains/charging -> only switch to battery if load clearly exceeds inputs (>15W)
+            if delta > 15.0:
+                self._last_state = True
+
+        return self._last_state
 
 
 class OukitelConnectionBinarySensor(CoordinatorEntity, BinarySensorEntity):

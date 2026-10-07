@@ -22,7 +22,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, VERSION
 from .coordinator import OukitelDataCoordinator
 
 
@@ -30,6 +30,16 @@ def _format_mac(dk: str) -> str:
     if dk and len(dk) == 12:
         return ":".join(dk[i:i+2] for i in range(0, 12, 2)).upper()
     return dk or ""
+
+
+def _clean_model_name(raw: str | None) -> str:
+    if not raw:
+        return "Oukitel Power Station"
+    name = raw.replace("-PLUS-", " Plus ").replace("-PLUS", " Plus").replace("PLUS", " Plus")
+    name = name.replace("-TT", "").replace("_", " ").replace("/", " / ")
+    while "  " in name:
+        name = name.replace("  ", " ")
+    return name.strip() or "Oukitel Power Station"
 
 
 def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInfo:
@@ -42,14 +52,15 @@ def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInf
         connections.add((CONNECTION_NETWORK_MAC, mac))
 
     hw_info = f"IP: {host} [{mode}]" if host else f"Cloud [{mode}]"
+    raw_model = getattr(client, "product_name", None) or getattr(client, "device_name", None)
 
     return DeviceInfo(
         identifiers={(DOMAIN, client.device_key)},
         connections=connections,
         name=client.device_name,
         manufacturer="OUKITEL",
-        model=getattr(client, "product_name", "P2001 Plus") or "P2001 Plus",
-        sw_version="Cloud+LAN API 1.2.7",
+        model=_clean_model_name(raw_model),
+        sw_version=f"Cloud+LAN {VERSION}",
         hw_version=hw_info,
         serial_number=mac if mac else client.device_key,
         configuration_url=f"http://{host}" if host else None,
