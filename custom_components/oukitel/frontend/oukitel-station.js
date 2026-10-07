@@ -1,12 +1,12 @@
 /**
- * Oukitel Power Station Lovelace Cards (v2.1.0)
+ * Oukitel Power Station Lovelace Cards (v2.2.0)
  * 1. custom:oukitel-display-card - 100% Photorealistic Vector LCD Screen Simulator + Safety Tactile Control Dock.
  * 2. custom:oukitel-card - Complete control dashboard with switches & metrics.
  * 
  * Developer: VictorCV-DAM (ha-oukitel)
  */
 
-const CARD_VERSION = "2.1.0";
+const CARD_VERSION = "2.2.0";
 
 console.info(
   `%c OUKITEL POWER STATION %c v${CARD_VERSION} `,
@@ -62,7 +62,7 @@ function describeArcBlock(x, y, rIn, rOut, startAngle, endAngle) {
   return `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${rOut} ${rOut} 0 ${large} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} L ${x3.toFixed(1)} ${y3.toFixed(1)} A ${rIn} ${rIn} 0 ${large} 0 ${x4.toFixed(1)} ${y4.toFixed(1)} Z`;
 }
 
-// Auto-discovery helper for Oukitel entities
+// Auto-discovery helper for Oukitel entities with strict device-prefix matching
 function findOukitelEntities(hass, explicitConfig = {}) {
   const states = hass.states;
   const config = { ...explicitConfig };
@@ -70,9 +70,10 @@ function findOukitelEntities(hass, explicitConfig = {}) {
 
   let batteryId = config.battery;
   if (!batteryId || !states[batteryId]) {
+    // Prioritize active integration battery: ends with _battery, contains p2001 or oukitel
     batteryId = allIds.find(
       (id) =>
-        (id.includes("oukitel") || id.includes("p2001") || id.includes("p1000") || id.includes("bp3000")) &&
+        (id.includes("p2001") || id.includes("oukitel") || id.includes("bp3000")) &&
         id.endsWith("_battery") &&
         !id.includes("calculated")
     );
@@ -85,39 +86,49 @@ function findOukitelEntities(hass, explicitConfig = {}) {
   }
 
   if (batteryId) {
-    const cleanId = batteryId.replace(/^sensor\./, "").replace(/_battery$/, "");
-    const tokens = cleanId.split("_").filter((t) => t.length >= 4);
+    const cleanPrefix = batteryId.replace(/^sensor\./, "").replace(/_battery$/, "");
+    // Extract root device identifier, e.g. "p2001_plus_tt_ab76"
+    const devicePrefix = cleanPrefix.replace(/_p2001_plus$/, "");
 
+    // Prioritize entities sharing the EXACT devicePrefix to avoid obsolete manual entities
     const findEntity = (domain, patterns) => {
-      return allIds.find((id) => {
+      // 1. Strict match on exact device prefix
+      let found = allIds.find((id) => {
         if (domain && !id.startsWith(`${domain}.`)) return false;
-        const matchesToken = tokens.length === 0 || tokens.some((t) => id.includes(t));
-        if (!matchesToken) return false;
+        if (!id.includes(devicePrefix)) return false;
         return patterns.some((p) => id.includes(p));
       });
+      // 2. Fallback match if not found
+      if (!found) {
+        found = allIds.find((id) => {
+          if (domain && !id.startsWith(`${domain}.`)) return false;
+          return patterns.some((p) => id.includes(p));
+        });
+      }
+      return found;
     };
 
-    config.input_power = config.input_power || findEntity("sensor", ["total_input_power", "input_power", "entrada_watts"]);
-    config.output_power = config.output_power || findEntity("sensor", ["total_output_power", "output_power", "salida_watts"]);
-    config.ac_input = config.ac_input || findEntity("sensor", ["ac_input_power", "ac_input", "entrada_ac"]);
-    config.dc_input = config.dc_input || findEntity("sensor", ["dc_solar_input_power", "dc_input", "entrada_dc"]);
+    config.input_power = config.input_power || findEntity("sensor", ["total_input_power", "input_power"]);
+    config.output_power = config.output_power || findEntity("sensor", ["total_output_power", "output_power"]);
+    config.ac_input = config.ac_input || findEntity("sensor", ["ac_input_power", "ac_input"]);
+    config.dc_input = config.dc_input || findEntity("sensor", ["dc_solar_input_power", "dc_input"]);
     config.ac_output_power = config.ac_output_power || findEntity("sensor", ["ac_output_power"]);
     config.ac_voltage = config.ac_voltage || findEntity("sensor", ["ac_output_voltage"]);
 
     // Remaining time sensors
-    config.remaining_charge = config.remaining_charge || findEntity("sensor", ["remaining_charge_time", "remain_charging_time", "tiempo_restante_carga"]);
-    config.remaining_discharge = config.remaining_discharge || findEntity("sensor", ["remaining_discharge_time", "remain_time", "tiempo_restante_descarga"]);
-    config.remaining_time = config.remaining_time || findEntity("sensor", ["remaining_time", "station_lcd_remaining_time"]);
+    config.remaining_charge = config.remaining_charge || findEntity("sensor", ["remaining_charge_time", "remain_charging_time"]);
+    config.remaining_discharge = config.remaining_discharge || findEntity("sensor", ["remaining_discharge_time", "remain_time"]);
+    config.remaining_time = config.remaining_time || findEntity("sensor", ["remaining_time"]);
 
-    // Switches
-    config.switch_ac = config.switch_ac || findEntity("switch", ["ac_output", "ac_switch", "interruptor_ac"]);
-    config.switch_dc = config.switch_dc || findEntity("switch", ["dc_12v_output", "dc_output", "dc_switch", "interruptor_dc"]);
-    config.switch_usb = config.switch_usb || findEntity("switch", ["usb_output", "usb_switch", "interruptor_usb"]);
+    // Switches (Target active integration switches: switch.p2001_plus_tt_ab76_p2001_plus_ac_output)
+    config.switch_ac = config.switch_ac || findEntity("switch", ["ac_output", "ac_switch"]);
+    config.switch_dc = config.switch_dc || findEntity("switch", ["dc_12v_output", "dc_output", "dc_switch"]);
+    config.switch_usb = config.switch_usb || findEntity("switch", ["usb_output", "usb_switch"]);
 
     // Metadata
     config.frequency = config.frequency || findEntity("select", ["output_frequency"]);
     config.inverter_temp = config.inverter_temp || findEntity("sensor", ["inverter_temperature", "inverter_temp"]);
-    config.battery_temp = config.battery_temp || findEntity("sensor", ["_temperature", "temperatura_oukitel"]);
+    config.battery_temp = config.battery_temp || findEntity("sensor", ["_temperature"]);
     config.connection_mode = config.connection_mode || findEntity("sensor", ["connection_mode"]);
     config.fault_status = config.fault_status || findEntity("sensor", ["hardware_fault_status", "fault_status"]);
 
@@ -140,7 +151,6 @@ class OukitelDisplayCard extends HTMLElement {
     this._hass = null;
     this._config = {};
     this._mapped = {};
-    // Safety confirmation states: null or expiry timestamp
     this._confirmTimers = {
       ac: null,
       dc: null,
@@ -150,7 +160,6 @@ class OukitelDisplayCard extends HTMLElement {
   }
 
   connectedCallback() {
-    // Timer to update countdown on buttons if confirmation active
     this._intervalId = setInterval(() => {
       this._checkConfirmTimeouts();
     }, 500);
@@ -212,10 +221,15 @@ class OukitelDisplayCard extends HTMLElement {
 
         .interactive-btn {
           cursor: pointer;
-          transition: transform 0.15s ease, filter 0.2s ease, fill 0.2s ease;
+          pointer-events: bounding-box;
+          transition: transform 0.15s ease, filter 0.2s ease;
+        }
+        .interactive-btn * {
+          pointer-events: all;
+          cursor: pointer;
         }
         .interactive-btn:hover {
-          filter: brightness(1.2);
+          filter: brightness(1.25);
         }
         .interactive-btn:active {
           transform: scale(0.98);
@@ -235,9 +249,9 @@ class OukitelDisplayCard extends HTMLElement {
         }
 
         @keyframes pulseWarning {
-          0% { stroke-opacity: 0.9; stroke-width: 2.2; }
+          0% { stroke-opacity: 0.9; stroke-width: 2; }
           50% { stroke-opacity: 0.3; stroke-width: 3.5; }
-          100% { stroke-opacity: 0.9; stroke-width: 2.2; }
+          100% { stroke-opacity: 0.9; stroke-width: 2; }
         }
         .confirm-pulsing {
           animation: pulseWarning 0.9s infinite ease-in-out;
@@ -273,8 +287,8 @@ class OukitelDisplayCard extends HTMLElement {
 
           <!-- Control Button Active Gradient -->
           <linearGradient id="btn-active-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="rgba(0, 229, 255, 0.18)" />
-            <stop offset="100%" stop-color="rgba(0, 229, 255, 0.05)" />
+            <stop offset="0%" stop-color="rgba(0, 229, 255, 0.22)" />
+            <stop offset="100%" stop-color="rgba(0, 229, 255, 0.06)" />
           </linearGradient>
 
           <!-- Screen Glass Reflection -->
@@ -436,35 +450,35 @@ class OukitelDisplayCard extends HTMLElement {
 
         <!-- 1. AC 230V CONTROL SWITCH -->
         <g id="btn-ctrl-ac" class="interactive-btn" transform="translate(55, 318)">
-          <rect id="bg-ctrl-ac" x="0" y="0" width="240" height="50" rx="10" fill="rgba(255, 255, 255, 0.04)" stroke="#475569" stroke-width="1.8" />
+          <rect id="bg-ctrl-ac" x="0" y="0" width="240" height="50" rx="10" fill="rgba(255, 255, 255, 0.04)" stroke="#475569" stroke-width="1.8" pointer-events="all" />
           <!-- AC Wave Icon -->
-          <circle cx="28" cy="25" r="14" fill="none" stroke="#94a3b8" stroke-width="1.8" id="ico-circle-ac" />
-          <path d="M 21 25 C 23 21 25 21 28 25 C 31 29 33 29 35 25" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" id="ico-wave-ac" />
+          <circle cx="28" cy="25" r="14" fill="none" stroke="#94a3b8" stroke-width="1.8" id="ico-circle-ac" pointer-events="none" />
+          <path d="M 21 25 C 23 21 25 21 28 25 C 31 29 33 29 35 25" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" id="ico-wave-ac" pointer-events="none" />
           <!-- Text -->
-          <text x="52" y="24" fill="#f8fafc" font-family="'SF Pro Display', sans-serif" font-size="13" font-weight="800">SALIDA AC 230V</text>
-          <text id="txt-sub-ac" x="52" y="38" fill="#94a3b8" font-family="'SF Pro Display', sans-serif" font-size="11" font-weight="600">APAGADO</text>
+          <text x="52" y="24" fill="#f8fafc" font-family="'SF Pro Display', sans-serif" font-size="13" font-weight="800" pointer-events="none">SALIDA AC 230V</text>
+          <text id="txt-sub-ac" x="52" y="38" fill="#94a3b8" font-family="'SF Pro Display', sans-serif" font-size="11" font-weight="600" pointer-events="none">APAGADO</text>
         </g>
 
         <!-- 2. DC 12V CONTROL SWITCH -->
         <g id="btn-ctrl-dc" class="interactive-btn" transform="translate(320, 318)">
-          <rect id="bg-ctrl-dc" x="0" y="0" width="240" height="50" rx="10" fill="rgba(255, 255, 255, 0.04)" stroke="#475569" stroke-width="1.8" />
+          <rect id="bg-ctrl-dc" x="0" y="0" width="240" height="50" rx="10" fill="rgba(255, 255, 255, 0.04)" stroke="#475569" stroke-width="1.8" pointer-events="all" />
           <!-- DC Car Plug Icon -->
-          <circle cx="28" cy="25" r="14" fill="none" stroke="#94a3b8" stroke-width="1.8" id="ico-circle-dc" />
-          <text id="ico-txt-dc" x="28" y="29" text-anchor="middle" fill="#94a3b8" font-family="'SF Pro Display', sans-serif" font-size="10" font-weight="900">12V</text>
+          <circle cx="28" cy="25" r="14" fill="none" stroke="#94a3b8" stroke-width="1.8" id="ico-circle-dc" pointer-events="none" />
+          <text id="ico-txt-dc" x="28" y="29" text-anchor="middle" fill="#94a3b8" font-family="'SF Pro Display', sans-serif" font-size="10" font-weight="900" pointer-events="none">12V</text>
           <!-- Text -->
-          <text x="52" y="24" fill="#f8fafc" font-family="'SF Pro Display', sans-serif" font-size="13" font-weight="800">SALIDA DC 12V</text>
-          <text id="txt-sub-dc" x="52" y="38" fill="#94a3b8" font-family="'SF Pro Display', sans-serif" font-size="11" font-weight="600">APAGADO</text>
+          <text x="52" y="24" fill="#f8fafc" font-family="'SF Pro Display', sans-serif" font-size="13" font-weight="800" pointer-events="none">SALIDA DC 12V</text>
+          <text id="txt-sub-dc" x="52" y="38" fill="#94a3b8" font-family="'SF Pro Display', sans-serif" font-size="11" font-weight="600" pointer-events="none">APAGADO</text>
         </g>
 
         <!-- 3. USB CONTROL SWITCH -->
         <g id="btn-ctrl-usb" class="interactive-btn" transform="translate(585, 318)">
-          <rect id="bg-ctrl-usb" x="0" y="0" width="240" height="50" rx="10" fill="rgba(255, 255, 255, 0.04)" stroke="#475569" stroke-width="1.8" />
+          <rect id="bg-ctrl-usb" x="0" y="0" width="240" height="50" rx="10" fill="rgba(255, 255, 255, 0.04)" stroke="#475569" stroke-width="1.8" pointer-events="all" />
           <!-- USB Port Icon -->
-          <rect id="ico-rect-usb" x="14" y="17" width="28" height="16" rx="3.5" fill="none" stroke="#94a3b8" stroke-width="1.8" />
-          <rect id="ico-pin-usb" x="20" y="21" width="16" height="8" rx="1.5" fill="#94a3b8" />
+          <rect id="ico-rect-usb" x="14" y="17" width="28" height="16" rx="3.5" fill="none" stroke="#94a3b8" stroke-width="1.8" pointer-events="none" />
+          <rect id="ico-pin-usb" x="20" y="21" width="16" height="8" rx="1.5" fill="#94a3b8" pointer-events="none" />
           <!-- Text -->
-          <text x="52" y="24" fill="#f8fafc" font-family="'SF Pro Display', sans-serif" font-size="13" font-weight="800">PUERTOS USB</text>
-          <text id="txt-sub-usb" x="52" y="38" fill="#94a3b8" font-family="'SF Pro Display', sans-serif" font-size="11" font-weight="600">APAGADO</text>
+          <text x="52" y="24" fill="#f8fafc" font-family="'SF Pro Display', sans-serif" font-size="13" font-weight="800" pointer-events="none">PUERTOS USB</text>
+          <text id="txt-sub-usb" x="52" y="38" fill="#94a3b8" font-family="'SF Pro Display', sans-serif" font-size="11" font-weight="600" pointer-events="none">APAGADO</text>
         </g>
       </svg>
     `;
@@ -499,19 +513,33 @@ class OukitelDisplayCard extends HTMLElement {
 
     // Safe Switch Handlers (AC, DC, USB)
     const btnAc = this.shadowRoot.getElementById("btn-ctrl-ac");
-    if (btnAc) btnAc.addEventListener("click", () => this._handleSafeSwitchClick("ac", "switch_ac"));
+    if (btnAc) btnAc.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._handleSafeSwitchClick("ac", "switch_ac");
+    });
 
     const btnDc = this.shadowRoot.getElementById("btn-ctrl-dc");
-    if (btnDc) btnDc.addEventListener("click", () => this._handleSafeSwitchClick("dc", "switch_dc"));
+    if (btnDc) btnDc.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._handleSafeSwitchClick("dc", "switch_dc");
+    });
 
     const btnUsb = this.shadowRoot.getElementById("btn-ctrl-usb");
-    if (btnUsb) btnUsb.addEventListener("click", () => this._handleSafeSwitchClick("usb", "switch_usb"));
+    if (btnUsb) btnUsb.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._handleSafeSwitchClick("usb", "switch_usb");
+    });
   }
 
   // Safety confirmation logic: If ON, requires a 2nd confirmation click within 4s to turn off!
   _handleSafeSwitchClick(switchKey, entityKey) {
     const entityId = this._mapped[entityKey];
-    if (!entityId || !this._hass) return;
+    console.info(`[Oukitel Display] Click on ${switchKey} -> Target Entity: ${entityId}`);
+
+    if (!entityId || !this._hass) {
+      console.warn(`[Oukitel Display] Entity for ${entityKey} not found in mapped:`, this._mapped);
+      return;
+    }
 
     const stateObj = this._hass.states[entityId];
     const isCurrentlyOn = stateObj && stateObj.state === "on";
@@ -566,7 +594,7 @@ class OukitelDisplayCard extends HTMLElement {
     sub.textContent = subText;
 
     if (isWarning) {
-      bg.setAttribute("fill", "rgba(239, 68, 68, 0.22)");
+      bg.setAttribute("fill", "rgba(239, 68, 68, 0.25)");
       bg.setAttribute("stroke", "#ef4444");
       bg.classList.add("confirm-pulsing");
       sub.setAttribute("fill", "#ef4444");
@@ -765,7 +793,6 @@ class OukitelDisplayCard extends HTMLElement {
     // 3. RIGHT: UPS Badge, Input Watts, Output Watts & Voltage
     const upsBadge = this.shadowRoot.getElementById("ups-badge-grp");
     if (upsBadge) {
-      // Lit when AC power is actively feeding through
       upsBadge.style.opacity = isAcConnected && (isCharging || outputW > 0) ? "1" : "0.15";
     }
 
@@ -808,7 +835,7 @@ class OukitelDisplayCard extends HTMLElement {
       iotLed.setAttribute("fill", mode.includes("LAN") || mode.includes("Cloud") ? "#00e5ff" : "#475569");
     }
 
-    // 4. EXTERIOR CONTROL DOCK BUTTONS (Respect pending safety confirmations)
+    // 4. EXTERIOR CONTROL DOCK BUTTONS
     if (!this._confirmTimers.ac) {
       this._updateSwitchButtonVisual("ac", isAcOn, isAcOn ? "ACTIVO • 230V" : "APAGADO", false);
     }
