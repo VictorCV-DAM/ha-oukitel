@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 import logging
+import os
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -36,6 +37,30 @@ PLATFORMS: list[Platform] = [
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Oukitel Power Station from a config entry."""
     hass.data.setdefault(DOMAIN, {})
+
+    # Register frontend Lovelace cards
+    if not hass.data[DOMAIN].get("frontend_registered"):
+        frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
+        if os.path.isdir(frontend_dir):
+            try:
+                from homeassistant.components.http import StaticPathConfig
+                await hass.http.async_register_static_paths([
+                    StaticPathConfig(
+                        "/oukitel_frontend",
+                        frontend_dir,
+                        cache_headers=False,
+                    )
+                ])
+                hass.data[DOMAIN]["frontend_registered"] = True
+                _LOGGER.debug("oukitel: Registered frontend static path at /oukitel_frontend")
+            except (ImportError, AttributeError):
+                try:
+                    hass.http.register_static_path("/oukitel_frontend", frontend_dir, cache_headers=False)
+                    hass.data[DOMAIN]["frontend_registered"] = True
+                except Exception:
+                    pass
+            except Exception as err:
+                _LOGGER.debug("oukitel: Frontend registration notice: %s", err)
 
     region = entry.data.get(CONF_REGION, DEFAULT_REGION)
     email = entry.data[CONF_EMAIL]
