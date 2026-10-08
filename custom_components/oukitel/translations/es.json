@@ -10,6 +10,13 @@
           "password": "Contraseña",
           "poll_interval": "Intervalo de Actualización (segundos)"
         }
+      },
+      "device": {
+        "title": "Seleccionar Estación Oukitel",
+        "description": "Se han detectado varias estaciones Oukitel en tu cuenta. Selecciona cuál deseas vincular a Home Assistant:",
+        "data": {
+          "device_key": "Estación Oukitel"
+        }
       }
     },
     "error": {
@@ -25,7 +32,7 @@
     "step": {
       "init": {
         "title": "Opciones del Dispositivo",
-        "description": "Ajusta la configuración, tarifas y frecuencia de actualización de esta batería Oukitel.",
+        "description": "Ajustes específicos para {device_name} (modo de conexión, IP local, intervalos y tarifas).",
         "data": {
           "connection_mode": "Modo de conexión",
           "host": "IP Local de la Estación (Opcional: déjalo vacío para detección auto. Recomendable si tiene IP estática para agilizar la conexión)",

@@ -81,16 +81,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_HOST,
         entry.data.get(CONF_HOST)
     )
+    device_key = entry.data.get("device_key")
 
-    _LOGGER.debug("oukitel: Setting up entry for %s (mode=%s, host=%s)", email, connection_mode, host)
-    client = AcceleronixCloudClient(email=email, password=password, region=region)
+    _LOGGER.debug(
+        "oukitel: Setting up entry for %s (device_key=%s, mode=%s, host=%s)",
+        email, device_key, connection_mode, host,
+    )
+    client = AcceleronixCloudClient(
+        email=email,
+        password=password,
+        region=region,
+        device_key=device_key,
+    )
     success = await hass.async_add_executor_job(client.login)
     if not success:
         _LOGGER.error("oukitel: Failed to login to Oukitel cloud")
         return False
 
     await hass.async_add_executor_job(client.fetch_device_info)
-    _LOGGER.debug("oukitel: Fetched device info. authKey present: %s", bool(client.auth_key))
+    _LOGGER.debug(
+        "oukitel: Fetched device info for %s (%s). authKey present: %s",
+        client.device_name, client.device_key, bool(client.auth_key),
+    )
 
     coordinator = OukitelDataCoordinator(
         hass,

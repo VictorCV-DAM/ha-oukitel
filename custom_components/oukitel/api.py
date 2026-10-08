@@ -20,7 +20,13 @@ _LOGGER = logging.getLogger(__name__)
 class AcceleronixCloudClient:
     """Client to authenticate and interact with Acceleronix / Quectel Cloud API."""
 
-    def __init__(self, email: str, password: str, region: str = "EU"):
+    def __init__(
+        self,
+        email: str,
+        password: str,
+        region: str = "EU",
+        device_key: str | None = None,
+    ):
         self.email = email
         self.password = password
         self.region = region.upper() if region.upper() in REGION_SERVERS else "EU"
@@ -35,7 +41,7 @@ class AcceleronixCloudClient:
         self.access_token = None
         self.refresh_token = None
         self.token_expiry = 0
-        self.device_key = None
+        self.device_key = device_key
         self.product_key = None
         self.device_name = None
         self.product_name = None
@@ -122,39 +128,55 @@ class AcceleronixCloudClient:
             "User-Agent": "okhttp/4.9.3",
         }
 
-    def fetch_device_info(self) -> bool:
-        """Fetch bound device key and product key."""
+    def get_devices_list(self) -> list[dict]:
+        """Fetch all bound devices in the user account."""
         self.ensure_authenticated()
         url = f"{self.base_url}/v2/binding/enduserapi/userDeviceList"
         try:
             r = requests.get(url, headers=self.get_auth_headers(), timeout=15)
             res = r.json()
             if res.get("code") == 200:
-                devices = res.get("data", {}).get("list", [])
-                if devices:
-                    dev = devices[0]
-                    self.device_key = dev["deviceKey"]
-                    self.product_key = dev["productKey"]
-                    self.device_name = dev.get("deviceName", "Oukitel P2001")
-                    self.product_name = dev.get("productName") or dev.get("deviceName", "Oukitel Power Station")
-                    self.auth_key = dev.get("authKey")
-                    self.is_online = self._parse_device_online_status(dev)
-                    _LOGGER.debug(
-                        "oukitel: Device ready — authKey present: %s, is_online: %s",
-                        bool(self.auth_key),
-                        self.is_online,
-                    )
-                    return True
-                _LOGGER.error("oukitel: No bound devices found in account.")
-                return False
+                return res.get("data", {}).get("list", [])
             if res.get("code") == 5032:
                 self.login()
-                return self.fetch_device_info()
-            _LOGGER.error("oukitel: Error fetching device info: %s", res.get("msg"))
-            return False
+                return self.get_devices_list()
+            _LOGGER.error("oukitel: Error fetching devices list: %s", res.get("msg"))
+            return []
         except Exception as err:
-            _LOGGER.error("oukitel: Exception in fetch_device_info: %s", err)
+            _LOGGER.error("oukitel: Exception in get_devices_list: %s", err)
+            return []
+
+    def fetch_device_info(self) -> bool:
+        """Fetch bound device key and product key for target device (or first available)."""
+        devices = self.get_devices_list()
+        if not devices:
+            _LOGGER.error("oukitel: No bound devices found in account.")
             return False
+
+        dev = None
+        if self.device_key:
+            for d in devices:
+                if d.get("deviceKey") == self.device_key:
+                    dev = d
+                    break
+
+        if not dev:
+            dev = devices[0]
+
+        self.device_key = dev["deviceKey"]
+        self.product_key = dev["productKey"]
+        self.device_name = dev.get("deviceName", "Oukitel P2001")
+        self.product_name = dev.get("productName") or dev.get("deviceName", "Oukitel Power Station")
+        self.auth_key = dev.get("authKey")
+        self.is_online = self._parse_device_online_status(dev)
+        _LOGGER.debug(
+            "oukitel: Device ready — %s (%s), authKey present: %s, is_online: %s",
+            self.device_name,
+            self.device_key,
+            bool(self.auth_key),
+            self.is_online,
+        )
+        return True
 
     def control_device(self, properties_list: list) -> bool:
         """Send hardware control commands via batchControlDevice."""

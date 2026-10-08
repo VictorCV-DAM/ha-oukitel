@@ -57,6 +57,11 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def __init__(self) -> None:
+        """Initialize config flow state."""
+        self._discovered_devices: list[dict] = []
+        self._user_credentials: dict = {}
+
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         errors = {}
@@ -72,23 +77,81 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not success:
                 errors["base"] = "invalid_auth"
             else:
-                dev_success = await self.hass.async_add_executor_job(client.fetch_device_info)
-                if not dev_success:
+                devices = await self.hass.async_add_executor_job(client.get_devices_list)
+                if not devices:
                     errors["base"] = "no_devices"
                 else:
-                    unique_id = f"oukitel_{client.device_key}"
-                    await self.async_set_unique_id(unique_id)
-                    self._abort_if_unique_id_configured()
+                    self._discovered_devices = devices
+                    self._user_credentials = user_input
 
-                    return self.async_create_entry(
-                        title=f"{client.device_name} ({client.device_key[-4:]})",
-                        data=user_input,
-                    )
+                    configured_ids = {
+                        entry.unique_id for entry in self._async_current_entries()
+                    }
+                    available = [
+                        d for d in devices
+                        if f"oukitel_{d.get('deviceKey')}" not in configured_ids
+                    ]
+
+                    if not available:
+                        return self.async_abort(reason="already_configured")
+
+                    if len(available) == 1:
+                        return await self._async_create_device_entry(available[0])
+
+                    return await self.async_step_device()
 
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
             errors=errors,
+        )
+
+    async def async_step_device(self, user_input=None):
+        """Handle multiple devices selection step."""
+        configured_ids = {
+            entry.unique_id for entry in self._async_current_entries()
+        }
+        available = [
+            d for d in self._discovered_devices
+            if f"oukitel_{d.get('deviceKey')}" not in configured_ids
+        ]
+
+        if not available:
+            return self.async_abort(reason="already_configured")
+
+        if user_input is not None:
+            chosen_key = user_input["device_key"]
+            dev = next((d for d in available if d.get("deviceKey") == chosen_key), None)
+            if dev:
+                return await self._async_create_device_entry(dev)
+
+        device_options = {
+            d["deviceKey"]: f"{d.get('deviceName', 'Oukitel')} ({d.get('productName', 'Power Station')}) - [{d['deviceKey'][-4:]}]"
+            for d in available
+        }
+
+        return self.async_show_form(
+            step_id="device",
+            data_schema=vol.Schema({
+                vol.Required("device_key", default=next(iter(device_options.keys()))): vol.In(device_options)
+            }),
+        )
+
+    async def _async_create_device_entry(self, dev: dict):
+        """Create config entry for a specific Oukitel device."""
+        unique_id = f"oukitel_{dev['deviceKey']}"
+        await self.async_set_unique_id(unique_id)
+        self._abort_if_unique_id_configured()
+
+        entry_data = dict(self._user_credentials)
+        entry_data["device_key"] = dev["deviceKey"]
+        entry_data["product_key"] = dev.get("productKey")
+        entry_data["device_name"] = dev.get("deviceName", "Oukitel P2001")
+
+        title = f"{dev.get('deviceName', 'Oukitel')} ({dev['deviceKey'][-4:]})"
+        return self.async_create_entry(
+            title=title,
+            data=entry_data,
         )
 
     @staticmethod
@@ -200,4 +263,5 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=options_schema,
+            description_placeholders={"device_name": self._config_entry.title},
         )

@@ -10,6 +10,13 @@
           "password": "Password",
           "poll_interval": "Update Interval (seconds)"
         }
+      },
+      "device": {
+        "title": "Select Oukitel Device",
+        "description": "Multiple Oukitel power stations were found in your account. Select which one to configure in Home Assistant:",
+        "data": {
+          "device_key": "Oukitel Station"
+        }
       }
     },
     "error": {
@@ -25,7 +32,7 @@
     "step": {
       "init": {
         "title": "Device Options",
-        "description": "Adjust the telemetry update frequency for this Oukitel device.",
+        "description": "Adjust settings for {device_name} (connection mode, local IP, intervals and tariffs).",
         "data": {
           "connection_mode": "Connection Mode",
           "host": "Station Local IP (Optional: leave empty for auto-discovery. Recommended if static IP to improve connection)",
