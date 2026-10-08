@@ -113,17 +113,35 @@ class OukitelDisplayCard extends HTMLElement {
     this._mapped = {};
   }
 
+  connectedCallback() {
+    if (!this._hasRendered) {
+      this._render();
+      this._hasRendered = true;
+    }
+    if (this._hass) {
+      this._updateState();
+    }
+  }
+
   setConfig(config) {
     this._config = {
       show_bezel: true,
       ...config,
     };
     this._render();
+    this._hasRendered = true;
+    if (this._hass) {
+      this._updateState();
+    }
   }
 
   set hass(hass) {
     this._hass = hass;
     this._mapped = findOukitelEntities(hass, this._config);
+    if (!this._hasRendered) {
+      this._render();
+      this._hasRendered = true;
+    }
     this._updateState();
   }
 
@@ -553,6 +571,16 @@ class OukitelCard extends HTMLElement {
     this._confirmTimers = { ac: null, dc: null, usb: null };
   }
 
+  connectedCallback() {
+    if (!this._hasRendered) {
+      this._render();
+      this._hasRendered = true;
+    }
+    if (this._hass) {
+      this._updateState();
+    }
+  }
+
   setConfig(config) {
     this._config = {
       title: "Oukitel Power Station",
@@ -562,6 +590,10 @@ class OukitelCard extends HTMLElement {
       ...config,
     };
     this._render();
+    this._hasRendered = true;
+    if (this._hass) {
+      this._updateState();
+    }
   }
 
   set hass(hass) {
