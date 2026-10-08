@@ -151,9 +151,9 @@ Click the button below to add this repository directly to your HACS:
 
 You can configure the active connection mode at any time directly in Home Assistant (**Settings** ➔ **Devices & Services** ➔ **Oukitel Power Station** ➔ **Configure ⚙️**):
 
-1. **Automático (LAN preferente + Cloud)** *(Default)*: Automatically connects via local LAN (TCP port 6607, binary AES-128 push) when the station is on your home Wi-Fi network. If the station goes offline, drops Wi-Fi, or is outside the local network, it seamlessly falls back to Cloud API polling without missing data.
-2. **Solo LAN (Tiempo real directo)**: Pure local communication with 0 cloud latency. Does not make requests to the cloud servers.
-3. **Solo Cloud (Nube / Polling)**: Standard cloud polling via the official Acceleronix/Quectel servers (ideal when Home Assistant and the power station are on separate networks or behind isolated VLANs).
+1. **Automatic (LAN preferente + Cloud)** *(Default)*: Automatically connects via local LAN (TCP port 6607, binary AES-128 push) when the station is on your home Wi-Fi network. If the station goes offline, drops Wi-Fi, or is outside the local network, it seamlessly falls back to Cloud API polling without missing data.
+2. **LAN Only (Direct local real-time)**: Pure local communication with 0 cloud latency. Does not make requests to the cloud servers.
+3. **Cloud Only (Polling)**: Standard cloud polling via the official Acceleronix/Quectel servers (ideal when Home Assistant and the power station are on separate networks or behind isolated VLANs).
 
 | Feature | **LAN Mode** | **Cloud Mode** |
 |---|---|---|
@@ -167,10 +167,10 @@ You can configure the active connection mode at any time directly in Home Assist
 > The **Connection Mode** diagnostic sensor on the device page always reports whether the station is actively communicating via `LAN` or `Cloud`.
 
 > [!IMPORTANT]
-> **Sincronización al cambiar manualmente entre modos / Mode Switching & Initial Synchronization:**
-> Al cambiar manualmente entre modos de conexión (**Automático**, **Solo LAN** o **Solo Cloud**) en la configuración de la integración, Home Assistant necesita renegociar la sesión local o de nube, por lo que **puede tardar unos segundos en recuperar y poblar el estado completo de los sensores por primera vez**.
-> 
-> 👉 **Recomendación**: Tras cambiar de modo, pulsa sobre el botón **Reload Connection** (`Recargar Conexión` en la sección Diagnóstico) para forzar un refresco instantáneo de todos los datos y asegurar la sincronización inmediata de la estación.
+> **Synchronization When Manually Switching Between Modes / Mode Switching & Initial Synchronization:**
+> When manually switching between connection modes (**Automatic**, **LAN Only**, or **Cloud Only**) in the integration settings, Home Assistant needs to renegotiate the local or cloud session, so **it may take a few seconds to retrieve and populate the complete sensor status for the first time**.
+
+> 👉 **Recommendation**: After changing modes, press the **Reload Connection** button (in the Diagnostics section) to force an instant refresh of all data and ensure immediate station synchronization.
 > 
 > *When manually switching between connection modes (**Auto**, **LAN Only**, or **Cloud Only**) in the integration options, Home Assistant must re-establish the connection session, which may take a few moments to populate all sensor states for the first time.*
 > 
