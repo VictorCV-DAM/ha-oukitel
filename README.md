@@ -112,9 +112,9 @@ Click the button below to add this repository directly to your HACS:
         <sub>Hub entry point with direct access to options and diagnostics.</sub>
       </td>
       <td width="50%" align="center">
-        <b>6. Dynamic Telemetry Frequency Options</b><br/><br/>
-        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/04_options_frequency.png" alt="Options Frequency Dialog" width="95%"/><br/>
-        <sub>Modify update polling interval (3-120s) on-the-fly without re-logging.</sub>
+        <b>6. Device Options, Modes & Tariffs</b><br/><br/>
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/04_options_frequency.png" alt="Device Options, Modes and Tariffs Dialog" width="95%"/><br/>
+        <sub>Configure connection modes (LAN/Cloud), telemetry frequency (3-120s), and dynamic energy tariffs (PVPC / Nord Pool).</sub>
       </td>
     </tr>
   </table>
