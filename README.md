@@ -177,6 +177,11 @@ Unlike native station firmware which can confuse charging and discharging when s
 
 *(Note: All port power sensors default to `0 W` immediately upon startup, guaranteeing zero `Unknown` states even before individual sub-packets arrive).*
 
+### 📊 Inverter Efficiency & Internal Loss Sensors
+- `sensor.oukitel_inverter_idle_power`: Standby / tare no-load power consumed by the pure sine wave inverter board (W). Accurately reports 18.0 W when AC switch is active without load, and 0 W when turned off.
+- `sensor.oukitel_inverter_efficiency`: Real-time power conversion efficiency (%). Features calibrated Sandia quadratic inverter loss modeling for Oukitel bidirectional inverters (up to 98.5% in UPS bypass passthrough; 92.5% peak inverting curve).
+- `sensor.oukitel_inverter_loss_power`: Real-time internal thermal dissipation and conversion losses in Watts (W).
+
 ### 🛡️ Diagnostic & Health Sensors
 - `sensor.oukitel_hardware_fault_status`: **Official Home Assistant ENUM sensor** with predefined, standardized states for direct use in automations.
 - `sensor.oukitel_connection_mode`: Active transport layer (`LAN` or `Cloud`) · *Diagnostic*.
