@@ -110,6 +110,13 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
         if dc_a is not None:
             target["dc_output_current"] = dc_a
 
+    # 5. Direct switch tags (LAN TTLV 43=ac_switch, 44=usb_switch, 46=dc_switch)
+    for sw_k, sw_tag in (("ac_switch", 43), ("usb_switch", 44), ("dc_switch", 46)):
+        if target.get(sw_tag) is not None:
+            target[sw_k] = bool(target[sw_tag])
+        elif target.get(str(sw_tag)) is not None:
+            target[sw_k] = bool(target[str(sw_tag)])
+
     # Default all individual power sensors to 0 if not present yet (avoids Unknown states)
     for k in (
         "ac_output_power",
@@ -458,6 +465,24 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info("oukitel: authKey unavailable — running in cloud mode")
             return
 
+        # Seed static diagnostics (BMS_Version, AC_Version, etc.) from Cloud shadow if reachable
+        try:
+            cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
+            if cloud_snapshot:
+                static_keys = (
+                    "BMS_Version",
+                    "AC_Version",
+                    "Frequency_Switchover",
+                    "ACvoltage_Switchover",
+                    "ac_charging_limit",
+                )
+                for k in static_keys:
+                    if k in cloud_snapshot and cloud_snapshot[k] is not None:
+                        self._lan_state[k] = cloud_snapshot[k]
+                _unpack_port_data(self._lan_state)
+        except Exception as exc:
+            _LOGGER.debug("oukitel: Could not seed initial static metadata from cloud: %s", exc)
+
         _LOGGER.info("oukitel: Device found at %s — starting LAN session", host)
         await self._start_lan_session(host, auth_key)
 
@@ -540,6 +565,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             31: "AC_Version",
             33: "inverter_temp",
             34: "BMS_Version",
+            43: "ac_switch",
+            44: "usb_switch",
+            46: "dc_switch",
         }
         
         current_data = dict(self._lan_state or self.data or {})
@@ -549,7 +577,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             if tag == 2:
                 current_data["remaining_time"] = val
             current_data[str(tag)] = val
-            if tag in (6, 7, 8, 9):
+            if tag in (6, 7, 8, 9, 43, 44, 46):
                 current_data[tag] = val
 
         _unpack_port_data(current_data)
@@ -632,9 +660,15 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
 
         data = dict(self._lan_state)
-        # Preserve cloud-only tags if already known
+        # Preserve static/cloud-only diagnostic tags if already known
         if self.data:
-            for k in ("ACvoltage_Switchover", "Frequency_Switchover"):
+            for k in (
+                "ACvoltage_Switchover",
+                "Frequency_Switchover",
+                "BMS_Version",
+                "AC_Version",
+                "wifi_signal",
+            ):
                 if k in self.data and k not in data:
                     data[k] = self.data[k]
         self._apply_user_overrides(data)
