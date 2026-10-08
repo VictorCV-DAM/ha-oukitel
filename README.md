@@ -187,6 +187,11 @@ Enables tracking of exact economic cost and solar self-consumption savings in re
 - **`sensor.oukitel_lifetime_savings`**: Historical lifetime savings generated since installation.
 - **`sensor.oukitel_lifetime_charging_cost`**: Historical lifetime cost of grid charging.
 
+<div align="center">
+  <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/11_device_options_tariffs.png" alt="Device Options Tariffs" width="450"/>
+  <p><i>Configure connection mode, dynamic price sensor (PVPC / Nord Pool), currency symbol, and fallback tariff directly in device options.</i></p>
+</div>
+
 #### 3. ⏱️ Predictive Autonomy Engine ("Exact Clock Shutdown & Full Charge Time")
 Solves the issue of erratic remaining-time fluctuations caused by transient high-power appliance surges (e.g. coffee maker or microwave):
 - **15-Minute Moving Average Filter**: Smooths net discharge loads over time while instantly adapting to operational mode transitions (discharging vs charging).
@@ -214,7 +219,20 @@ Includes a preconfigured official automation blueprint ready to import into Home
 - **`Oukitel Solar & Battery Manager (Smart Energy Shifting)`** (`blueprints/automation/oukitel/solar_battery_manager.yaml`): Automates overnight valley-hour grid charging and daytime peak-hour battery discharge with customizable reserve thresholds.
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/10_official_blueprints.png" alt="Official Blueprint" width="650"/>
+  <table width="100%">
+    <tr>
+      <td width="42%" align="center">
+        <b>1. Discovered Blueprint in Home Assistant</b><br/><br/>
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/10_official_blueprints.png" alt="Official Blueprint" width="95%"/><br/>
+        <sub>Single-click automation creation from the Blueprints panel.</sub>
+      </td>
+      <td width="58%" align="center">
+        <b>2. Visual Configuration & Smart Rules</b><br/><br/>
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/12_blueprint_configuration.png" alt="Blueprint Configuration UI" width="95%"/><br/>
+        <sub>Configurable critical reserve %, sunrise solar priority, 50% solar ceiling, and monthly BMS balance day.</sub>
+      </td>
+    </tr>
+  </table>
 </div>
 
 ---
@@ -384,7 +402,38 @@ How was this information discovered and implemented?
 
 ## 🎨 Dashboard Cards & Custom Lovelace Examples
 
-Here are curated Lovelace card examples to monitor your Oukitel Power Station with custom visuals:
+### 🌟 Official Plug & Play Cards (`custom:oukitel-card` & `custom:oukitel-display-card`)
+
+The integration automatically registers two custom Lovelace cards in your Home Assistant resources. When adding a card in your dashboard, simply search for **`ouki`** in the native Card Picker:
+
+<div align="center">
+  <table width="100%">
+    <tr>
+      <td width="50%" align="center">
+        <b>1. Native Home Assistant Card Picker</b><br/><br/>
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/13_lovelace_card_picker.png" alt="Lovelace Card Picker" width="95%"/><br/>
+        <sub>Visual selection with live preview thumbnails for both the Control Card and LCD Display Card.</sub>
+      </td>
+      <td width="50%" align="center">
+        <b>2. Full Interactive Control Station Card</b><br/><br/>
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/07_interactive_station_card.png" alt="Oukitel Station Card" width="95%"/><br/>
+        <sub>Photorealistic LCD screen, 2-step safety switch toggles, and daily financial ROI balance.</sub>
+      </td>
+    </tr>
+  </table>
+</div>
+
+#### Ready-to-use Lovelace YAML:
+```yaml
+type: custom:oukitel-card
+```
+*(Zero manual configuration required: it automatically auto-discovers your Oukitel station entities!)*
+
+---
+
+### Alternative Custom Lovelace Configurations (Manual Cards)
+
+Here are curated manual Lovelace card examples to monitor your Oukitel Power Station with custom visuals:
 
 ### 1. Animated Battery Graphic (Picture Elements)
 
