@@ -50,7 +50,7 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 
 ---
 
-## 🧩 Compatibility & Certified Home Assistant Versions (Compatibilidad Certificada)
+## 🧩 Compatibility & Certified Home Assistant Versions
 
 To guarantee flawless operation across all 58 entities, native Riemann sum energy integrators, dynamic electricity price selectors, and bilingual tooltips, this integration certifies the following compatibility range:
 
@@ -84,7 +84,7 @@ Click the button below to add this repository directly to your HACS:
 7. **Restart Home Assistant once**: Perform a quick restart (**Settings ➔ System ➔ Restart**) to finalize registering all entities and Riemann energy integrators cleanly.
 
 > [!IMPORTANT]
-> **⚠️ Restart Home Assistant Once After Adding Your Device (Reinicio tras Agregar el Dispositivo)**:
+> **⚠️ Restart Home Assistant Once After Adding Your Device**:
 > Immediately after completing the setup flow and adding your Oukitel Power Station in Home Assistant:
 > - **Perform a single restart of Home Assistant** (**Settings ➔ System ➔ Restart**).
 > - **Why?** This ensures that Home Assistant's Entity Registry and Recorder engine cleanly initialize the linked secondary device (*Calculated Sensors*), Riemann trapezoidal energy integrators (kWh), and financial ROI metrics. Without this initial restart, calculated entities may temporarily appear as `Unavailable`.
@@ -151,9 +151,9 @@ Click the button below to add this repository directly to your HACS:
 
 You can configure the active connection mode at any time directly in Home Assistant (**Settings** ➔ **Devices & Services** ➔ **Oukitel Power Station** ➔ **Configure ⚙️**):
 
-1. **Automatic (LAN preferente + Cloud)** *(Default)*: Automatically connects via local LAN (TCP port 6607, binary AES-128 push) when the station is on your home Wi-Fi network. If the station goes offline, drops Wi-Fi, or is outside the local network, it seamlessly falls back to Cloud API polling without missing data.
-2. **LAN Only (Direct local real-time)**: Pure local communication with 0 cloud latency. Does not make requests to the cloud servers.
-3. **Cloud Only (Polling)**: Standard cloud polling via the official Acceleronix/Quectel servers (ideal when Home Assistant and the power station are on separate networks or behind isolated VLANs).
+1. **Automatic (LAN preferred + Cloud)** *(Default)*: Automatically connects via local LAN (TCP port 6607, binary AES-128 push) when the station is on your home Wi-Fi network. If the station goes offline, drops Wi-Fi, or is outside the local network, it seamlessly falls back to Cloud API polling without missing data.
+2. **LAN Only (Direct real-time)**: Pure local communication with 0 cloud latency. Does not make requests to the cloud servers.
+3. **Cloud Only (Cloud / Polling)**: Standard cloud polling via the official Acceleronix/Quectel servers (ideal when Home Assistant and the power station are on separate networks or behind isolated VLANs).
 
 | Feature | **LAN Mode** | **Cloud Mode** |
 |---|---|---|
@@ -167,14 +167,10 @@ You can configure the active connection mode at any time directly in Home Assist
 > The **Connection Mode** diagnostic sensor on the device page always reports whether the station is actively communicating via `LAN` or `Cloud`.
 
 > [!IMPORTANT]
-> **Synchronization When Manually Switching Between Modes / Mode Switching & Initial Synchronization:**
-> When manually switching between connection modes (**Automatic**, **LAN Only**, or **Cloud Only**) in the integration settings, Home Assistant needs to renegotiate the local or cloud session, so **it may take a few seconds to retrieve and populate the complete sensor status for the first time**.
-
-> 👉 **Recommendation**: After changing modes, press the **Reload Connection** button (in the Diagnostics section) to force an instant refresh of all data and ensure immediate station synchronization.
+> **Mode Switching & Initial Synchronization:**
+> When manually switching between connection modes (**Automatic**, **LAN Only**, or **Cloud Only**) in the integration options, Home Assistant must re-negotiate the connection session. It **may take a few seconds to retrieve and populate all sensor states for the first time**.
 > 
-> *When manually switching between connection modes (**Auto**, **LAN Only**, or **Cloud Only**) in the integration options, Home Assistant must re-establish the connection session, which may take a few moments to populate all sensor states for the first time.*
-> 
-> 👉 **Recommendation**: After changing the mode, press the **Reload Connection** button (found under the **Diagnostic** section of the device) to trigger an immediate telemetry refresh and ensure complete state synchronization.
+> 👉 **Recommendation**: After switching modes, click the **Reload Connection** button (located under the **Diagnostic** section of your device card) to trigger an immediate telemetry refresh and ensure instant state synchronization across all entities.
 > 
 > <div align="center">
 >   <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/14_reload_connection_button.png" alt="Reload Connection Button" width="340" />
@@ -193,7 +189,7 @@ You can configure the active connection mode at any time directly in Home Assist
 ---
 
 ## 🚀 Advanced Energy Architecture & Calculated Metrics (v1.5.0+)
-*(Recorrido de Desarrollo: Hitos y Nuevas Capacidades Integradas)*
+*(Development Roadmap: Milestones & Integrated Capabilities)*
 
 Version **1.5.0** marks a monumental milestone in the integration's evolution. Transitioning from basic telemetry into a full-scale Home Assistant Energy & Financial Management ecosystem, the integration now automatically discovers **2 connected devices** and exposes **58 native entities**:
 
@@ -293,7 +289,7 @@ The integration automatically exposes **58 entities** organized across **2 linke
 - **Device 2: Calculated Energy & Financial Metrics (`22 entities`)**: Energy kWh accumulators, financial ROI metrics, battery health, and predictive timestamps.
 
 > [!NOTE]
-> **Entities Enabled vs. Disabled by Default (Entidades Habilitadas vs. Deshabilitadas por Defecto)**:
+> **Entities Enabled vs. Disabled by Default**:
 > Out of the 58 total entities exposed by the integration, **49 entities are enabled by default** for immediate plug-and-play monitoring. To prevent dashboard clutter, **9 secondary entities are disabled by default** in Home Assistant's entity registry:
 > - **`sensor.oukitel_remaining_time`**: Generic display countdown (disabled in favor of the dedicated, direction-aware `remaining_discharge_time` and `remaining_charge_time`).
 > - **Per-port USB wattage breakdown**: `usb_a_power`, `usb_c_qc_power`, `typec1_power`, `typec2_power`, `typec3_power`, `typec4_power`.
