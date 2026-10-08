@@ -230,12 +230,11 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                     SelectSelectorConfig(
                         options=[MODE_AUTO, MODE_LAN, MODE_CLOUD],
                         translation_key="connection_mode",
-                        mode=SelectSelectorMode.RADIO,
+                        mode=SelectSelectorMode.LIST,
                     )
                 ),
                 vol.Optional(
                     CONF_HOST,
-                    description={"suggested_value": current_host} if current_host else {},
                 ): TextSelector(
                     TextSelectorConfig(type=TextSelectorType.TEXT)
                 ),
@@ -245,7 +244,6 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                 ): vol.All(cv.positive_int, vol.Range(min=3, max=120)),
                 vol.Optional(
                     CONF_PRICE_SENSOR,
-                    description={"suggested_value": current_price_sensor} if current_price_sensor else {},
                 ): EntitySelector(
                     EntitySelectorConfig(domain="sensor")
                 ),
@@ -274,8 +272,14 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
             }
         )
 
+        suggested_values = {}
+        if current_host:
+            suggested_values[CONF_HOST] = current_host
+        if current_price_sensor:
+            suggested_values[CONF_PRICE_SENSOR] = current_price_sensor
+
         return self.async_show_form(
             step_id="init",
-            data_schema=options_schema,
+            data_schema=self.add_suggested_values_to_schema(options_schema, suggested_values),
             description_placeholders={"device_name": self._config_entry.title},
         )
