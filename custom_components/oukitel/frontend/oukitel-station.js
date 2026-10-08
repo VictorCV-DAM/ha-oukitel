@@ -23,6 +23,247 @@ if (!document.head.querySelector("link[href*='Orbitron']")) {
   document.head.appendChild(fontLink);
 }
 
+// Universal Tooltip Descriptions for Oukitel Entities
+const OUKITEL_DESCRIPTIONS = {
+  // Core Telemetry & Diagnostics
+  battery_percentage: "Nivel de carga restante de la batería en porcentaje.",
+  total_input_power: "Potencia total combinada entrante a la estación (red eléctrica AC + paneles solares/DC).",
+  total_output_power: "Potencia total simultánea consumida por todas las salidas activas (AC + DC + USB).",
+  ac_input: "Potencia de recarga recibida desde la red eléctrica o enchufe de pared de 230V.",
+  dc_input: "Potencia de recarga generada por paneles solares fotovoltaicos o entrada DC.",
+  temp: "Temperatura interna general del compartimento de celdas de la batería.",
+  inverter_temp: "Temperatura interna de los disipadores y electrónica de potencia del inversor AC.",
+  remaining_time: "Tiempo restante estimado de funcionamiento según la pantalla LCD oficial.",
+  remain_time: "Autonomía restante de descarga hasta agotar la batería con el consumo actual.",
+  remain_charging_time: "Tiempo restante estimado para completar la carga de la batería al 100%.",
+  ac_output_power: "Potencia útil consumida por los aparatos conectados a las tomas de corriente AC (230V).",
+  ac_output_voltage: "Voltaje medido en tiempo real en las tomas de corriente alterna de salida (230V).",
+  usb_a_power: "Potencia total suministrada a través de los puertos de carga USB-A.",
+  usb_c_qc_power: "Potencia suministrada por el puerto de carga rápida USB-C Quick Charge.",
+  typec1_power: "Potencia suministrada en tiempo real por el puerto Type-C 1 (carga rápida Power Delivery).",
+  typec2_power: "Potencia suministrada en tiempo real por el puerto Type-C 2.",
+  typec3_power: "Potencia suministrada en tiempo real por el puerto Type-C 3.",
+  typec4_power: "Potencia suministrada en tiempo real por el puerto Type-C 4.",
+  dc_output_power: "Potencia consumida por la toma de mechero de 12V y puertos DC.",
+  dc_output_voltage: "Voltaje continuo medido en la salida de 12V DC.",
+  dc_output_current: "Intensidad de corriente continua en amperios en la salida de 12V DC.",
+  wifi_signal: "Intensidad de la señal Wi-Fi recibida por la estación en dBm.",
+  BMS_Version: "Versión de firmware del sistema de gestión de batería (BMS).",
+  AC_Version: "Versión de firmware del controlador del inversor de corriente alterna.",
+  device_fault_status: "Estado operativo del hardware y protecciones activas (temperatura, sobrecarga, batería).",
+  connection_mode: "Canal de comunicación activo con Home Assistant: red local (LAN) o servidores Cloud.",
+
+  // Inverter Diagnostics & Losses
+  inverter_idle_power: "Consumo parásito del inversor encendido en reposo sin carga conectada (18W).",
+  inverter_efficiency: "Eficiencia de conversión energética en tiempo real del inversor de corriente alterna.",
+  inverter_loss_power: "Pérdidas térmicas internas y disipación de energía del inversor en vatios.",
+
+  // Battery Health Tracker
+  battery_cycles_count: "Ciclos completos de carga/descarga equivalentes acumulados (estándar IEC 62620).",
+  battery_state_of_health_estimated: "Estado de salud restante estimado de las celdas LiFePO4 (3.500 ciclos al 80%).",
+  days_since_last_full_charge: "Días transcurridos desde el último 100% (alerta de calibración y balanceo del BMS).",
+
+  // Calculated Energy kWh
+  calc_ac_input_kwh: "Energía total acumulada importada de la red eléctrica para recarga.",
+  calc_dc_input_kwh: "Energía total acumulada generada por paneles solares fotovoltaicos.",
+  calc_total_output_kwh: "Energía total suministrada por la estación a todos los dispositivos conectados.",
+  calc_ac_output_kwh: "Energía total entregada a través de las tomas de corriente alterna de 230V.",
+  calc_battery_discharged_kwh: "Energía total extraída de las celdas de la batería durante la descarga.",
+  calc_daily_ac_input_kwh: "Energía importada de la red eléctrica en el día en curso.",
+
+  // Calculated Financial
+  calc_daily_charging_cost_eur: "Coste económico acumulado de la recarga desde la red eléctrica hoy.",
+  calc_monthly_charging_cost_eur: "Coste económico acumulado de la recarga eléctrica durante este mes.",
+  calc_daily_savings_eur: "Ahorro económico generado hoy gracias al autoconsumo solar fotovoltaico.",
+  calc_monthly_savings_eur: "Ahorro económico mensual obtenido mediante captación de energía solar.",
+  calc_daily_net_savings_eur: "Balance económico neto del día (ahorro solar menos coste de recarga de red).",
+  calc_lifetime_savings_eur: "Ahorro económico histórico acumulado generado por energía solar.",
+  calc_lifetime_charging_cost_eur: "Coste total histórico acumulado de la recarga eléctrica.",
+
+  // Binary Sensors
+  device_online: "Indica si la estación está conectada y comunicando activamente en red local o nube.",
+  on_battery: "Indica si la estación está funcionando con batería (sin suministro de red o solar).",
+
+  // Switches & Controls
+  ac_output: "Interruptor para encender o apagar las tomas de corriente alterna de 230V.",
+  dc_12v_output: "Interruptor para encender o apagar la salida de mechero de 12V DC.",
+  usb_output: "Interruptor para encender o apagar los puertos de carga USB y Type-C.",
+  pause_integration: "Pausa la comunicación con la estación para permitir su reposo profundo.",
+  ac_charging_limit: "Ajuste del límite de potencia de recarga desde la red eléctrica (del 3% al 100%).",
+  output_frequency: "Frecuencia de salida de la corriente alterna (50 Hz o 60 Hz).",
+  output_voltage: "Tensión nominal de salida de la corriente alterna (200V - 240V).",
+  reload: "Reinicia la sesión y reconecta los protocolos de la estación de forma inmediata.",
+};
+
+function getOukitelDescription(entityId, hass) {
+  if (!entityId || typeof entityId !== "string") return null;
+
+  // 1. Direct state attributes description
+  if (hass && hass.states && hass.states[entityId]) {
+    const st = hass.states[entityId];
+    if (st.attributes && st.attributes.description) {
+      return st.attributes.description;
+    }
+  }
+
+  const id = entityId.toLowerCase();
+
+  // 2. Exact or substring matching
+  if (id.includes("inverter_temp") || id.includes("inverter_temperature")) return OUKITEL_DESCRIPTIONS.inverter_temp;
+  if (id.includes("inverter_idle")) return OUKITEL_DESCRIPTIONS.inverter_idle_power;
+  if (id.includes("inverter_eff")) return OUKITEL_DESCRIPTIONS.inverter_efficiency;
+  if (id.includes("inverter_loss")) return OUKITEL_DESCRIPTIONS.inverter_loss_power;
+  if (id.includes("battery_cycles") || id.includes("cycles_count")) return OUKITEL_DESCRIPTIONS.battery_cycles_count;
+  if (id.includes("battery_state_of_health") || id.includes("health_estimated") || id.includes("battery_health")) return OUKITEL_DESCRIPTIONS.battery_state_of_health_estimated;
+  if (id.includes("days_since") || id.includes("last_full_charge")) return OUKITEL_DESCRIPTIONS.days_since_last_full_charge;
+
+  if (id.includes("calc_ac_input_kwh")) return OUKITEL_DESCRIPTIONS.calc_ac_input_kwh;
+  if (id.includes("calc_dc_input_kwh")) return OUKITEL_DESCRIPTIONS.calc_dc_input_kwh;
+  if (id.includes("calc_total_output_kwh")) return OUKITEL_DESCRIPTIONS.calc_total_output_kwh;
+  if (id.includes("calc_ac_output_kwh")) return OUKITEL_DESCRIPTIONS.calc_ac_output_kwh;
+  if (id.includes("calc_battery_discharged_kwh")) return OUKITEL_DESCRIPTIONS.calc_battery_discharged_kwh;
+  if (id.includes("calc_daily_ac_input_kwh")) return OUKITEL_DESCRIPTIONS.calc_daily_ac_input_kwh;
+
+  if (id.includes("calc_daily_charging_cost")) return OUKITEL_DESCRIPTIONS.calc_daily_charging_cost_eur;
+  if (id.includes("calc_monthly_charging_cost")) return OUKITEL_DESCRIPTIONS.calc_monthly_charging_cost_eur;
+  if (id.includes("calc_daily_savings")) return OUKITEL_DESCRIPTIONS.calc_daily_savings_eur;
+  if (id.includes("calc_monthly_savings")) return OUKITEL_DESCRIPTIONS.calc_monthly_savings_eur;
+  if (id.includes("calc_daily_net_savings")) return OUKITEL_DESCRIPTIONS.calc_daily_net_savings_eur;
+  if (id.includes("calc_lifetime_savings")) return OUKITEL_DESCRIPTIONS.calc_lifetime_savings_eur;
+  if (id.includes("calc_lifetime_charging_cost")) return OUKITEL_DESCRIPTIONS.calc_lifetime_charging_cost_eur;
+
+  if (id.includes("total_input_power")) return OUKITEL_DESCRIPTIONS.total_input_power;
+  if (id.includes("total_output_power")) return OUKITEL_DESCRIPTIONS.total_output_power;
+  if (id.includes("ac_input")) return OUKITEL_DESCRIPTIONS.ac_input;
+  if (id.includes("dc_input")) return OUKITEL_DESCRIPTIONS.dc_input;
+  if (id.includes("ac_output_power")) return OUKITEL_DESCRIPTIONS.ac_output_power;
+  if (id.includes("ac_output_voltage")) return OUKITEL_DESCRIPTIONS.ac_output_voltage;
+  if (id.includes("usb_a_power")) return OUKITEL_DESCRIPTIONS.usb_a_power;
+  if (id.includes("usb_c_qc_power")) return OUKITEL_DESCRIPTIONS.usb_c_qc_power;
+  if (id.includes("typec1_power")) return OUKITEL_DESCRIPTIONS.typec1_power;
+  if (id.includes("typec2_power")) return OUKITEL_DESCRIPTIONS.typec2_power;
+  if (id.includes("typec3_power")) return OUKITEL_DESCRIPTIONS.typec3_power;
+  if (id.includes("typec4_power")) return OUKITEL_DESCRIPTIONS.typec4_power;
+  if (id.includes("dc_output_power")) return OUKITEL_DESCRIPTIONS.dc_output_power;
+  if (id.includes("dc_output_voltage")) return OUKITEL_DESCRIPTIONS.dc_output_voltage;
+  if (id.includes("dc_output_current")) return OUKITEL_DESCRIPTIONS.dc_output_current;
+  if (id.includes("wifi_signal")) return OUKITEL_DESCRIPTIONS.wifi_signal;
+  if (id.includes("bms_version")) return OUKITEL_DESCRIPTIONS.BMS_Version;
+  if (id.includes("ac_version")) return OUKITEL_DESCRIPTIONS.AC_Version;
+  if (id.includes("device_fault_status") || id.includes("fault_status")) return OUKITEL_DESCRIPTIONS.device_fault_status;
+  if (id.includes("connection_mode")) return OUKITEL_DESCRIPTIONS.connection_mode;
+  if (id.includes("remaining_time")) return OUKITEL_DESCRIPTIONS.remaining_time;
+  if (id.includes("remain_charging_time")) return OUKITEL_DESCRIPTIONS.remain_charging_time;
+  if (id.includes("remain_time")) return OUKITEL_DESCRIPTIONS.remain_time;
+  if (id.includes("temp") && !id.includes("inverter")) return OUKITEL_DESCRIPTIONS.temp;
+  if (id.includes("on_battery")) return OUKITEL_DESCRIPTIONS.on_battery;
+  if (id.includes("device_online") || id.endsWith("_online")) return OUKITEL_DESCRIPTIONS.device_online;
+  if (id.includes("pause_integration")) return OUKITEL_DESCRIPTIONS.pause_integration;
+  if (id.includes("ac_charging_limit")) return OUKITEL_DESCRIPTIONS.ac_charging_limit;
+  if (id.includes("frequency")) return OUKITEL_DESCRIPTIONS.output_frequency;
+  if (id.includes("voltage") && id.startsWith("select.")) return OUKITEL_DESCRIPTIONS.output_voltage;
+  if (id.includes("reload")) return OUKITEL_DESCRIPTIONS.reload;
+
+  if (id.includes("ac_switch") || id.endsWith("_ac_output")) return OUKITEL_DESCRIPTIONS.ac_output;
+  if (id.includes("dc_switch") || id.includes("dc_12v_output")) return OUKITEL_DESCRIPTIONS.dc_12v_output;
+  if (id.includes("usb_switch") || id.includes("usb_output")) return OUKITEL_DESCRIPTIONS.usb_output;
+
+  if (id.includes("battery_percentage") || id.endsWith("_battery")) return OUKITEL_DESCRIPTIONS.battery_percentage;
+
+  return null;
+}
+
+function setupOukitelTooltips() {
+  if (window.__oukitel_tooltips_initialized) return;
+  window.__oukitel_tooltips_initialized = true;
+
+  function hookRowClass(cls) {
+    if (!cls || !cls.prototype || cls.prototype.__oukitel_hooked) return;
+    cls.prototype.__oukitel_hooked = true;
+    const origUpdated = cls.prototype.updated;
+    cls.prototype.updated = function (changedProps) {
+      if (origUpdated) {
+        origUpdated.call(this, changedProps);
+      }
+      try {
+        const entityId = this._config?.entity || this.config?.entity;
+        if (entityId) {
+          const desc = getOukitelDescription(entityId, this.hass);
+          if (desc) {
+            const root = this.shadowRoot || this;
+            const infoEl = root.querySelector(".info, .text-content");
+            if (infoEl) infoEl.title = desc;
+            const badge = root.querySelector("state-badge, ha-state-icon");
+            if (badge) badge.title = desc;
+            this.title = desc;
+          }
+        }
+      } catch (e) {}
+    };
+  }
+
+  if (window.customElements) {
+    if (customElements.get("hui-generic-entity-row")) {
+      hookRowClass(customElements.get("hui-generic-entity-row"));
+    }
+    if (customElements.whenDefined) {
+      customElements.whenDefined("hui-generic-entity-row").then(hookRowClass);
+    }
+  }
+
+  // Global mouseover / pointerover listener
+  document.addEventListener(
+    "mouseover",
+    (event) => {
+      try {
+        const path = event.composedPath ? event.composedPath() : [];
+        let foundDesc = null;
+        let targetRow = null;
+
+        for (const el of path) {
+          if (!el || !el.tagName) continue;
+          const entityId =
+            el.entity ||
+            el._config?.entity ||
+            el.config?.entity ||
+            el.stateObj?.entity_id ||
+            (el.getAttribute && (el.getAttribute("data-entity-id") || el.getAttribute("entity")));
+          if (entityId) {
+            const hass = el.hass || window.document.querySelector("home-assistant")?.hass;
+            const desc = getOukitelDescription(entityId, hass);
+            if (desc) {
+              foundDesc = desc;
+              targetRow = el;
+              break;
+            }
+          }
+        }
+
+        if (foundDesc) {
+          for (const subEl of path) {
+            if (!subEl || !subEl.tagName) continue;
+            if (subEl === targetRow) {
+              subEl.title = foundDesc;
+              break;
+            }
+            if (
+              (subEl.classList && (subEl.classList.contains("info") || subEl.classList.contains("name") || subEl.classList.contains("text-content"))) ||
+              subEl.tagName.toLowerCase() === "state-badge" ||
+              subEl.tagName.toLowerCase() === "ha-state-icon" ||
+              (subEl.title && subEl.title !== foundDesc)
+            ) {
+              subEl.title = foundDesc;
+            }
+          }
+        }
+      } catch (e) {}
+    },
+    true
+  );
+}
+
+setupOukitelTooltips();
+
 // Universal Auto-discovery helper for Oukitel entities (supports any entity name, model or custom rename)
 function findOukitelEntities(hass, explicitConfig = {}) {
   const states = hass.states || {};
@@ -951,7 +1192,7 @@ class OukitelCard extends HTMLElement {
         <div class="section-title">Control de Salidas</div>
         <div class="switches-grid">
           <!-- 1. AC 230V SWITCH -->
-          <div class="switch-btn" id="btn-sw-ac">
+          <div class="switch-btn" id="btn-sw-ac" title="Interruptor para encender o apagar las tomas de corriente alterna de 230V.">
             <div class="btn-left">
               <svg class="btn-icon" viewBox="0 0 24 24">
                 <path d="M7 2V11H10V22L17 10H14L17 2H7Z"/>
@@ -962,7 +1203,7 @@ class OukitelCard extends HTMLElement {
           </div>
 
           <!-- 2. DC 12V SWITCH -->
-          <div class="switch-btn" id="btn-sw-dc">
+          <div class="switch-btn" id="btn-sw-dc" title="Interruptor para encender o apagar la salida de mechero de 12V DC.">
             <div class="btn-left">
               <svg class="btn-icon" viewBox="0 0 24 24">
                 <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5H6.5C5.84 5 5.28 5.42 5.08 6.01L3 12V20C3 20.55 3.45 21 4 21H5C5.55 21 6 20.55 6 20V19H18V20C18 20.55 18.45 21 19 21H20C20.55 21 21 20.55 21 20V12L18.92 6.01M6.5 6.5H17.5L18.83 10.5H5.17L6.5 6.5M6.5 13C7.33 13 8 13.67 8 14.5S7.33 16 6.5 16 5 15.33 5 14.5 5.67 13 6.5 13M17.5 13C18.33 13 19 13.67 19 14.5S18.33 16 17.5 16 16 15.33 16 14.5 16.67 13 17.5 13Z"/>
@@ -973,7 +1214,7 @@ class OukitelCard extends HTMLElement {
           </div>
 
           <!-- 3. USB SWITCH -->
-          <div class="switch-btn" id="btn-sw-usb">
+          <div class="switch-btn" id="btn-sw-usb" title="Interruptor para encender o apagar los puertos de carga USB y Type-C.">
             <div class="btn-left">
               <svg class="btn-icon" viewBox="0 0 24 24">
                 <path d="M15 7V4H16V2H8V4H9V7H7V10H8V14C8 15.1 8.9 16 10 16H11V20H10V22H14V20H13V16H14C15.1 16 16 15.1 16 14V10H17V7H15M10 4H14V7H10V4Z"/>
@@ -987,15 +1228,15 @@ class OukitelCard extends HTMLElement {
         <!-- FINANCIAL & ENERGY SUMMARY -->
         <div class="section-title">Balance Energético y Económico (Hoy)</div>
         <div class="metrics-grid">
-          <div class="metric-card">
+          <div class="metric-card" title="Coste económico acumulado de la recarga desde la red eléctrica hoy.">
             <span class="metric-label">Gasto Red</span>
             <span class="metric-value cost" id="val-daily-cost">0,00 €</span>
           </div>
-          <div class="metric-card">
+          <div class="metric-card" title="Ahorro económico generado hoy gracias al autoconsumo solar fotovoltaico.">
             <span class="metric-label">Ahorro Solar</span>
             <span class="metric-value savings" id="val-daily-savings">0,00 €</span>
           </div>
-          <div class="metric-card">
+          <div class="metric-card" title="Balance económico neto del día (ahorro solar menos coste de recarga de red).">
             <span class="metric-label">Balance Neto</span>
             <span class="metric-value net" id="val-daily-net">0,00 €</span>
           </div>
@@ -1003,17 +1244,17 @@ class OukitelCard extends HTMLElement {
 
         <!-- FOOTER DIAGNOSTICS -->
         <div class="footer-badges">
-          <div class="badge-item">
+          <div class="badge-item" title="Canal de comunicación activo con Home Assistant: red local (LAN) o servidores Cloud.">
             <span class="badge-dot" id="dot-status"></span>
             <span id="txt-conn-mode">LAN (0ms)</span>
           </div>
-          <div class="badge-item">
+          <div class="badge-item" title="Temperatura interna de los disipadores y electrónica de potencia del inversor AC.">
             <span>Inversor: <strong id="txt-inv-temp" style="color: #e2e8f0;">--°C</strong></span>
           </div>
-          <div class="badge-item">
+          <div class="badge-item" title="Temperatura interna general del compartimento de celdas de la batería.">
             <span>Batería: <strong id="txt-batt-temp" style="color: #e2e8f0;">--°C</strong></span>
           </div>
-          <div class="badge-item">
+          <div class="badge-item" title="Estado operativo del hardware y protecciones activas (temperatura, sobrecarga, batería).">
             <span>Estado: <strong id="txt-fault" style="color: #94a3b8;">Normal</strong></span>
           </div>
         </div>

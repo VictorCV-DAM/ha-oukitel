@@ -11,7 +11,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, ENTITY_DESCRIPTIONS
 from .coordinator import OukitelDataCoordinator
 from .sensor import _build_device_info
 
@@ -61,6 +61,10 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
     @property
     def device_info(self) -> DeviceInfo:
         return _build_device_info(self.coordinator, self.client)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"description": ENTITY_DESCRIPTIONS.get("output_frequency")}
 
     @property
     def available(self) -> bool:
@@ -151,6 +155,10 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
     @property
     def device_info(self) -> DeviceInfo:
         return _build_device_info(self.coordinator, self.client)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {"description": ENTITY_DESCRIPTIONS.get("output_voltage")}
 
     @property
     def available(self) -> bool:

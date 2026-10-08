@@ -187,6 +187,9 @@ Unlike native station firmware which can confuse charging and discharging when s
 - `sensor.oukitel_battery_state_of_health_estimated`: Estimated State of Health (SoH %) based on the LiFePO4 cell degradation curve (3,500 cycles to 80% capacity).
 - `sensor.oukitel_days_since_last_full_charge`: Elapsed days since the last 100% charge. Alerts when top-balancing calibration is recommended (>30 days).
 
+### 💡 Universal Tooltips & Functional Descriptions on Hover
+Every entity created by the integration includes an informative, functional description in Spanish (`attributes.description`). When hovering the mouse cursor over any sensor or entity in Home Assistant's Lovelace cards (standard Entities card, Tile cards, or custom cards), a native tooltip pops up explaining exactly what the sensor measures and its function, instead of just repeating its name.
+
 ### 🛡️ Diagnostic & Health Sensors
 - `sensor.oukitel_hardware_fault_status`: **Official Home Assistant ENUM sensor** with predefined, standardized states for direct use in automations.
 - `sensor.oukitel_connection_mode`: Active transport layer (`LAN` or `Cloud`) · *Diagnostic*.
