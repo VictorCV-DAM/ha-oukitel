@@ -126,6 +126,11 @@ ENTITY_DESCRIPTIONS_ES = {
     "output_frequency": "Frecuencia de salida de la corriente alterna (50 Hz o 60 Hz).",
     "output_voltage": "Tensión nominal de salida de la corriente alterna (200V - 240V).",
     "reload": "Reinicia la sesión y reconecta los protocolos de la estación de forma inmediata.",
+
+    # Predictive Autonomy & Smart Timestamps
+    "empty_timestamp": "Hora exacta prevista en la que se agotará la batería (0%) calculada con filtro de media móvil de consumo.",
+    "full_charge_timestamp": "Hora exacta prevista en la que la batería alcanzará el 100% de carga calculada con filtro de media móvil.",
+    "smoothed_discharge_time": "Autonomía restante de descarga en minutos suavizada con filtro de media móvil de 15 minutos.",
 }
 
 ENTITY_DESCRIPTIONS_EN = {
@@ -197,6 +202,11 @@ ENTITY_DESCRIPTIONS_EN = {
     "output_frequency": "AC output frequency setting (50 Hz or 60 Hz).",
     "output_voltage": "Nominal AC output voltage setting (200V - 240V).",
     "reload": "Restarts the session and reconnects protocols immediately.",
+
+    # Predictive Autonomy & Smart Timestamps
+    "empty_timestamp": "Estimated exact timestamp when the battery will reach 0% based on smoothed moving average discharge load.",
+    "full_charge_timestamp": "Estimated exact timestamp when the battery will reach 100% full charge based on smoothed incoming charging power.",
+    "smoothed_discharge_time": "Remaining discharge autonomy in minutes calculated with 15-minute moving average (immune to appliance startup spikes).",
 }
 
 # Default backwards-compatible alias
@@ -211,3 +221,20 @@ def get_entity_description(key: str, hass=None) -> str:
     if lang.startswith("es"):
         return ENTITY_DESCRIPTIONS_ES.get(key, ENTITY_DESCRIPTIONS_EN.get(key, ""))
     return ENTITY_DESCRIPTIONS_EN.get(key, ENTITY_DESCRIPTIONS_ES.get(key, ""))
+
+
+def get_battery_capacity_wh(client) -> float:
+    """Determine nominal battery capacity in Watt-hours from client model/product name."""
+    raw = (getattr(client, "product_name", None) or getattr(client, "device_name", "") or "").lower()
+    if "5000" in raw:
+        return 5120.0
+    if "3000" in raw:
+        return 3072.0
+    if "1000" in raw or "1024" in raw:
+        return 1024.0
+    if "1200" in raw or "960" in raw:
+        return 960.0
+    if "500" in raw or "505" in raw:
+        return 505.0
+    return 2048.0
+

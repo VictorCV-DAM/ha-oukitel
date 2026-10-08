@@ -34,6 +34,7 @@ from .const import (
     DOMAIN,
     ENTITY_DESCRIPTIONS,
     VERSION,
+    get_battery_capacity_wh,
     get_entity_description,
 )
 from .coordinator import OukitelDataCoordinator
@@ -57,19 +58,7 @@ def _clean_model_name(raw: str | None) -> str:
     return name.strip() or "Oukitel Power Station"
 
 
-def _get_battery_capacity_wh(client) -> float:
-    raw = (getattr(client, "product_name", None) or getattr(client, "device_name", "") or "").lower()
-    if "5000" in raw:
-        return 5120.0
-    if "3000" in raw:
-        return 3072.0
-    if "1000" in raw or "1024" in raw:
-        return 1024.0
-    if "1200" in raw or "960" in raw:
-        return 960.0
-    if "500" in raw or "505" in raw:
-        return 505.0
-    return 2048.0
+_get_battery_capacity_wh = get_battery_capacity_wh
 
 
 def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInfo:
@@ -173,6 +162,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     entities.append(OukitelBatteryCyclesSensor(coordinator, client))
     entities.append(OukitelBatteryHealthSensor(coordinator, client))
     entities.append(OukitelDaysSinceFullChargeSensor(coordinator, client))
+
+    # ⏱️ Predictive Autonomy & Smart Timestamps (Roadmap #9)
+    entities.append(OukitelEmptyTimestampSensor(coordinator, client))
+    entities.append(OukitelFullChargeTimestampSensor(coordinator, client))
+    entities.append(OukitelSmoothedDischargeSensor(coordinator, client))
 
     # Options for dynamic electricity pricing
     price_sensor = entry.options.get(
@@ -1155,3 +1149,148 @@ class OukitelCalculatedSavingsSensor(CoordinatorEntity, RestoreEntity, SensorEnt
         self._last_time = cur_time
         self._last_power = current_w
         self.async_write_ha_state()
+
+
+def _format_readable_time(mins: int | None) -> str:
+    """Format minutes into human-readable string (e.g. '2h 15m' or '45m')."""
+    if mins is None or mins <= 0:
+        return "None"
+    if mins < 60:
+        return f"{mins}m"
+    h = mins // 60
+    m = mins % 60
+    return f"{h}h {m:02d}m"
+
+
+class OukitelEmptyTimestampSensor(CoordinatorEntity, SensorEntity):
+    """Predictive Autonomy Sensor: Calculates exact timestamp when battery reaches 0% using 15-min moving average."""
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client):
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = f"{client.device_name} Battery Empty Time"
+        self._attr_unique_id = f"oukitel_{client.device_key}_empty_timestamp"
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_icon = "mdi:battery-clock-outline"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_calculated_device_info(self.coordinator, self.client)
+
+    @property
+    def native_value(self):
+        tracker = getattr(self.coordinator, "predictive_tracker", None)
+        return tracker.empty_timestamp if tracker else None
+
+    @property
+    def available(self) -> bool:
+        return bool(self.coordinator.data) and not self.coordinator.is_paused
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        tracker = getattr(self.coordinator, "predictive_tracker", None)
+        desc = get_entity_description("empty_timestamp", self.hass)
+        if not tracker:
+            return {"description": desc}
+        return {
+            "description": desc,
+            "operating_mode": tracker.operating_mode,
+            "smoothed_discharge_minutes": tracker.smoothed_discharge_minutes,
+            "smoothed_time_readable": _format_readable_time(tracker.smoothed_discharge_minutes),
+            "smoothed_net_power_w": round(tracker.smoothed_drain_w, 1) if tracker.operating_mode == "Discharging" else 0.0,
+            "battery_percentage": tracker.battery_percentage,
+            "battery_remaining_wh": tracker.battery_remaining_wh,
+            "moving_average_window_minutes": 15,
+            "samples_in_window": len(tracker.discharge_samples),
+        }
+
+
+class OukitelFullChargeTimestampSensor(CoordinatorEntity, SensorEntity):
+    """Predictive Autonomy Sensor: Calculates exact timestamp when battery reaches 100% full charge."""
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client):
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = f"{client.device_name} Battery Full Charge Time"
+        self._attr_unique_id = f"oukitel_{client.device_key}_full_charge_timestamp"
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_icon = "mdi:battery-charging-100"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_calculated_device_info(self.coordinator, self.client)
+
+    @property
+    def native_value(self):
+        tracker = getattr(self.coordinator, "predictive_tracker", None)
+        return tracker.full_charge_timestamp if tracker else None
+
+    @property
+    def available(self) -> bool:
+        return bool(self.coordinator.data) and not self.coordinator.is_paused
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        tracker = getattr(self.coordinator, "predictive_tracker", None)
+        desc = get_entity_description("full_charge_timestamp", self.hass)
+        if not tracker:
+            return {"description": desc}
+        return {
+            "description": desc,
+            "operating_mode": tracker.operating_mode,
+            "smoothed_charge_minutes": tracker.smoothed_charge_minutes,
+            "smoothed_time_readable": _format_readable_time(tracker.smoothed_charge_minutes),
+            "smoothed_net_charge_power_w": round(tracker.smoothed_charge_w, 1) if tracker.operating_mode == "Charging" else 0.0,
+            "battery_percentage": tracker.battery_percentage,
+            "battery_needed_wh": tracker.battery_needed_wh,
+            "moving_average_window_minutes": 15,
+            "samples_in_window": len(tracker.charge_samples),
+        }
+
+
+class OukitelSmoothedDischargeSensor(CoordinatorEntity, SensorEntity):
+    """Predictive Autonomy Sensor: Smoothed remaining discharge minutes (immune to transient spikes)."""
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client):
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = f"{client.device_name} Smoothed Discharge Time"
+        self._attr_unique_id = f"oukitel_{client.device_key}_smoothed_discharge_time"
+        self._attr_native_unit_of_measurement = UnitOfTime.MINUTES
+        self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = "mdi:timer-outline"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_calculated_device_info(self.coordinator, self.client)
+
+    @property
+    def native_value(self) -> int:
+        tracker = getattr(self.coordinator, "predictive_tracker", None)
+        if tracker and tracker.operating_mode == "Discharging" and tracker.smoothed_discharge_minutes:
+            return tracker.smoothed_discharge_minutes
+        return 0
+
+    @property
+    def available(self) -> bool:
+        return bool(self.coordinator.data) and not self.coordinator.is_paused
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        tracker = getattr(self.coordinator, "predictive_tracker", None)
+        desc = get_entity_description("smoothed_discharge_time", self.hass)
+        if not tracker:
+            return {"description": desc}
+        mins = tracker.smoothed_discharge_minutes if tracker.operating_mode == "Discharging" else None
+        return {
+            "description": desc,
+            "operating_mode": tracker.operating_mode,
+            "smoothed_time_readable": _format_readable_time(mins),
+            "smoothed_net_power_w": round(tracker.smoothed_drain_w, 1) if tracker.operating_mode == "Discharging" else 0.0,
+            "battery_percentage": tracker.battery_percentage,
+            "battery_remaining_wh": tracker.battery_remaining_wh,
+            "moving_average_window_minutes": 15,
+            "samples_in_window": len(tracker.discharge_samples),
+        }
+

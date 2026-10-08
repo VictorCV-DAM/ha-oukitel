@@ -7,7 +7,7 @@ as a safety net to request a fresh read.  If LAN is unavailable it falls
 back transparently to the existing cloud polling logic.
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import json
 import logging
 import time
@@ -16,6 +16,7 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import AcceleronixCloudClient
 from .const import (
@@ -26,6 +27,7 @@ from .const import (
     MODE_AUTO,
     MODE_CLOUD,
     MODE_LAN,
+    get_battery_capacity_wh,
 )
 from .local_scan import find_device_on_lan
 from .local_session import LocalSession, LocalAuthError, LocalSessionError
@@ -157,6 +159,129 @@ def _build_paused_data(source: dict[str, Any] | None) -> dict[str, Any]:
     return data
 
 
+class OukitelPredictiveTracker:
+    """Calculates smoothed predictive discharge autonomy and charge time with a 15-minute moving average filter."""
+
+    def __init__(self, client, window_seconds: float = 900.0) -> None:
+        self.client = client
+        self.window_seconds = window_seconds
+        self.discharge_samples: list[tuple[float, float]] = []  # (monotonic_time, drain_w)
+        self.charge_samples: list[tuple[float, float]] = []     # (monotonic_time, charge_w)
+        self.operating_mode: str = "Idle"                       # "Discharging", "Charging", "Idle", "Full", "Paused", "Offline"
+
+        self.smoothed_drain_w: float = 0.0
+        self.smoothed_charge_w: float = 0.0
+        self.empty_timestamp: datetime | None = None
+        self.full_charge_timestamp: datetime | None = None
+        self.smoothed_discharge_minutes: int | None = None
+        self.smoothed_charge_minutes: int | None = None
+        self.battery_remaining_wh: float = 0.0
+        self.battery_needed_wh: float = 0.0
+        self.battery_percentage: float = 0.0
+
+    def update(self, data: dict[str, Any] | None) -> None:
+        if not data or data.get("paused"):
+            self.operating_mode = "Paused" if data and data.get("paused") else "Offline"
+            self.empty_timestamp = None
+            self.full_charge_timestamp = None
+            self.smoothed_discharge_minutes = None
+            self.smoothed_charge_minutes = None
+            return
+
+        now = time.monotonic()
+        total_in = float(data.get("total_input_power") or 0.0)
+        ac_in = float(data.get("ac_input") or 0.0)
+        dc_in = float(data.get("dc_input") or 0.0)
+        total_out = float(data.get("total_output_power") or 0.0)
+        ac_out = float(data.get("ac_output_power") or 0.0)
+        dc_out = float(data.get("dc_output_power") or 0.0)
+
+        real_in = max(total_in, ac_in + dc_in)
+        real_out = max(total_out, ac_out + dc_out)
+        net_power = real_in - real_out
+
+        raw_batt = data.get("battery_percentage")
+        try:
+            batt_pct = float(raw_batt) if raw_batt is not None else 0.0
+        except (ValueError, TypeError):
+            batt_pct = 0.0
+        self.battery_percentage = batt_pct
+
+        capacity_wh = get_battery_capacity_wh(self.client)
+        self.battery_remaining_wh = round((batt_pct / 100.0) * capacity_wh, 1)
+        self.battery_needed_wh = round(max(0.0, ((100.0 - batt_pct) / 100.0) * capacity_wh), 1)
+
+        # Detect operating state
+        if net_power < -5.0 and batt_pct > 0:
+            current_mode = "Discharging"
+        elif net_power > 5.0 and batt_pct < 100:
+            current_mode = "Charging"
+        elif batt_pct >= 100 and net_power >= -5.0:
+            current_mode = "Full"
+        else:
+            current_mode = "Idle"
+
+        self.operating_mode = current_mode
+        cutoff = now - self.window_seconds
+
+        if current_mode == "Discharging":
+            drain_w = abs(net_power)
+            self.discharge_samples.append((now, drain_w))
+            self.charge_samples.clear()
+            self.discharge_samples = [(t, w) for t, w in self.discharge_samples if t >= cutoff]
+
+            self.smoothed_drain_w = sum(w for _, w in self.discharge_samples) / len(self.discharge_samples)
+
+            if self.smoothed_drain_w > 5.0 and self.battery_remaining_wh > 0:
+                hours = self.battery_remaining_wh / self.smoothed_drain_w
+                minutes = hours * 60.0
+                self.smoothed_discharge_minutes = max(1, round(minutes))
+                target_dt = dt_util.utcnow() + timedelta(minutes=self.smoothed_discharge_minutes)
+                self.empty_timestamp = target_dt.replace(second=0, microsecond=0)
+            else:
+                self.smoothed_discharge_minutes = None
+                self.empty_timestamp = None
+
+            self.full_charge_timestamp = None
+            self.smoothed_charge_minutes = None
+            self.smoothed_charge_w = 0.0
+
+        elif current_mode == "Charging":
+            charge_w = net_power
+            self.charge_samples.append((now, charge_w))
+            self.discharge_samples.clear()
+            self.charge_samples = [(t, w) for t, w in self.charge_samples if t >= cutoff]
+
+            self.smoothed_charge_w = sum(w for _, w in self.charge_samples) / len(self.charge_samples)
+
+            if self.smoothed_charge_w > 5.0 and self.battery_needed_wh > 0:
+                hours = self.battery_needed_wh / self.smoothed_charge_w
+                minutes = hours * 60.0
+                self.smoothed_charge_minutes = max(1, round(minutes))
+                target_dt = dt_util.utcnow() + timedelta(minutes=self.smoothed_charge_minutes)
+                self.full_charge_timestamp = target_dt.replace(second=0, microsecond=0)
+            else:
+                self.smoothed_charge_minutes = None
+                self.full_charge_timestamp = None
+
+            self.empty_timestamp = None
+            self.smoothed_discharge_minutes = None
+            self.smoothed_drain_w = 0.0
+
+        else:  # Idle or Full
+            if self.discharge_samples and (now - self.discharge_samples[-1][0] > 60.0):
+                self.discharge_samples.clear()
+                self.smoothed_drain_w = 0.0
+            if self.charge_samples and (now - self.charge_samples[-1][0] > 60.0):
+                self.charge_samples.clear()
+                self.smoothed_charge_w = 0.0
+
+            self.empty_timestamp = None
+            self.full_charge_timestamp = None
+            self.smoothed_discharge_minutes = None
+            self.smoothed_charge_minutes = None
+
+
 class OukitelDataCoordinator(DataUpdateCoordinator):
     """Fetches Oukitel station data; prefers LAN push, falls back to cloud polling."""
 
@@ -177,6 +302,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self.connection_mode = connection_mode
         self.last_wake_time: float = 0.0
         self.lan_host: str | None = None
+        self.predictive_tracker = OukitelPredictiveTracker(client)
 
         self._lan_session: LocalSession | None = None
         self._lan_listen_task: asyncio.Task | None = None
@@ -188,6 +314,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._user_overrides: dict[str, tuple] = {}
         self._last_device_list_check: float = 0.0
         self.last_user_command_time: float = 0.0
+
+    def async_set_updated_data(self, data: dict[str, Any]) -> None:
+        """Update coordinator data and refresh predictive autonomy tracker."""
+        if hasattr(self, "predictive_tracker") and self.predictive_tracker is not None:
+            self.predictive_tracker.update(data)
+        super().async_set_updated_data(data)
 
     @property
     def is_paused(self) -> bool:
