@@ -135,25 +135,10 @@
         "name": "Inverter Version"
       },
       "device_fault_status": {
-        "name": "Hardware Fault Status",
-        "state": {
-          "Normal": "Normal",
-          "High Temperature Warning": "High Temperature Warning",
-          "Over-Temperature": "Over-Temperature",
-          "Under-Temperature": "Under-Temperature",
-          "Low Battery Warning": "Low Battery Warning",
-          "Critical Low Battery": "Critical Low Battery",
-          "Overload Protection": "Overload Protection",
-          "Hardware Fault": "Hardware Fault"
-        }
+        "name": "Hardware Fault Status"
       },
       "connection_mode": {
-        "name": "Connection Mode",
-        "state": {
-          "LAN": "LAN",
-          "Cloud": "Cloud",
-          "Paused": "Paused"
-        }
+        "name": "Connection Mode"
       },
       "inverter_idle_power": {
         "name": "Inverter Standby Consumption"
@@ -256,21 +241,10 @@
     },
     "select": {
       "output_frequency": {
-        "name": "Output Frequency",
-        "state": {
-          "50Hz": "50 Hz",
-          "60Hz": "60 Hz"
-        }
+        "name": "Output Frequency"
       },
       "output_voltage": {
-        "name": "Output Voltage",
-        "state": {
-          "200V": "200 V",
-          "208V": "208 V",
-          "220V": "220 V",
-          "230V": "230 V",
-          "240V": "240 V"
-        }
+        "name": "Output Voltage"
       }
     }
   }

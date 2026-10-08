@@ -135,25 +135,10 @@
         "name": "Versión de inversor"
       },
       "device_fault_status": {
-        "name": "Estado operativo del hardware",
-        "state": {
-          "Normal": "Normal",
-          "High Temperature Warning": "Aviso de alta temperatura",
-          "Over-Temperature": "Sobretemperatura",
-          "Under-Temperature": "Temperatura baja",
-          "Low Battery Warning": "Aviso de batería baja",
-          "Critical Low Battery": "Batería críticamente baja",
-          "Overload Protection": "Protección por sobrecarga",
-          "Hardware Fault": "Fallo de hardware"
-        }
+        "name": "Estado operativo del hardware"
       },
       "connection_mode": {
-        "name": "Modo de conexión",
-        "state": {
-          "LAN": "LAN",
-          "Cloud": "Nube",
-          "Paused": "Pausado"
-        }
+        "name": "Modo de conexión"
       },
       "inverter_idle_power": {
         "name": "Consumo en reposo del inversor"
@@ -256,21 +241,10 @@
     },
     "select": {
       "output_frequency": {
-        "name": "Frecuencia de salida",
-        "state": {
-          "50Hz": "50 Hz",
-          "60Hz": "60 Hz"
-        }
+        "name": "Frecuencia de salida"
       },
       "output_voltage": {
-        "name": "Voltaje de salida",
-        "state": {
-          "200V": "200 V",
-          "208V": "208 V",
-          "220V": "220 V",
-          "230V": "230 V",
-          "240V": "240 V"
-        }
+        "name": "Voltaje de salida"
       }
     }
   }
