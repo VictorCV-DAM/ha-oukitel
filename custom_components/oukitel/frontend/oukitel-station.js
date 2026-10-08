@@ -1,14 +1,13 @@
 /**
- * Oukitel Power Station Lovelace Cards (v3.4.0)
+ * Oukitel Power Station Lovelace Cards (v3.4.1)
  *
  * 1. custom:oukitel-display-card - 100% authentic LCD screen simulation:
- *    - Expanded 900x300 viewBox and 856x224 inner LCD for generous breathing room
+ *    - Expanded top margin (viewBox 900x310, inner LCD y=24..250)
+ *    - Fan icon elevated (cx=334, cy=44) with generous clearance above arc bracket
+ *    - Battery capsule lowered (y=134) with open guide arc and clean spacing
+ *    - Generous spacing for minutes unit tag (`Mins` positioned 24px after digits)
  *    - Perfect bilateral symmetry: 68px identical margins on both left and right edges
- *    - Exact time display: `${hrs}h ${mins}m` (zero rounding loss) and `MM Mins` (<60m)
- *    - Central areola / gauge enlarged & perfectly centered at cx=450, cy=112
- *    - 11 thick annular curved blocks with parenthesis brackets `( [RING] )`
- *    - Mathematically leveled bottom icon baseline: 12V, USB, AC all on cy=206
- *    - Rotating fan and real-time charging status
+ *    - Exact time display: `${hrs}h ${mins}m` and `MM Mins`
  * 2. custom:oukitel-card - Complete control dashboard with sleek, discreet mini tactile switches,
  *    2-step safety confirmation, financial balance, and system diagnostics.
  *
@@ -171,12 +170,12 @@ class OukitelDisplayCard extends HTMLElement {
 
   _render() {
     // Generate 11 authentic large annular curved blocks
-    // Center: cx=450, cy=112, Outer radius rOut=88, Inner radius rIn=66
+    // Center: cx=450, cy=122, Outer radius rOut=88, Inner radius rIn=66
     // Span: 140° (bottom-left) to 40° (bottom-right) going clockwise = 260° sweep
     let annularBlocks = "";
     const totalBlocks = 11;
     const cx = 450;
-    const cy = 112;
+    const cy = 122;
     const rIn = 66;
     const rOut = 88;
     const startBase = 140;
@@ -222,14 +221,14 @@ class OukitelDisplayCard extends HTMLElement {
         }
 
         .fan-blade {
-          transform-origin: 336px 52px;
+          transform-origin: 334px 44px;
         }
         .fan-spinning {
           animation: fanSpin 0.9s linear infinite;
         }
       </style>
 
-      <svg class="svg-container" viewBox="0 0 900 300" preserveAspectRatio="xMidYMid meet" id="screen-svg">
+      <svg class="svg-container" viewBox="0 0 900 310" preserveAspectRatio="xMidYMid meet" id="screen-svg">
         <defs>
           <filter id="lcd-cyan-glow" x="-30%" y="-30%" width="160%" height="160%">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -259,80 +258,80 @@ class OukitelDisplayCard extends HTMLElement {
           </linearGradient>
         </defs>
 
-        <!-- CHASSIS OUTER BEZEL -->
-        <rect x="4" y="4" width="892" height="292" rx="20" fill="url(#chassis-grad)" stroke="#383c46" stroke-width="2" />
+        <!-- CHASSIS OUTER BEZEL (Airy top margin) -->
+        <rect x="4" y="4" width="892" height="302" rx="20" fill="url(#chassis-grad)" stroke="#383c46" stroke-width="2" />
 
-        <!-- INNER LCD SCREEN (Expanded & Perfectly Centered: cx=450, cy=130) -->
-        <rect x="22" y="18" width="856" height="224" rx="14" fill="#04060a" stroke="#000000" stroke-width="2.5" />
-        <rect x="22" y="18" width="856" height="224" rx="14" fill="url(#glass-reflection)" pointer-events="none" />
+        <!-- INNER LCD SCREEN (Expanded: y=24..250 with 20px top bezel) -->
+        <rect x="22" y="24" width="856" height="226" rx="14" fill="#04060a" stroke="#000000" stroke-width="2.5" />
+        <rect x="22" y="24" width="856" height="226" rx="14" fill="url(#glass-reflection)" pointer-events="none" />
 
         <!-- ========================================================
-             1. LEFT SECTION: REMAINING TIME & WARNINGS (Starts at x=90, 68px from LCD edge)
+             1. LEFT SECTION: REMAINING TIME & WARNINGS (Starts at x=90)
              ======================================================== -->
         <g id="grp-left">
-          <!-- REMAINING Title -->
-          <text x="90" y="58" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="14" font-weight="800" letter-spacing="2" filter="url(#lcd-cyan-glow)">REMAINING</text>
+          <!-- REMAINING Title (y=66) -->
+          <text x="90" y="66" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="14" font-weight="800" letter-spacing="2" filter="url(#lcd-cyan-glow)">REMAINING</text>
 
-          <!-- Exact Digits (x=90) & Unit placed with generous space -->
-          <text id="txt-rem-digits" x="90" y="132" fill="#00e5ff" font-family="'Orbitron', monospace" font-size="52" font-weight="900" letter-spacing="2" filter="url(#lcd-cyan-glow)">--</text>
-          <text id="txt-rem-unit" x="180" y="128" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="17" font-weight="800" filter="url(#lcd-cyan-glow)">Mins</text>
+          <!-- Exact Digits (x=90, y=140) & Unit placed with generous space -->
+          <text id="txt-rem-digits" x="90" y="140" fill="#00e5ff" font-family="'Orbitron', monospace" font-size="52" font-weight="900" letter-spacing="2" filter="url(#lcd-cyan-glow)">--</text>
+          <text id="txt-rem-unit" x="218" y="136" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="17" font-weight="800" filter="url(#lcd-cyan-glow)">Mins</text>
 
-          <!-- Warning / Protection Circles -->
-          <g id="ico-temp-warn" transform="translate(90, 175)" opacity="0.2">
+          <!-- Warning / Protection Circles (y=182) -->
+          <g id="ico-temp-warn" transform="translate(90, 182)" opacity="0.2">
             <circle cx="13" cy="13" r="12" fill="none" stroke="#00e5ff" stroke-width="1.8" />
             <path d="M 13 6 L 13 14 A 3 3 0 1 0 15 18 L 15 6 Z" fill="#00e5ff" />
           </g>
 
-          <g id="ico-fault-warn" transform="translate(132, 175)" opacity="0.2">
+          <g id="ico-fault-warn" transform="translate(132, 182)" opacity="0.2">
             <circle cx="13" cy="13" r="12" fill="none" stroke="#ef4444" stroke-width="1.8" />
             <text x="13" y="18" text-anchor="middle" fill="#ef4444" font-family="'Orbitron', sans-serif" font-size="13" font-weight="900">!</text>
           </g>
         </g>
 
         <!-- ========================================================
-             2. CENTER SECTION: AUTHENTIC BATTERY AREOLA (cx=450, cy=112)
+             2. CENTER SECTION: AUTHENTIC BATTERY AREOLA (cx=450, cy=122)
              ======================================================== -->
         <g id="grp-center">
-          <!-- Fan Icon at top-left of the gauge (cx=336, cy=52) -->
+          <!-- Fan Icon elevated at top-left (cx=334, cy=44) -->
           <g id="fan-icon-grp" opacity="0.25">
             <g class="fan-blade" id="fan-blade-elem">
-              <path d="M 336 52 C 336 45 342 42 346 45 C 343 49 340 51 336 52 Z" fill="#00e5ff" />
-              <path d="M 336 52 C 343 52 346 58 343 62 C 339 59 337 56 336 52 Z" fill="#00e5ff" />
-              <path d="M 336 52 C 336 59 330 62 326 59 C 329 55 332 53 336 52 Z" fill="#00e5ff" />
-              <path d="M 336 52 C 329 52 326 46 329 42 C 333 45 335 48 336 52 Z" fill="#00e5ff" />
+              <path d="M 334 44 C 334 37 340 34 344 37 C 341 41 338 43 334 44 Z" fill="#00e5ff" />
+              <path d="M 334 44 C 341 44 344 50 341 54 C 337 51 335 48 334 44 Z" fill="#00e5ff" />
+              <path d="M 334 44 C 334 51 328 54 324 51 C 327 47 330 45 334 44 Z" fill="#00e5ff" />
+              <path d="M 334 44 C 327 44 324 38 327 34 C 331 37 333 40 334 44 Z" fill="#00e5ff" />
             </g>
-            <circle cx="336" cy="52" r="3" fill="#00e5ff" />
+            <circle cx="334" cy="44" r="3" fill="#00e5ff" />
           </g>
 
           <!-- Outer Parenthesis Bracket Arcs: ( [RING] ) -->
-          <path d="M 344 64 A 106 106 0 0 0 344 160" fill="none" stroke="#00e5ff" stroke-width="2" filter="url(#lcd-cyan-glow)" />
-          <path d="M 556 64 A 106 106 0 0 1 556 160" fill="none" stroke="#00e5ff" stroke-width="2" filter="url(#lcd-cyan-glow)" />
+          <path d="M 344 74 A 106 106 0 0 0 344 170" fill="none" stroke="#00e5ff" stroke-width="2" filter="url(#lcd-cyan-glow)" />
+          <path d="M 556 74 A 106 106 0 0 1 556 170" fill="none" stroke="#00e5ff" stroke-width="2" filter="url(#lcd-cyan-glow)" />
 
           <!-- 11 Large Annular Blocks -->
           <g id="annular-blocks-grp">
             ${annularBlocks}
           </g>
 
-          <!-- Inner Guide Circle -->
-          <circle cx="450" cy="112" r="62" fill="none" stroke="rgba(0, 229, 255, 0.3)" stroke-width="1.6" />
+          <!-- Inner Guide Arc (Opens cleanly at the bottom, no line crossing text) -->
+          <path d="M 404 173.5 A 62 62 0 1 1 496 173.5" fill="none" stroke="rgba(0, 229, 255, 0.3)" stroke-width="1.6" />
 
-          <!-- Large Battery Percentage Digits -->
-          <text id="txt-batt-pct" x="442" y="104" text-anchor="middle" fill="#ffffff" font-family="'Orbitron', monospace" font-size="44" font-weight="900" filter="url(#lcd-cyan-glow)">--</text>
-          <text x="482" y="92" fill="#ffffff" font-family="'Orbitron', sans-serif" font-size="17" font-weight="800" filter="url(#lcd-cyan-glow)">%</text>
+          <!-- Large Battery Percentage Digits (y=110) -->
+          <text id="txt-batt-pct" x="442" y="110" text-anchor="middle" fill="#ffffff" font-family="'Orbitron', monospace" font-size="44" font-weight="900" filter="url(#lcd-cyan-glow)">--</text>
+          <text x="482" y="98" fill="#ffffff" font-family="'Orbitron', sans-serif" font-size="17" font-weight="800" filter="url(#lcd-cyan-glow)">%</text>
 
-          <!-- Green Battery Capsule -->
-          <rect x="422" y="118" width="56" height="22" rx="4" fill="none" stroke="#00e676" stroke-width="2" filter="url(#lcd-green-glow)" />
-          <rect x="478" y="123" width="3" height="11" rx="1.5" fill="#00e676" filter="url(#lcd-green-glow)" />
+          <!-- Green Battery Capsule (Lowered to bottom opening y=134) -->
+          <rect x="422" y="134" width="56" height="22" rx="4" fill="none" stroke="#00e676" stroke-width="2" filter="url(#lcd-green-glow)" />
+          <rect x="478" y="139" width="3" height="11" rx="1.5" fill="#00e676" filter="url(#lcd-green-glow)" />
           <!-- Inner Fill Rect -->
-          <rect id="batt-fill-rect" x="425" y="121" width="50" height="16" rx="2" fill="#00e676" filter="url(#lcd-green-glow)" />
+          <rect id="batt-fill-rect" x="425" y="137" width="50" height="16" rx="2" fill="#00e676" filter="url(#lcd-green-glow)" />
           <!-- Center Lightning Bolt -->
-          <path id="batt-lightning" d="M 450 121 L 444 130 L 449 130 L 447 137 L 455 128 L 450 128 Z" fill="#ffffff" />
+          <path id="batt-lightning" d="M 450 137 L 444 146 L 449 146 L 447 153 L 455 144 L 450 144 Z" fill="#ffffff" />
 
-          <!-- Dynamic Status Mode Label (SUPERCHARGE / CHARGING / DISCHARGING / STANDBY) -->
-          <text id="status-mode-txt" x="450" y="156" text-anchor="middle" fill="#00e676" font-family="'Chakra Petch', sans-serif" font-size="12" font-weight="900" letter-spacing="1.5" filter="url(#lcd-green-glow)">STANDBY</text>
+          <!-- Dynamic Status Mode Label (SUPERCHARGE / CHARGING / DISCHARGING / STANDBY, y=172) -->
+          <text id="status-mode-txt" x="450" y="172" text-anchor="middle" fill="#00e676" font-family="'Chakra Petch', sans-serif" font-size="12" font-weight="900" letter-spacing="1.5" filter="url(#lcd-green-glow)">STANDBY</text>
 
-          <!-- AC Wall Plug Icon (centered at bottom opening, cy=192) -->
-          <g id="plug-icon-grp" transform="translate(450, 192)" opacity="0.2">
+          <!-- AC Wall Plug Icon (cy=206) -->
+          <g id="plug-icon-grp" transform="translate(450, 206)" opacity="0.2">
             <circle cx="0" cy="0" r="10" fill="none" stroke="#00e676" stroke-width="1.8" filter="url(#lcd-green-glow)" />
             <path d="M -3 -4 L -3 -1 L 3 -1 L 3 -4 M -5 -1 L 5 -1 L 3 4 L -3 4 Z M 0 4 L 0 7" fill="none" stroke="#00e676" stroke-width="1.5" stroke-linecap="round" />
           </g>
@@ -343,41 +342,41 @@ class OukitelDisplayCard extends HTMLElement {
              (Ends at x=810, perfectly symmetrical 68px margin from LCD edge)
              ======================================================== -->
         <g id="grp-right">
-          <!-- UPS Badge (Placed at y=26 with ample clearance above Watts) -->
-          <g id="ups-badge-grp" transform="translate(740, 26)" opacity="0.2">
+          <!-- UPS Badge (Placed at y=32 with ample clearance) -->
+          <g id="ups-badge-grp" transform="translate(740, 32)" opacity="0.2">
             <rect x="0" y="0" width="46" height="17" rx="3.5" fill="rgba(0, 229, 255, 0.1)" stroke="#00e5ff" stroke-width="1.6" filter="url(#lcd-cyan-glow)" />
             <text x="23" y="12.5" text-anchor="middle" fill="#00e5ff" font-family="'Orbitron', sans-serif" font-size="10" font-weight="900" letter-spacing="1" filter="url(#lcd-cyan-glow)">UPS</text>
           </g>
 
-          <!-- Upper Row: INPUT Watts (y=78) -->
-          <text id="txt-in-watts" x="740" y="78" text-anchor="end" fill="#00e5ff" font-family="'Orbitron', monospace" font-size="34" font-weight="800" letter-spacing="2" filter="url(#lcd-cyan-glow)">0000</text>
-          <text x="755" y="68" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="13" font-weight="800" letter-spacing="1" filter="url(#lcd-cyan-glow)">INPUT</text>
-          <text x="755" y="82" fill="#8ecae6" font-family="'Chakra Petch', sans-serif" font-size="10" font-weight="700">Watts</text>
+          <!-- Upper Row: INPUT Watts (y=84) -->
+          <text id="txt-in-watts" x="740" y="84" text-anchor="end" fill="#00e5ff" font-family="'Orbitron', monospace" font-size="34" font-weight="800" letter-spacing="2" filter="url(#lcd-cyan-glow)">0000</text>
+          <text x="755" y="74" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="13" font-weight="800" letter-spacing="1" filter="url(#lcd-cyan-glow)">INPUT</text>
+          <text x="755" y="88" fill="#8ecae6" font-family="'Chakra Petch', sans-serif" font-size="10" font-weight="700">Watts</text>
 
-          <!-- Middle Row: OUTPUT Watts (y=132) -->
-          <text id="txt-out-watts" x="740" y="132" text-anchor="end" fill="#00e5ff" font-family="'Orbitron', monospace" font-size="34" font-weight="800" letter-spacing="2" filter="url(#lcd-cyan-glow)">0000</text>
-          <text x="755" y="122" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="13" font-weight="800" letter-spacing="1" filter="url(#lcd-cyan-glow)">OUTPUT</text>
-          <text x="755" y="136" fill="#8ecae6" font-family="'Chakra Petch', sans-serif" font-size="10" font-weight="700">Watts</text>
+          <!-- Middle Row: OUTPUT Watts (y=138) -->
+          <text id="txt-out-watts" x="740" y="138" text-anchor="end" fill="#00e5ff" font-family="'Orbitron', monospace" font-size="34" font-weight="800" letter-spacing="2" filter="url(#lcd-cyan-glow)">0000</text>
+          <text x="755" y="128" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="13" font-weight="800" letter-spacing="1" filter="url(#lcd-cyan-glow)">OUTPUT</text>
+          <text x="755" y="142" fill="#8ecae6" font-family="'Chakra Petch', sans-serif" font-size="10" font-weight="700">Watts</text>
 
-          <!-- Lower Row A: VOLTAGE (y=172) -->
-          <text id="txt-volt-val" x="740" y="172" text-anchor="end" fill="#00e5ff" font-family="'Orbitron', monospace" font-size="24" font-weight="800" letter-spacing="1" filter="url(#lcd-cyan-glow)">230</text>
-          <text id="txt-volt-unit" x="755" y="170" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="12" font-weight="800" filter="url(#lcd-cyan-glow)">V</text>
+          <!-- Lower Row A: VOLTAGE (y=178) -->
+          <text id="txt-volt-val" x="740" y="178" text-anchor="end" fill="#00e5ff" font-family="'Orbitron', monospace" font-size="24" font-weight="800" letter-spacing="1" filter="url(#lcd-cyan-glow)">230</text>
+          <text id="txt-volt-unit" x="755" y="176" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="12" font-weight="800" filter="url(#lcd-cyan-glow)">V</text>
 
-          <!-- Lower Row B: OUTPUT ICONS (Locked to exact baseline cy=206, spaced by 95px) -->
-          <!-- 1. DC 12V Socket Icon (cx=590, cy=206) -->
-          <g id="ico-dc-sock" transform="translate(590, 206)" opacity="0.2">
+          <!-- Lower Row B: OUTPUT ICONS (Locked to exact baseline cy=214, spaced by 95px) -->
+          <!-- 1. DC 12V Socket Icon (cx=590, cy=214) -->
+          <g id="ico-dc-sock" transform="translate(590, 214)" opacity="0.2">
             <circle cx="0" cy="0" r="10" fill="none" stroke="#00e5ff" stroke-width="1.8" filter="url(#lcd-cyan-glow)" />
             <text x="0" y="3.5" text-anchor="middle" fill="#00e5ff" font-family="'Orbitron', sans-serif" font-size="8" font-weight="900" filter="url(#lcd-cyan-glow)">12V</text>
           </g>
 
-          <!-- 2. USB Socket Icon (cx=685, cy=206) -->
-          <g id="ico-usb-sock" transform="translate(685, 206)" opacity="0.2">
+          <!-- 2. USB Socket Icon (cx=685, cy=214) -->
+          <g id="ico-usb-sock" transform="translate(685, 214)" opacity="0.2">
             <rect x="-11" y="-6.5" width="22" height="13" rx="3" fill="none" stroke="#00e5ff" stroke-width="1.8" filter="url(#lcd-cyan-glow)" />
             <rect x="-6" y="-3.5" width="12" height="7" rx="1.5" fill="#00e5ff" />
           </g>
 
-          <!-- 3. AC Sine Wave Icon (cx=780, cy=206) -->
-          <g id="ico-ac-wave" transform="translate(780, 206)" opacity="0.2">
+          <!-- 3. AC Sine Wave Icon (cx=780, cy=214) -->
+          <g id="ico-ac-wave" transform="translate(780, 214)" opacity="0.2">
             <circle cx="0" cy="0" r="10" fill="none" stroke="#00e5ff" stroke-width="1.8" filter="url(#lcd-cyan-glow)" />
             <path d="M -5 0 C -3 -4 -1 -4 0 0 C 1 4 3 4 5 0" fill="none" stroke="#00e5ff" stroke-width="1.8" stroke-linecap="round" />
           </g>
@@ -386,10 +385,10 @@ class OukitelDisplayCard extends HTMLElement {
         <!-- ========================================================
              4. BOTTOM CHASSIS FRAME: LOGO & POWER / IOT BUTTON
              ======================================================== -->
-        <text x="450" y="274" text-anchor="middle" fill="#d1d5db" font-family="'Chakra Petch', -apple-system, sans-serif" font-size="20" font-weight="800" letter-spacing="8" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.8))">OUKITEL</text>
+        <text x="450" y="284" text-anchor="middle" fill="#d1d5db" font-family="'Chakra Petch', -apple-system, sans-serif" font-size="20" font-weight="800" letter-spacing="8" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.8))">OUKITEL</text>
 
         <!-- POWER BUTTON & IOT LED -->
-        <g id="power-btn-grp" transform="translate(800, 256)">
+        <g id="power-btn-grp" transform="translate(800, 264)">
           <text x="-12" y="8" text-anchor="end" fill="#94a3b8" font-family="'Chakra Petch', sans-serif" font-size="8" font-weight="700" letter-spacing="0.8">POWER</text>
           <text x="-12" y="18" text-anchor="end" fill="#94a3b8" font-family="'Chakra Petch', sans-serif" font-size="8" font-weight="700" letter-spacing="0.8">IOT</text>
 
@@ -474,9 +473,9 @@ class OukitelDisplayCard extends HTMLElement {
       txtRemUnit.textContent = remUnit;
 
       if (remUnit) {
-        // Position unit cleanly 16px after digits:
-        const digitsWidth = remNum.length * 32;
-        txtRemUnit.setAttribute("x", `${90 + digitsWidth + 16}`);
+        // Position unit with generous clearance after digits:
+        const digitsWidth = remNum.length * 52;
+        txtRemUnit.setAttribute("x", `${90 + digitsWidth + 24}`);
       }
     }
 
