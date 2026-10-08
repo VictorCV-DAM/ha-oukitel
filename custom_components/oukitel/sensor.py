@@ -310,6 +310,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
+        desc = ENTITY_DESCRIPTIONS.get(self._key)
         if self._key == "device_fault_status":
             details = []
             temp = float(self.coordinator.data.get("temp") or 0)
