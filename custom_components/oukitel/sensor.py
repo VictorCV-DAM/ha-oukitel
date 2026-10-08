@@ -513,7 +513,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         # 10. WiFi signal default
         if self._key == "wifi_signal":
             val = self.coordinator.data.get("wifi_signal")
-            return val if val is not None else -100
+            return val
 
         # 11. Version string formatting (e.g. 215, 106)
         if self._key in ("BMS_Version", "AC_Version"):

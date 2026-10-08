@@ -322,6 +322,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._user_overrides: dict[str, tuple] = {}
         self._last_device_list_check: float = 0.0
         self.last_user_command_time: float = 0.0
+        self._static_metadata: dict[str, Any] = {}
 
     def async_set_updated_data(self, data: dict[str, Any]) -> None:
         """Update coordinator data and refresh predictive autonomy tracker."""
@@ -470,24 +471,26 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info("oukitel: authKey unavailable — running in cloud mode")
             return
 
-        # Seed static diagnostics (BMS_Version, AC_Version, etc.) from Cloud shadow only in Auto mode
-        if self.connection_mode != MODE_LAN:
-            try:
-                cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
-                if cloud_snapshot:
-                    static_keys = (
-                        "BMS_Version",
-                        "AC_Version",
-                        "Frequency_Switchover",
-                        "ACvoltage_Switchover",
-                        "ac_charging_limit",
-                    )
-                    for k in static_keys:
-                        if k in cloud_snapshot and cloud_snapshot[k] is not None:
-                            self._lan_state[k] = cloud_snapshot[k]
-                    _unpack_port_data(self._lan_state)
-            except Exception as exc:
-                _LOGGER.debug("oukitel: Could not seed initial static metadata from cloud: %s", exc)
+        # Seed static diagnostics (BMS_Version, AC_Version, wifi_signal, etc.) from Cloud shadow
+        try:
+            cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
+            if cloud_snapshot:
+                static_keys = (
+                    "BMS_Version",
+                    "AC_Version",
+                    "wifi_signal",
+                    "Frequency_Switchover",
+                    "ACvoltage_Switchover",
+                    "ac_charging_limit",
+                )
+                for k in static_keys:
+                    val = cloud_snapshot.get(k)
+                    if val is not None:
+                        self._static_metadata[k] = val
+                        self._lan_state[k] = val
+                _unpack_port_data(self._lan_state)
+        except Exception as exc:
+            _LOGGER.debug("oukitel: Could not seed initial static metadata from cloud: %s", exc)
 
         _LOGGER.info("oukitel: Device found at %s — starting LAN session", host)
         await self._start_lan_session(host, auth_key)
@@ -588,12 +591,27 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         current_data = dict(self._lan_state or self.data or {})
         for tag, val in fields.items():
             if tag in tag_map:
-                current_data[tag_map[tag]] = val
+                key = tag_map[tag]
+                current_data[key] = val
+                if key in (
+                    "BMS_Version",
+                    "AC_Version",
+                    "wifi_signal",
+                    "Frequency_Switchover",
+                    "ACvoltage_Switchover",
+                    "ac_charging_limit",
+                ):
+                    self._static_metadata[key] = val
             if tag == 2:
                 current_data["remaining_time"] = val
             current_data[str(tag)] = val
             if tag in (6, 7, 8, 9, 43, 44, 46):
                 current_data[tag] = val
+
+        # Ensure static metadata (versions, switchovers, wifi signal) is always preserved
+        for k, v in self._static_metadata.items():
+            if k not in current_data or current_data[k] is None:
+                current_data[k] = v
 
         _unpack_port_data(current_data)
         self._apply_user_overrides(current_data)
@@ -630,7 +648,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             return await self._update_lan()
         if self.connection_mode == MODE_LAN:
             # If LAN session is initializing in the background during setup, wait briefly
-            for _ in range(40):
+            for _ in range(60):
                 if self._lan_active and self._lan_state:
                     return await self._update_lan()
                 await asyncio.sleep(0.1)
@@ -677,7 +695,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
 
         data = dict(self._lan_state)
-        # Preserve static/cloud-only diagnostic tags if already known
+        # Preserve static/cloud-only diagnostic tags from metadata cache and prior state
+        for k, v in self._static_metadata.items():
+            if k not in data or data[k] is None:
+                data[k] = v
         if self.data:
             for k in (
                 "ACvoltage_Switchover",
@@ -685,8 +706,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 "BMS_Version",
                 "AC_Version",
                 "wifi_signal",
+                "ac_charging_limit",
             ):
-                if k in self.data and k not in data:
+                if k in self.data and (k not in data or data[k] is None):
                     data[k] = self.data[k]
         self._apply_user_overrides(data)
         return data
@@ -729,6 +751,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         merged = dict(self.data or {})
         merged.update(data)
+        for k in (
+            "BMS_Version",
+            "AC_Version",
+            "wifi_signal",
+            "Frequency_Switchover",
+            "ACvoltage_Switchover",
+            "ac_charging_limit",
+        ):
+            if k in merged and merged[k] is not None:
+                self._static_metadata[k] = merged[k]
         _unpack_port_data(merged)
         self._apply_user_overrides(merged)
 
