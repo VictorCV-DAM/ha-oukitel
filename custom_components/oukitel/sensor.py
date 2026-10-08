@@ -1067,7 +1067,7 @@ class OukitelCalculatedSavingsSensor(CoordinatorEntity, RestoreEntity, SensorEnt
         self._attr_unique_id = f"oukitel_{client.device_key}_{unique_suffix}"
         self._attr_native_unit_of_measurement = currency
         self._attr_device_class = SensorDeviceClass.MONETARY
-        self._attr_state_class = SensorStateClass.TOTAL if period_type in ("daily", "monthly") else SensorStateClass.TOTAL_INCREASING
+        self._attr_state_class = SensorStateClass.TOTAL
         self._attr_icon = icon
         self._attr_suggested_display_precision = 2
         self._attr_entity_registry_enabled_default = enabled_default
