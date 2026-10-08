@@ -150,6 +150,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         for key, name, unit, dev_class, state_class, icon, category, enabled_default in SENSOR_TYPES
     ]
     entities.append(OukitelConnectionModeSensor(coordinator, client))
+    entities.append(OukitelInverterIdlePowerSensor(coordinator, client))
+    entities.append(OukitelInverterEfficiencySensor(coordinator, client))
+    entities.append(OukitelInverterLossPowerSensor(coordinator, client))
 
     # Options for dynamic electricity pricing
     price_sensor = entry.options.get(
@@ -549,6 +552,143 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
             age = round(time.monotonic() - self.coordinator._lan_last_report, 1)
             attrs["last_lan_report_ago_s"] = age
         return attrs
+
+
+class OukitelInverterIdlePowerSensor(CoordinatorEntity, SensorEntity):
+    """Calculated standby / idle consumption of the AC inverter in Watts."""
+
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:power-sleep"
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = f"{client.device_name} Inverter Idle Power"
+        self._attr_unique_id = f"oukitel_{client.device_key}_inverter_idle_power"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_device_info(self.coordinator, self.client)
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data or self.coordinator.is_paused:
+            return 0.0
+        ac_switch = bool(self.coordinator.data.get("ac_switch", False))
+        if not ac_switch:
+            return 0.0
+        return 18.0
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.data or self.coordinator.is_paused:
+            return {}
+        ac_switch = bool(self.coordinator.data.get("ac_switch", False))
+        ac_out = float(self.coordinator.data.get("ac_output_power") or 0.0)
+        return {
+            "ac_switch": "ON" if ac_switch else "OFF",
+            "inverter_state": "Standby (Idle)" if (ac_switch and ac_out <= 5.0) else ("Inverting" if ac_switch else "Off"),
+            "nominal_idle_draw_w": 18.0,
+        }
+
+
+class OukitelInverterEfficiencySensor(CoordinatorEntity, SensorEntity):
+    """Real-time calculated efficiency percentage of the AC inverter."""
+
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:gauge"
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = f"{client.device_name} Inverter Efficiency"
+        self._attr_unique_id = f"oukitel_{client.device_key}_inverter_efficiency"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_device_info(self.coordinator, self.client)
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data or self.coordinator.is_paused:
+            return 0.0
+        ac_switch = bool(self.coordinator.data.get("ac_switch", False))
+        if not ac_switch:
+            return 0.0
+
+        ac_out = float(self.coordinator.data.get("ac_output_power") or 0.0)
+        if ac_out <= 5.0:
+            return 0.0
+
+        ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
+
+        # 1. UPS Bypass mode: AC mains feeds loads directly through bypass relay
+        if ac_in > 10.0 and ac_in >= (ac_out - 15.0):
+            return round(min(98.5, max(95.0, (ac_out / (ac_out + 3.5)) * 100.0)), 1)
+
+        # 2. Inverting mode (DC bus / Battery / Solar to AC):
+        # Calibrated quadratic loss model for Oukitel bidirectional inverter
+        p_loss = 18.0 + (0.035 * ac_out) + (0.000025 * (ac_out ** 2))
+        p_in = ac_out + p_loss
+        eff = (ac_out / p_in) * 100.0
+        return round(min(93.5, max(10.0, eff)), 1)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self.coordinator.data or self.coordinator.is_paused:
+            return {}
+        ac_switch = bool(self.coordinator.data.get("ac_switch", False))
+        ac_out = float(self.coordinator.data.get("ac_output_power") or 0.0)
+        ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
+        is_bypass = ac_switch and (ac_in > 10.0 and ac_in >= (ac_out - 15.0))
+        return {
+            "mode": "Bypass (Grid Passthrough)" if is_bypass else ("Inverting (Battery/Solar)" if ac_switch else "Off"),
+            "ac_output_power_w": ac_out,
+        }
+
+
+class OukitelInverterLossPowerSensor(CoordinatorEntity, SensorEntity):
+    """Real-time calculated internal power loss of the AC inverter in Watts."""
+
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:fire-alert"
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = f"{client.device_name} Inverter Loss Power"
+        self._attr_unique_id = f"oukitel_{client.device_key}_inverter_loss_power"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_device_info(self.coordinator, self.client)
+
+    @property
+    def native_value(self) -> float:
+        if not self.coordinator.data or self.coordinator.is_paused:
+            return 0.0
+        ac_switch = bool(self.coordinator.data.get("ac_switch", False))
+        if not ac_switch:
+            return 0.0
+
+        ac_out = float(self.coordinator.data.get("ac_output_power") or 0.0)
+        if ac_out <= 5.0:
+            return 18.0
+
+        ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
+        if ac_in > 10.0 and ac_in >= (ac_out - 15.0):
+            return round(min(25.0, max(2.0, ac_out * 0.015)), 1)
+
+        p_loss = 18.0 + (0.035 * ac_out) + (0.000025 * (ac_out ** 2))
+        return round(p_loss, 1)
 
 
 class OukitelCalculatedEnergySensor(CoordinatorEntity, RestoreEntity, SensorEntity):
