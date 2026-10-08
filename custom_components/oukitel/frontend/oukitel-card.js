@@ -1,11 +1,12 @@
 /**
- * Oukitel Power Station Lovelace Cards (v3.4.1)
+ * Oukitel Power Station Lovelace Cards (v3.4.2)
  *
  * 1. custom:oukitel-display-card - 100% authentic LCD screen simulation:
+ *    - Removed off-center inner arc line inside the sphere for clean authentic look
+ *    - Perfectly tuned minutes unit tag spacing (x=192, balanced clearance)
  *    - Expanded top margin (viewBox 900x310, inner LCD y=24..250)
  *    - Fan icon elevated (cx=334, cy=44) with generous clearance above arc bracket
- *    - Battery capsule lowered (y=134) with open guide arc and clean spacing
- *    - Generous spacing for minutes unit tag (`Mins` positioned 24px after digits)
+ *    - Battery capsule lowered (y=134) in the sphere bottom opening
  *    - Perfect bilateral symmetry: 68px identical margins on both left and right edges
  *    - Exact time display: `${hrs}h ${mins}m` and `MM Mins`
  * 2. custom:oukitel-card - Complete control dashboard with sleek, discreet mini tactile switches,
@@ -272,9 +273,9 @@ class OukitelDisplayCard extends HTMLElement {
           <!-- REMAINING Title (y=66) -->
           <text x="90" y="66" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="14" font-weight="800" letter-spacing="2" filter="url(#lcd-cyan-glow)">REMAINING</text>
 
-          <!-- Exact Digits (x=90, y=140) & Unit placed with generous space -->
+          <!-- Exact Digits (x=90, y=140) & Unit placed with balanced space -->
           <text id="txt-rem-digits" x="90" y="140" fill="#00e5ff" font-family="'Orbitron', monospace" font-size="52" font-weight="900" letter-spacing="2" filter="url(#lcd-cyan-glow)">--</text>
-          <text id="txt-rem-unit" x="218" y="136" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="17" font-weight="800" filter="url(#lcd-cyan-glow)">Mins</text>
+          <text id="txt-rem-unit" x="192" y="136" fill="#00e5ff" font-family="'Chakra Petch', sans-serif" font-size="17" font-weight="800" filter="url(#lcd-cyan-glow)">Mins</text>
 
           <!-- Warning / Protection Circles (y=182) -->
           <g id="ico-temp-warn" transform="translate(90, 182)" opacity="0.2">
@@ -311,9 +312,6 @@ class OukitelDisplayCard extends HTMLElement {
           <g id="annular-blocks-grp">
             ${annularBlocks}
           </g>
-
-          <!-- Inner Guide Arc (Opens cleanly at the bottom, no line crossing text) -->
-          <path d="M 404 173.5 A 62 62 0 1 1 496 173.5" fill="none" stroke="rgba(0, 229, 255, 0.3)" stroke-width="1.6" />
 
           <!-- Large Battery Percentage Digits (y=110) -->
           <text id="txt-batt-pct" x="442" y="110" text-anchor="middle" fill="#ffffff" font-family="'Orbitron', monospace" font-size="44" font-weight="900" filter="url(#lcd-cyan-glow)">--</text>
@@ -473,9 +471,9 @@ class OukitelDisplayCard extends HTMLElement {
       txtRemUnit.textContent = remUnit;
 
       if (remUnit) {
-        // Position unit with generous clearance after digits:
-        const digitsWidth = remNum.length * 52;
-        txtRemUnit.setAttribute("x", `${90 + digitsWidth + 24}`);
+        // Balanced clearance: 14px after digits (tight and clean, zero overlap)
+        const digitsWidth = remNum.length * 44;
+        txtRemUnit.setAttribute("x", `${90 + digitsWidth + 14}`);
       }
     }
 
