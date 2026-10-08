@@ -166,9 +166,33 @@ You can configure the active connection mode at any time directly in Home Assist
 > [!TIP]
 > The **Connection Mode** diagnostic sensor on the device page always reports whether the station is actively communicating via `LAN` or `Cloud`.
 
+> [!IMPORTANT]
+> **Sincronización al cambiar manualmente entre modos / Mode Switching & Initial Synchronization:**
+> Al cambiar manualmente entre modos de conexión (**Automático**, **Solo LAN** o **Solo Cloud**) en la configuración de la integración, Home Assistant necesita renegociar la sesión local o de nube, por lo que **puede tardar unos segundos en recuperar y poblar el estado completo de los sensores por primera vez**.
+> 
+> 👉 **Recomendación**: Tras cambiar de modo, pulsa sobre el botón **Reload Connection** (`Recargar Conexión` en la sección Diagnóstico) para forzar un refresco instantáneo de todos los datos y asegurar la sincronización inmediata de la estación.
+> 
+> *When manually switching between connection modes (**Auto**, **LAN Only**, or **Cloud Only**) in the integration options, Home Assistant must re-establish the connection session, which may take a few moments to populate all sensor states for the first time.*
+> 
+> 👉 **Recommendation**: After changing the mode, press the **Reload Connection** button (found under the **Diagnostic** section of the device) to trigger an immediate telemetry refresh and ensure complete state synchronization.
+> 
+> <div align="center">
+>   <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/14_reload_connection_button.png" alt="Reload Connection Button" width="340" />
+> </div>
+
 ---
 
-## 🚀 What's New in v1.5.0: Advanced Energy Architecture & Calculated Metrics
+## 🚀 What's New in v1.5.5: Hybrid LAN + Cloud Shadow, Bilingual Localization & Connection Reload
+
+- **⚡ Hybrid LAN + Cloud Shadow Dynamic Sync:** Real-time push for all active power meters (W), switches, and battery SoC via local TCP socket (6607), combined with continuous background shadow synchronization for temperature (`temp`), WiFi signal strength (`wifi_signal`), and firmware versions (`BMS_Version`, `AC_Version`).
+- **🔄 Instant Connection Reload Button:** Added and documented the **Reload Connection** entity (`button.oukitel_reload_connection`), allowing one-click instant session re-establishment and full telemetry synchronization when switching between connection modes.
+- **🌐 100% Bilingual Localization (English & Spanish):** Comprehensive translations across all 58 entities, configuration flows, device descriptions, error messages, and interactive Lovelace cards.
+- **🛡️ Rock-Solid Reconnection & Startup:** Fully resolved race conditions during startup in Cloud, Auto, and Solo LAN modes, ensuring entities never remain unavailable.
+- **🏷️ Restored Entity Names & Hierarchy:** Proper device-relative entity naming (`has_entity_name = True`) with native `via_device` linking for child calculated metrics.
+
+---
+
+## 🚀 Advanced Energy Architecture & Calculated Metrics (v1.5.0+)
 *(Recorrido de Desarrollo: Hitos y Nuevas Capacidades Integradas)*
 
 Version **1.5.0** marks a monumental milestone in the integration's evolution. Transitioning from basic telemetry into a full-scale Home Assistant Energy & Financial Management ecosystem, the integration now automatically discovers **2 connected devices** and exposes **58 native entities**:

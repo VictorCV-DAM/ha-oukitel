@@ -1,7 +1,7 @@
 """Constants for the Oukitel Power Station integration."""
 
 DOMAIN = "oukitel"
-VERSION = "1.5.4"
+VERSION = "1.5.5"
 
 CONF_REGION = "region"
 CONF_EMAIL = "email"
