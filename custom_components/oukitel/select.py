@@ -11,7 +11,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTITY_DESCRIPTIONS, get_entity_description
+from .const import DOMAIN, ENTITY_DESCRIPTIONS, MODE_LAN, get_entity_description
 from .coordinator import OukitelDataCoordinator
 from .sensor import _build_device_info
 
@@ -102,8 +102,8 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
 
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_current_option = option
-            self.coordinator.async_set_user_override(self._key, str(cloud_val), ttl=60.0, min_hold=5.0)
-            self.coordinator.async_set_user_override("27", cloud_val, ttl=60.0, min_hold=5.0)
+            self.coordinator.async_set_user_override(self._key, str(cloud_val), ttl=10.0, min_hold=2.0)
+            self.coordinator.async_set_user_override("27", cloud_val, ttl=10.0, min_hold=2.0)
             self.async_write_ha_state()
 
             lan_ok = False
@@ -116,11 +116,13 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
                 except Exception as exc:
                     _LOGGER.warning("oukitel: LAN frequency write failed: %s", exc)
 
-            # 3. Send command to cloud formatted as TSL string
-            success = await self.hass.async_add_executor_job(
-                self.client.control_device, [{self._key: str(cloud_val)}]
-            )
-            if not success and not lan_ok:
+            # 3. Send command to cloud formatted as TSL string only if not LAN-only
+            cloud_ok = False
+            if self.coordinator.connection_mode != MODE_LAN:
+                cloud_ok = await self.hass.async_add_executor_job(
+                    self.client.control_device, [{self._key: str(cloud_val)}]
+                )
+            if not cloud_ok and not lan_ok:
                 _LOGGER.error("oukitel: Failed to set output frequency to %s", option)
                 self.coordinator.async_clear_user_override(self._key)
                 self.coordinator.async_clear_user_override("27")
@@ -199,8 +201,8 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
 
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_current_option = option
-            self.coordinator.async_set_user_override(self._key, str(clean_num), ttl=60.0, min_hold=5.0)
-            self.coordinator.async_set_user_override("28", clean_num, ttl=60.0, min_hold=5.0)
+            self.coordinator.async_set_user_override(self._key, str(clean_num), ttl=10.0, min_hold=2.0)
+            self.coordinator.async_set_user_override("28", clean_num, ttl=10.0, min_hold=2.0)
             self.async_write_ha_state()
 
             lan_ok = False
@@ -213,11 +215,13 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
                 except Exception as exc:
                     _LOGGER.warning("oukitel: LAN voltage write failed: %s", exc)
 
-            # 3. Send command to cloud formatted as TSL string
-            success = await self.hass.async_add_executor_job(
-                self.client.control_device, [{self._key: str(clean_num)}]
-            )
-            if not success and not lan_ok:
+            # 3. Send command to cloud formatted as TSL string only if not LAN-only
+            cloud_ok = False
+            if self.coordinator.connection_mode != MODE_LAN:
+                cloud_ok = await self.hass.async_add_executor_job(
+                    self.client.control_device, [{self._key: str(clean_num)}]
+                )
+            if not cloud_ok and not lan_ok:
                 _LOGGER.error("oukitel: Failed to set output voltage to %s", option)
                 self.coordinator.async_clear_user_override(self._key)
                 self.coordinator.async_clear_user_override("28")

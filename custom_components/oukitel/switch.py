@@ -90,7 +90,7 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         async with self._action_lock:
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_is_on = True
-            self.coordinator.async_set_user_override(self._key, True, ttl=60.0, min_hold=5.0)
+            self.coordinator.async_set_user_override(self._key, True, ttl=10.0, min_hold=2.0)
             self.async_write_ha_state()
 
             # 2. Fire hardware command (instant LAN if active, plus Cloud sync)
@@ -107,7 +107,7 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         async with self._action_lock:
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_is_on = False
-            self.coordinator.async_set_user_override(self._key, False, ttl=60.0, min_hold=5.0)
+            self.coordinator.async_set_user_override(self._key, False, ttl=10.0, min_hold=2.0)
             self.async_write_ha_state()
 
             # 2. Fire hardware command (instant LAN if active, plus Cloud sync)

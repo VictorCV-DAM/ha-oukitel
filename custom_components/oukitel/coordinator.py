@@ -335,7 +335,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         return self._paused
 
     def async_set_user_override(
-        self, key: str, value: Any, ttl: float = 60.0, min_hold: float = 5.0
+        self, key: str, value: Any, ttl: float = 10.0, min_hold: float = 2.0
     ) -> None:
         """Record user command override so stale telemetry does not overwrite commanded state."""
         now = time.time()
@@ -367,8 +367,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             except Exception as exc:
                 _LOGGER.warning("oukitel: LAN write failed: %s", exc)
 
-        # Always synchronize clean single-property switch command to Cloud if not LAN-only
-        # (exact same method as voltage), so Quectel cloud shadow aligns immediately and WonderFree stops bouncing
+        # Synchronize clean single-property switch command to Cloud only if not LAN-only
         cloud_ok = False
         if self.connection_mode != MODE_LAN:
             try:
@@ -380,17 +379,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
 
         return lan_ok or cloud_ok
-
-    async def _async_sync_physical_change_to_cloud(self, key: str, value: bool) -> None:
-        """Propagate physical hardware switch changes to Cloud shadow so WonderFree updates in < 1s."""
-        try:
-            await self.hass.async_add_executor_job(
-                self.client.control_device,
-                [{key: value}],
-            )
-            _LOGGER.debug("oukitel: Successfully synced physical switch %s=%s to Cloud", key, value)
-        except Exception as exc:
-            _LOGGER.debug("oukitel: Failed to sync physical switch %s to Cloud: %s", key, exc)
 
     def _apply_user_overrides(self, target: dict[str, Any]) -> None:
         """Apply active user overrides to incoming telemetry dictionary."""
@@ -482,23 +470,24 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info("oukitel: authKey unavailable — running in cloud mode")
             return
 
-        # Seed static diagnostics (BMS_Version, AC_Version, etc.) from Cloud shadow if reachable
-        try:
-            cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
-            if cloud_snapshot:
-                static_keys = (
-                    "BMS_Version",
-                    "AC_Version",
-                    "Frequency_Switchover",
-                    "ACvoltage_Switchover",
-                    "ac_charging_limit",
-                )
-                for k in static_keys:
-                    if k in cloud_snapshot and cloud_snapshot[k] is not None:
-                        self._lan_state[k] = cloud_snapshot[k]
-                _unpack_port_data(self._lan_state)
-        except Exception as exc:
-            _LOGGER.debug("oukitel: Could not seed initial static metadata from cloud: %s", exc)
+        # Seed static diagnostics (BMS_Version, AC_Version, etc.) from Cloud shadow only in Auto mode
+        if self.connection_mode != MODE_LAN:
+            try:
+                cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
+                if cloud_snapshot:
+                    static_keys = (
+                        "BMS_Version",
+                        "AC_Version",
+                        "Frequency_Switchover",
+                        "ACvoltage_Switchover",
+                        "ac_charging_limit",
+                    )
+                    for k in static_keys:
+                        if k in cloud_snapshot and cloud_snapshot[k] is not None:
+                            self._lan_state[k] = cloud_snapshot[k]
+                    _unpack_port_data(self._lan_state)
+            except Exception as exc:
+                _LOGGER.debug("oukitel: Could not seed initial static metadata from cloud: %s", exc)
 
         _LOGGER.info("oukitel: Device found at %s — starting LAN session", host)
         await self._start_lan_session(host, auth_key)
@@ -512,7 +501,13 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         try:
             await self._lan_session.connect()
         except (LocalSessionError, LocalAuthError) as exc:
-            _LOGGER.warning("oukitel: LAN session failed to start: %s — using cloud", exc)
+            if self.connection_mode == MODE_LAN:
+                _LOGGER.error(
+                    "oukitel: LAN session failed to connect to %s: %s (Solo LAN mode — Cloud fallback disabled)",
+                    host, exc,
+                )
+            else:
+                _LOGGER.warning("oukitel: LAN session failed to start: %s — using cloud", exc)
             self._lan_session = None
             return
 
@@ -544,9 +539,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             if self._paused:
                 break
 
-            # Re-scan: device IP may have changed
-            host_new = await find_device_on_lan(self.client.device_key or "")
-            target = host_new or host
+            # Re-scan or retry static host
+            if self.lan_host:
+                target = self.lan_host
+            else:
+                host_new = await find_device_on_lan(self.client.device_key or "")
+                target = host_new or host
             self._lan_session = LocalSession(
                 host=target,
                 auth_key_b64=auth_key,
@@ -600,26 +598,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         _unpack_port_data(current_data)
         self._apply_user_overrides(current_data)
 
-        # In Auto mode, synchronize physical button changes to Cloud shadow immediately
-        # so Wonderfree app reflects physical presses in < 1s instead of waiting ~40s
-        if self.connection_mode != MODE_LAN and self._lan_state:
-            for sw_key in ("ac_switch", "usb_switch", "dc_switch"):
-                old_val = self._lan_state.get(sw_key)
-                new_val = current_data.get(sw_key)
-                if (
-                    old_val is not None
-                    and new_val is not None
-                    and old_val != new_val
-                    and sw_key not in self._user_overrides
-                ):
-                    _LOGGER.debug(
-                        "oukitel: Physical change detected for %s (%s -> %s), syncing to Cloud shadow",
-                        sw_key, old_val, new_val,
-                    )
-                    self.hass.async_create_task(
-                        self._async_sync_physical_change_to_cloud(sw_key, new_val)
-                    )
-
         self._lan_state = current_data
         self.hass.loop.call_soon_threadsafe(
             self.async_set_updated_data, dict(self._lan_state)
@@ -651,26 +629,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if self._lan_active and self._lan_state:
             return await self._update_lan()
         if self.connection_mode == MODE_LAN:
-            # If LAN session is initializing in the background during setup, wait up to 4s
+            # If LAN session is initializing in the background during setup, wait briefly
             for _ in range(40):
                 if self._lan_active and self._lan_state:
                     return await self._update_lan()
                 await asyncio.sleep(0.1)
-            if self._lan_active:
+            if self._lan_active and self._lan_state:
                 return await self._update_lan()
-            # If this is the initial setup/refresh and LAN hasn't connected yet,
-            # seed from cloud snapshot so Home Assistant doesn't fail with ConfigEntryNotReady
-            if not self.data:
-                _LOGGER.warning(
-                    "oukitel: LAN session not established during initial setup; seeding baseline from Cloud while LAN connects in background"
-                )
-                try:
-                    cloud_baseline = await self._update_cloud()
-                    if cloud_baseline:
-                        return cloud_baseline
-                except Exception as exc:
-                    _LOGGER.debug("oukitel: Cloud initial fallback attempt failed: %s", exc)
-            raise UpdateFailed("LAN session not active and mode is set to LAN Only")
+            raise UpdateFailed(
+                f"LAN session not active for host '{self.lan_host or 'auto'}'. Cloud fallback is disabled in Solo LAN mode."
+            )
         return await self._update_cloud()
 
     async def _update_lan(self) -> dict:
@@ -740,13 +708,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             offline_data["online"] = False
             return offline_data
 
-        # Do not issue wake_device if a user command was recently sent (within 15s)
-        # to prevent isCover or command clashes on the battery's MQTT queue
-        can_wake = (now - self.last_user_command_time) >= 15.0
-        if (now - self.last_wake_time >= DEFAULT_WAKE_INTERVAL) and can_wake:
-            await self.hass.async_add_executor_job(self.client.wake_device)
-            self.last_wake_time = now
-
         data = await self.hass.async_add_executor_job(self.client.get_telemetry)
         if not data:
             # Device might have just gone offline, verify immediately via userDeviceList
@@ -757,10 +718,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 offline_data["online"] = False
                 return offline_data
 
-            if can_wake:
+            can_wake = (now - self.last_user_command_time) >= 15.0
+            if can_wake and (now - self.last_wake_time >= DEFAULT_WAKE_INTERVAL):
                 await self.hass.async_add_executor_job(self.client.wake_device)
                 self.last_wake_time = time.time()
-            data = await self.hass.async_add_executor_job(self.client.get_telemetry)
+                data = await self.hass.async_add_executor_job(self.client.get_telemetry)
 
         if not data:
             raise UpdateFailed("Failed to communicate with Oukitel Cloud")

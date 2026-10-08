@@ -11,7 +11,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTITY_DESCRIPTIONS, get_entity_description
+from .const import DOMAIN, ENTITY_DESCRIPTIONS, MODE_LAN, get_entity_description
 from .coordinator import OukitelDataCoordinator
 from .sensor import _build_device_info
 
@@ -90,7 +90,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
 
         # 1. Update UI and coordinator cache immediately with active override
         self._attr_native_value = float(target_val)
-        self.coordinator.async_set_user_override(self._key, target_val, ttl=60.0, min_hold=5.0)
+        self.coordinator.async_set_user_override(self._key, target_val, ttl=10.0, min_hold=2.0)
         self.async_write_ha_state()
 
         # 2. Cancel any pending dispatch and schedule a new debounced send
@@ -117,13 +117,14 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
             except Exception as exc:
                 _LOGGER.warning("oukitel: LAN write failed for charging limit: %s", exc)
 
-        # Always synchronize clean single-property charging limit to Cloud
-        # (exact same method as voltage), so Quectel cloud shadow aligns immediately and WonderFree stops bouncing
-        success = await self.hass.async_add_executor_job(
-            self.client.control_device,
-            [{self._key: target_val}],
-        )
-        if not success and not lan_ok:
+        # Synchronize clean single-property charging limit to Cloud only if not LAN-only
+        cloud_ok = False
+        if self.coordinator.connection_mode != MODE_LAN:
+            cloud_ok = await self.hass.async_add_executor_job(
+                self.client.control_device,
+                [{self._key: target_val}],
+            )
+        if not cloud_ok and not lan_ok:
             _LOGGER.error("oukitel: Failed to set %s to %s", self._key, target_val)
             self.coordinator.async_clear_user_override(self._key)
             if self.coordinator.data and self._key in self.coordinator.data:
