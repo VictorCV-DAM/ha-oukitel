@@ -11,7 +11,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTITY_DESCRIPTIONS
+from .const import DOMAIN, ENTITY_DESCRIPTIONS, get_entity_description
 from .coordinator import OukitelDataCoordinator
 from .sensor import _build_device_info
 
@@ -63,7 +63,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return {"description": ENTITY_DESCRIPTIONS.get("ac_charging_limit")}
+        return {"description": get_entity_description("ac_charging_limit", self.hass)}
 
     @property
     def available(self) -> bool:

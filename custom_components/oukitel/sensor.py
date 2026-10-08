@@ -34,6 +34,7 @@ from .const import (
     DOMAIN,
     ENTITY_DESCRIPTIONS,
     VERSION,
+    get_entity_description,
 )
 from .coordinator import OukitelDataCoordinator
 
@@ -310,7 +311,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        desc = ENTITY_DESCRIPTIONS.get(self._key)
+        desc = get_entity_description(self._key, self.hass)
         if self._key == "device_fault_status":
             details = []
             temp = float(self.coordinator.data.get("temp") or 0)
@@ -336,7 +337,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                         details.append(f"{k}: {v}")
 
             return {
-                "description": desc or "Estado operativo del hardware y protecciones activas.",
+                "description": desc or "Operating hardware status and active protections.",
                 "fault_details": "; ".join(details) if details else "None",
                 "possible_states": FAULT_STATUS_OPTIONS,
             }
@@ -563,7 +564,7 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         attrs: dict = {
-            "description": ENTITY_DESCRIPTIONS.get("connection_mode"),
+            "description": get_entity_description("connection_mode", self.hass),
             "configured_mode": getattr(self.coordinator, "connection_mode", "auto"),
             "lan_ip": getattr(self.coordinator, "lan_host", None),
             "device_mac": _format_mac(self.client.device_key or ""),
@@ -606,7 +607,7 @@ class OukitelInverterIdlePowerSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        desc = ENTITY_DESCRIPTIONS.get("inverter_idle_power")
+        desc = get_entity_description("inverter_idle_power", self.hass)
         if not self.coordinator.data or self.coordinator.is_paused:
             return {"description": desc}
         ac_switch = bool(self.coordinator.data.get("ac_switch", False))
@@ -664,7 +665,7 @@ class OukitelInverterEfficiencySensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        desc = ENTITY_DESCRIPTIONS.get("inverter_efficiency")
+        desc = get_entity_description("inverter_efficiency", self.hass)
         if not self.coordinator.data or self.coordinator.is_paused:
             return {"description": desc}
         ac_switch = bool(self.coordinator.data.get("ac_switch", False))
@@ -718,7 +719,7 @@ class OukitelInverterLossPowerSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return {"description": ENTITY_DESCRIPTIONS.get("inverter_loss_power")}
+        return {"description": get_entity_description("inverter_loss_power", self.hass)}
 
 
 class OukitelBatteryCyclesSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
@@ -750,7 +751,7 @@ class OukitelBatteryCyclesSensor(CoordinatorEntity, RestoreEntity, SensorEntity)
     @property
     def extra_state_attributes(self) -> dict:
         return {
-            "description": ENTITY_DESCRIPTIONS.get("battery_cycles_count"),
+            "description": get_entity_description("battery_cycles_count", self.hass),
             "nominal_capacity_wh": self._capacity_wh,
             "total_discharged_kwh": round(self._cycles * (self._capacity_wh / 1000.0), 3),
             "rated_cycle_life": 3500,
@@ -822,7 +823,7 @@ class OukitelBatteryHealthSensor(CoordinatorEntity, RestoreEntity, SensorEntity)
     @property
     def extra_state_attributes(self) -> dict:
         return {
-            "description": ENTITY_DESCRIPTIONS.get("battery_state_of_health_estimated"),
+            "description": get_entity_description("battery_state_of_health_estimated", self.hass),
             "battery_chemistry": "LiFePO4 (LFP)",
             "rated_cycles_to_80_pct": 3500,
             "health_status": "Excellent" if self._soh >= 95.0 else ("Good" if self._soh >= 88.0 else "Fair"),
@@ -881,7 +882,7 @@ class OukitelDaysSinceFullChargeSensor(CoordinatorEntity, RestoreEntity, SensorE
     def extra_state_attributes(self) -> dict:
         days = self.native_value
         return {
-            "description": ENTITY_DESCRIPTIONS.get("days_since_last_full_charge"),
+            "description": get_entity_description("days_since_last_full_charge", self.hass),
             "last_full_charge_timestamp": dt_util.utc_from_timestamp(self._last_full_charge_ts).isoformat(),
             "calibration_needed": days >= 30.0,
             "recommended_action": "BMS calibrated and balanced" if days < 30.0 else "Charge to 100% to calibrate cell balance",
@@ -959,7 +960,7 @@ class OukitelCalculatedEnergySensor(CoordinatorEntity, RestoreEntity, SensorEnti
     @property
     def extra_state_attributes(self) -> dict:
         attrs = {
-            "description": ENTITY_DESCRIPTIONS.get(self._unique_suffix, "Energía acumulada calculada."),
+            "description": get_entity_description(self._unique_suffix, self.hass) or "Calculated cumulative energy metric.",
         }
         if self._is_daily:
             attrs["last_reset_day"] = self._last_reset_day
@@ -1071,7 +1072,7 @@ class OukitelCalculatedSavingsSensor(CoordinatorEntity, RestoreEntity, SensorEnt
     @property
     def extra_state_attributes(self) -> dict:
         attrs = {
-            "description": ENTITY_DESCRIPTIONS.get(self._unique_suffix, "Métrica financiera calculada."),
+            "description": get_entity_description(self._unique_suffix, self.hass) or "Calculated financial balance metric.",
             "metric_kind": self._metric_kind,
             "currency": self._currency,
             "price_sensor_configured": self._price_sensor or "None (Fixed fallback)",

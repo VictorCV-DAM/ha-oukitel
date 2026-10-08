@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTITY_DESCRIPTIONS
+from .const import DOMAIN, ENTITY_DESCRIPTIONS, get_entity_description
 from .coordinator import OukitelDataCoordinator
 from .sensor import _build_device_info
 
@@ -63,12 +63,12 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        desc_map = {
-            "ac_switch": ENTITY_DESCRIPTIONS.get("ac_output"),
-            "dc_switch": ENTITY_DESCRIPTIONS.get("dc_12v_output"),
-            "usb_switch": ENTITY_DESCRIPTIONS.get("usb_output"),
-        }
-        return {"description": desc_map.get(self._key, "")}
+        desc_key = {
+            "ac_switch": "ac_output",
+            "dc_switch": "dc_12v_output",
+            "usb_switch": "usb_output",
+        }.get(self._key, "")
+        return {"description": get_entity_description(desc_key, self.hass)}
 
     @property
     def available(self) -> bool:
@@ -138,7 +138,7 @@ class OukitelPauseSwitch(CoordinatorEntity, SwitchEntity, RestoreEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return {"description": ENTITY_DESCRIPTIONS.get("pause_integration")}
+        return {"description": get_entity_description("pause_integration", self.hass)}
 
     @property
     def available(self) -> bool:

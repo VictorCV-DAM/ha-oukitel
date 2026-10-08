@@ -9,7 +9,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTITY_DESCRIPTIONS
+from .const import DOMAIN, ENTITY_DESCRIPTIONS, get_entity_description
 from .coordinator import OukitelDataCoordinator
 from .sensor import _build_device_info
 
@@ -44,7 +44,7 @@ class OukitelReloadButton(CoordinatorEntity, ButtonEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return {"description": ENTITY_DESCRIPTIONS.get("reload")}
+        return {"description": get_entity_description("reload", self.hass)}
 
     @property
     def available(self) -> bool:
