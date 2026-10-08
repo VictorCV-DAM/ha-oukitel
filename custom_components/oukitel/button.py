@@ -9,7 +9,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTITY_DESCRIPTIONS, get_entity_description
+from .const import DOMAIN, ENTITY_DESCRIPTIONS, get_entity_description, get_entity_name
 from .coordinator import OukitelDataCoordinator
 from .sensor import _build_device_info
 
@@ -37,7 +37,7 @@ class OukitelReloadButton(CoordinatorEntity, ButtonEntity):
         super().__init__(coordinator)
         self.client = client
         self._entry_id = entry_id
-        self._attr_name = None
+        self._attr_name = get_entity_name("reload", "Reload Connection", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_reload"
 
     @property

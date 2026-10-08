@@ -11,7 +11,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTITY_DESCRIPTIONS, MODE_LAN, get_entity_description
+from .const import DOMAIN, ENTITY_DESCRIPTIONS, MODE_LAN, get_entity_description, get_entity_name
 from .coordinator import OukitelDataCoordinator
 from .sensor import _build_device_info
 
@@ -40,7 +40,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         super().__init__(coordinator)
         self.client = client
         self._key = "ac_charging_limit"
-        self._attr_name = None
+        self._attr_name = get_entity_name("ac_charging_limit", "AC Charging Limit", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_{self._key}"
         self._attr_icon = "mdi:gauge"
         self._attr_native_unit_of_measurement = PERCENTAGE

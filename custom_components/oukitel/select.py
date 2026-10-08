@@ -11,7 +11,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTITY_DESCRIPTIONS, MODE_LAN, get_entity_description
+from .const import DOMAIN, ENTITY_DESCRIPTIONS, MODE_LAN, get_entity_description, get_entity_name
 from .coordinator import OukitelDataCoordinator
 from .sensor import _build_device_info
 
@@ -48,7 +48,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
         super().__init__(coordinator)
         self.client = client
         self._key = "Frequency_Switchover"
-        self._attr_name = None
+        self._attr_name = get_entity_name("output_frequency", "Output Frequency", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_{self._key}"
         self._attr_icon = "mdi:sine-wave"
         self._attr_options = ["50Hz", "60Hz"]
@@ -144,7 +144,7 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
         super().__init__(coordinator)
         self.client = client
         self._key = "ACvoltage_Switchover"
-        self._attr_name = None
+        self._attr_name = get_entity_name("output_voltage", "Output Voltage", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_{self._key}"
         self._attr_icon = "mdi:lightning-bolt-circle"
         self._attr_options = VOLTAGE_OPTIONS

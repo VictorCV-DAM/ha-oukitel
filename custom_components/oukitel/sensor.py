@@ -37,6 +37,7 @@ from .const import (
     VERSION,
     get_battery_capacity_wh,
     get_entity_description,
+    get_entity_name,
 )
 from .coordinator import OukitelDataCoordinator
 
@@ -88,40 +89,18 @@ def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInf
 
 
 def _build_calculated_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInfo:
-    parent_device_id = None
-    try:
-        dev_reg = dr.async_get(coordinator.hass)
-        entry_id = coordinator.entry.entry_id if coordinator.entry else None
-        parent_device = None
-        if hasattr(dev_reg, "async_get_device_by_identifier") and entry_id:
-            parent_device = dev_reg.async_get_device_by_identifier((DOMAIN, client.device_key), entry_id)
-        if not parent_device and hasattr(dev_reg, "async_get_device"):
-            parent_device = dev_reg.async_get_device(identifiers={(DOMAIN, client.device_key)})
-        if not parent_device and entry_id:
-            parent_device = dev_reg.async_get_or_create(
-                config_entry_id=entry_id,
-                identifiers={(DOMAIN, client.device_key)},
-            )
-        if parent_device:
-            parent_device_id = parent_device.id
-    except Exception:
-        pass
-
     is_es = False
     if coordinator.hass and hasattr(coordinator.hass, "config") and getattr(coordinator.hass.config, "language", None):
         is_es = str(coordinator.hass.config.language).lower().startswith("es")
 
-    kwargs = {
-        "identifiers": {(DOMAIN, f"{client.device_key}_calculated")},
-        "name": f"{client.device_name} Sensores Calculados" if is_es else f"{client.device_name} Calculated Sensors",
-        "manufacturer": "OUKITEL",
-        "model": "Métricas Energéticas y Económicas Calculadas" if is_es else "Calculated Energy & Financial Metrics",
-        "sw_version": f"Cloud+LAN {VERSION}",
-    }
-    if parent_device_id:
-        kwargs["via_device_id"] = parent_device_id
-
-    return DeviceInfo(**kwargs)
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{client.device_key}_calculated")},
+        via_device=(DOMAIN, client.device_key),
+        name=f"{client.device_name} Sensores Calculados" if is_es else f"{client.device_name} Calculated Sensors",
+        manufacturer="OUKITEL",
+        model="Métricas Energéticas y Económicas Calculadas" if is_es else "Calculated Energy & Financial Metrics",
+        sw_version=f"Cloud+LAN {VERSION}",
+    )
 
 
 FAULT_STATUS_OPTIONS = [
@@ -276,7 +255,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         self.client = client
         self._key = key
         self._attr_translation_key = key.lower()
-        self._attr_name = None
+        self._attr_name = get_entity_name(key, name, coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_{key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = dev_class
@@ -576,6 +555,7 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
+        self._attr_name = get_entity_name("connection_mode", "Connection Mode", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_connection_mode"
 
     @property
@@ -624,7 +604,7 @@ class OukitelInverterIdlePowerSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("inverter_idle_power", "Inverter Standby Consumption", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_inverter_idle_power"
 
     @property
@@ -668,7 +648,7 @@ class OukitelInverterEfficiencySensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("inverter_efficiency", "Inverter Efficiency", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_inverter_efficiency"
 
     @property
@@ -730,7 +710,7 @@ class OukitelInverterLossPowerSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("inverter_loss_power", "Inverter Loss Power", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_inverter_loss_power"
 
     @property
@@ -774,7 +754,7 @@ class OukitelBatteryCyclesSensor(CoordinatorEntity, RestoreEntity, SensorEntity)
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("battery_cycles_count", "Battery Equivalent Cycles", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_battery_cycles_count"
         self._capacity_wh = _get_battery_capacity_wh(client)
         self._cycles: float = 0.0
@@ -850,7 +830,7 @@ class OukitelBatteryHealthSensor(CoordinatorEntity, RestoreEntity, SensorEntity)
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("battery_state_of_health_estimated", "Estimated Battery Health (SoH)", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_battery_state_of_health_estimated"
         self._capacity_wh = _get_battery_capacity_wh(client)
         self._soh: float = 100.0
@@ -909,7 +889,7 @@ class OukitelDaysSinceFullChargeSensor(CoordinatorEntity, RestoreEntity, SensorE
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("days_since_last_full_charge", "Days Since Last Full Charge", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_days_since_last_full_charge"
         self._last_full_charge_ts: float = time.time()
 
@@ -983,7 +963,7 @@ class OukitelCalculatedEnergySensor(CoordinatorEntity, RestoreEntity, SensorEnti
         self._is_daily = is_daily
         self._unique_suffix = unique_suffix
         self._attr_translation_key = unique_suffix
-        self._attr_name = None
+        self._attr_name = get_entity_name(unique_suffix, name_suffix, coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_{unique_suffix}"
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_device_class = SensorDeviceClass.ENERGY
@@ -1097,7 +1077,7 @@ class OukitelCalculatedSavingsSensor(CoordinatorEntity, RestoreEntity, SensorEnt
         self._currency = currency
         self._unique_suffix = unique_suffix
         self._attr_translation_key = unique_suffix
-        self._attr_name = None
+        self._attr_name = get_entity_name(unique_suffix, name_suffix, coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_{unique_suffix}"
         self._attr_native_unit_of_measurement = currency
         self._attr_device_class = SensorDeviceClass.MONETARY
@@ -1228,7 +1208,7 @@ class OukitelEmptyTimestampSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client):
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("empty_timestamp", "Predicted Empty Time", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_empty_timestamp"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_icon = "mdi:battery-clock-outline"
@@ -1274,7 +1254,7 @@ class OukitelFullChargeTimestampSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client):
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("full_charge_timestamp", "Predicted Full Charge Time", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_full_charge_timestamp"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_icon = "mdi:battery-charging-100"
@@ -1320,7 +1300,7 @@ class OukitelSmoothedDischargeSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client):
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("smoothed_discharge_time", "Smoothed Discharge Time", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_smoothed_discharge_time"
         self._attr_native_unit_of_measurement = UnitOfTime.MINUTES
         self._attr_device_class = SensorDeviceClass.DURATION

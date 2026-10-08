@@ -12,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTITY_DESCRIPTIONS, get_entity_description
+from .const import DOMAIN, ENTITY_DESCRIPTIONS, get_entity_description, get_entity_name
 from .coordinator import OukitelDataCoordinator
 from .sensor import _build_device_info
 
@@ -49,7 +49,7 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         self.client = client
         self._key = key
         self._attr_translation_key = key
-        self._attr_name = None
+        self._attr_name = get_entity_name(key, name, coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_{key}"
         self._attr_icon = icon
 
@@ -133,7 +133,7 @@ class OukitelPauseSwitch(CoordinatorEntity, SwitchEntity, RestoreEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("pause_integration", "Pause Integration", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_pause_integration"
         self._attr_icon = "mdi:pause-circle"
 

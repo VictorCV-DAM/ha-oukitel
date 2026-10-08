@@ -256,3 +256,149 @@ def get_battery_capacity_wh(client) -> float:
         return 505.0
     return 2048.0
 
+
+ENTITY_NAMES_ES = {
+    # Core Telemetry & Diagnostics
+    "battery_percentage": "Batería",
+    "total_input_power": "Potencia total de entrada",
+    "total_output_power": "Potencia total de salida",
+    "ac_input": "Potencia de entrada AC",
+    "dc_input": "Potencia solar de entrada DC",
+    "temp": "Temperatura de la batería",
+    "inverter_temp": "Temperatura del inversor",
+    "remaining_time": "Tiempo restante",
+    "remain_time": "Tiempo restante de descarga",
+    "remain_charging_time": "Tiempo restante de carga",
+    "ac_output_power": "Potencia de salida AC",
+    "ac_output_voltage": "Voltaje de salida AC",
+    "usb_a_power": "Potencia USB-A",
+    "usb_c_qc_power": "Potencia USB-C QC",
+    "typec1_power": "Potencia Type-C 1",
+    "typec2_power": "Potencia Type-C 2",
+    "typec3_power": "Potencia Type-C 3",
+    "typec4_power": "Potencia Type-C 4",
+    "dc_output_power": "Potencia de salida DC",
+    "dc_output_voltage": "Voltaje de salida DC",
+    "dc_output_current": "Corriente de salida DC",
+    "wifi_signal": "Señal Wi-Fi",
+    "bms_version": "Versión de BMS",
+    "ac_version": "Versión de inversor",
+    "device_fault_status": "Estado operativo del hardware",
+    "connection_mode": "Modo de conexión",
+    "inverter_idle_power": "Consumo en reposo del inversor",
+    "inverter_efficiency": "Eficiencia del inversor",
+    "inverter_loss_power": "Pérdida de potencia del inversor",
+    "battery_cycles_count": "Ciclos equivalentes de batería",
+    "battery_state_of_health_estimated": "Salud estimada de la batería (SoH)",
+    "days_since_last_full_charge": "Días desde última carga completa",
+    "empty_timestamp": "Hora estimada de batería agotada",
+    "full_charge_timestamp": "Hora estimada de carga completa",
+    "smoothed_discharge_time": "Autonomía de descarga suavizada",
+
+    # Calculated Energy & Financial
+    "calc_ac_input_kwh": "Energía importada de la red AC",
+    "calc_dc_input_kwh": "Energía solar generada",
+    "calc_total_output_kwh": "Energía total suministrada",
+    "calc_ac_output_kwh": "Energía AC suministrada",
+    "calc_battery_discharged_kwh": "Energía descargada de batería",
+    "calc_daily_ac_input_kwh": "Energía diaria importada de la red AC",
+    "calc_daily_charging_cost_eur": "Coste diario de carga",
+    "calc_monthly_charging_cost_eur": "Coste mensual de carga",
+    "calc_daily_savings_eur": "Ahorro solar diario",
+    "calc_monthly_savings_eur": "Ahorro solar mensual",
+    "calc_daily_net_savings_eur": "Balance neto diario",
+    "calc_lifetime_savings_eur": "Ahorro solar acumulado",
+    "calc_lifetime_charging_cost_eur": "Coste de carga acumulado",
+
+    # Binary Sensors, Switches, Buttons, Numbers, Selects
+    "on_battery": "Funcionando con batería",
+    "device_online": "Dispositivo en línea",
+    "ac_switch": "Salida AC",
+    "dc_switch": "Salida DC 12V",
+    "usb_switch": "Salida USB",
+    "pause_integration": "Pausar integración",
+    "reload": "Recargar conexión",
+    "ac_charging_limit": "Límite de carga AC",
+    "output_frequency": "Frecuencia de salida",
+    "output_voltage": "Voltaje de salida",
+}
+
+ENTITY_NAMES_EN = {
+    # Core Telemetry & Diagnostics
+    "battery_percentage": "Battery",
+    "total_input_power": "Total Input Power",
+    "total_output_power": "Total Output Power",
+    "ac_input": "AC Input Power",
+    "dc_input": "DC Solar Input Power",
+    "temp": "Battery Temperature",
+    "inverter_temp": "Inverter Temperature",
+    "remaining_time": "Remaining Time",
+    "remain_time": "Remaining Discharge Time",
+    "remain_charging_time": "Remaining Charge Time",
+    "ac_output_power": "AC Output Power",
+    "ac_output_voltage": "AC Output Voltage",
+    "usb_a_power": "USB-A Power",
+    "usb_c_qc_power": "USB-C QC Power",
+    "typec1_power": "Type-C 1 Power",
+    "typec2_power": "Type-C 2 Power",
+    "typec3_power": "Type-C 3 Power",
+    "typec4_power": "Type-C 4 Power",
+    "dc_output_power": "DC Output Power",
+    "dc_output_voltage": "DC Output Voltage",
+    "dc_output_current": "DC Output Current",
+    "wifi_signal": "WiFi Signal",
+    "bms_version": "BMS Version",
+    "ac_version": "Inverter Version",
+    "device_fault_status": "Hardware Fault Status",
+    "connection_mode": "Connection Mode",
+    "inverter_idle_power": "Inverter Standby Consumption",
+    "inverter_efficiency": "Inverter Efficiency",
+    "inverter_loss_power": "Inverter Loss Power",
+    "battery_cycles_count": "Battery Equivalent Cycles",
+    "battery_state_of_health_estimated": "Estimated Battery Health (SoH)",
+    "days_since_last_full_charge": "Days Since Last Full Charge",
+    "empty_timestamp": "Predicted Empty Time",
+    "full_charge_timestamp": "Predicted Full Charge Time",
+    "smoothed_discharge_time": "Smoothed Discharge Time",
+
+    # Calculated Energy & Financial
+    "calc_ac_input_kwh": "AC Grid Import Energy",
+    "calc_dc_input_kwh": "Solar Energy Generated",
+    "calc_total_output_kwh": "Total Output Energy",
+    "calc_ac_output_kwh": "AC Output Energy",
+    "calc_battery_discharged_kwh": "Battery Energy Discharged",
+    "calc_daily_ac_input_kwh": "Daily AC Grid Import Energy",
+    "calc_daily_charging_cost_eur": "Daily Charging Cost",
+    "calc_monthly_charging_cost_eur": "Monthly Charging Cost",
+    "calc_daily_savings_eur": "Daily Solar Savings",
+    "calc_monthly_savings_eur": "Monthly Solar Savings",
+    "calc_daily_net_savings_eur": "Daily Net Balance",
+    "calc_lifetime_savings_eur": "Lifetime Solar Savings",
+    "calc_lifetime_charging_cost_eur": "Lifetime Charging Cost",
+
+    # Binary Sensors, Switches, Buttons, Numbers, Selects
+    "on_battery": "Operating on Battery",
+    "device_online": "Device Online",
+    "ac_switch": "AC Output",
+    "dc_switch": "DC 12V Output",
+    "usb_switch": "USB Output",
+    "pause_integration": "Pause Integration",
+    "reload": "Reload Connection",
+    "ac_charging_limit": "AC Charging Limit",
+    "output_frequency": "Output Frequency",
+    "output_voltage": "Output Voltage",
+}
+
+
+def get_entity_name(key: str, default_name: str, hass=None) -> str:
+    """Retrieve entity display name localized to the user's Home Assistant language."""
+    if not key:
+        return default_name
+    lang = "en"
+    if hass and hasattr(hass, "config") and getattr(hass.config, "language", None):
+        lang = str(hass.config.language).lower()
+    k_str = str(key).lower()
+    if lang.startswith("es"):
+        return ENTITY_NAMES_ES.get(k_str, default_name)
+    return ENTITY_NAMES_EN.get(k_str, default_name)
+

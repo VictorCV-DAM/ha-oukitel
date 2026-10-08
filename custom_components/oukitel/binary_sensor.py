@@ -12,7 +12,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTITY_DESCRIPTIONS, get_entity_description
+from .const import DOMAIN, ENTITY_DESCRIPTIONS, get_entity_description, get_entity_name
 from .coordinator import OukitelDataCoordinator
 from .sensor import _build_device_info
 
@@ -40,7 +40,7 @@ class OukitelOnBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("on_battery", "Operating on Battery", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_on_battery"
         self._last_state: bool = False
 
@@ -106,7 +106,7 @@ class OukitelConnectionBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = None
+        self._attr_name = get_entity_name("device_online", "Device Online", coordinator.hass)
         self._attr_unique_id = f"oukitel_{client.device_key}_online"
 
     @property
