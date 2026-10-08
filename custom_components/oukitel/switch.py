@@ -42,11 +42,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class OukitelSwitch(CoordinatorEntity, SwitchEntity):
     """Representation of an Oukitel switch with temporal latch lock."""
 
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator: OukitelDataCoordinator, client, key, name, icon):
         super().__init__(coordinator)
         self.client = client
         self._key = key
-        self._attr_name = f"{client.device_name} {name}"
+        self._attr_translation_key = key
+        self._attr_name = name
         self._attr_unique_id = f"oukitel_{client.device_key}_{key}"
         self._attr_icon = icon
 
@@ -124,11 +127,13 @@ class OukitelPauseSwitch(CoordinatorEntity, SwitchEntity, RestoreEntity):
     """Switch to pause/resume integration requests, disconnect LAN and stop wake-up calls."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_translation_key = "pause_integration"
 
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = f"{client.device_name} Pause Integration"
+        self._attr_name = "Pause Integration"
         self._attr_unique_id = f"oukitel_{client.device_key}_pause_integration"
         self._attr_icon = "mdi:pause-circle"
 

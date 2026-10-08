@@ -59,5 +59,219 @@
         "cloud": "Solo Cloud (Nube / Polling)"
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "battery_percentage": {
+        "name": "Batería"
+      },
+      "total_input_power": {
+        "name": "Potencia total de entrada"
+      },
+      "total_output_power": {
+        "name": "Potencia total de salida"
+      },
+      "ac_input": {
+        "name": "Potencia de entrada AC"
+      },
+      "dc_input": {
+        "name": "Potencia solar de entrada DC"
+      },
+      "temp": {
+        "name": "Temperatura de la batería"
+      },
+      "inverter_temp": {
+        "name": "Temperatura del inversor"
+      },
+      "remaining_time": {
+        "name": "Tiempo restante"
+      },
+      "remain_time": {
+        "name": "Tiempo restante de descarga"
+      },
+      "remain_charging_time": {
+        "name": "Tiempo restante de carga"
+      },
+      "ac_output_power": {
+        "name": "Potencia de salida AC"
+      },
+      "ac_output_voltage": {
+        "name": "Voltaje de salida AC"
+      },
+      "usb_a_power": {
+        "name": "Potencia USB-A"
+      },
+      "usb_c_qc_power": {
+        "name": "Potencia USB-C QC"
+      },
+      "typec1_power": {
+        "name": "Potencia Type-C 1"
+      },
+      "typec2_power": {
+        "name": "Potencia Type-C 2"
+      },
+      "typec3_power": {
+        "name": "Potencia Type-C 3"
+      },
+      "typec4_power": {
+        "name": "Potencia Type-C 4"
+      },
+      "dc_output_power": {
+        "name": "Potencia de salida DC"
+      },
+      "dc_output_voltage": {
+        "name": "Voltaje de salida DC"
+      },
+      "dc_output_current": {
+        "name": "Corriente de salida DC"
+      },
+      "wifi_signal": {
+        "name": "Señal Wi-Fi"
+      },
+      "bms_version": {
+        "name": "Versión de BMS"
+      },
+      "ac_version": {
+        "name": "Versión de inversor"
+      },
+      "device_fault_status": {
+        "name": "Estado operativo del hardware",
+        "state": {
+          "Normal": "Normal",
+          "High Temperature Warning": "Aviso de alta temperatura",
+          "Over-Temperature": "Sobretemperatura",
+          "Under-Temperature": "Temperatura baja",
+          "Low Battery Warning": "Aviso de batería baja",
+          "Critical Low Battery": "Batería críticamente baja",
+          "Overload Protection": "Protección por sobrecarga",
+          "Hardware Fault": "Fallo de hardware"
+        }
+      },
+      "connection_mode": {
+        "name": "Modo de conexión",
+        "state": {
+          "LAN": "LAN",
+          "Cloud": "Nube",
+          "Paused": "Pausado"
+        }
+      },
+      "inverter_idle_power": {
+        "name": "Consumo en reposo del inversor"
+      },
+      "inverter_efficiency": {
+        "name": "Eficiencia del inversor"
+      },
+      "inverter_loss_power": {
+        "name": "Pérdida de potencia del inversor"
+      },
+      "battery_cycles_count": {
+        "name": "Ciclos equivalentes de batería"
+      },
+      "battery_state_of_health_estimated": {
+        "name": "Salud estimada de la batería (SoH)"
+      },
+      "days_since_last_full_charge": {
+        "name": "Días desde última carga completa"
+      },
+      "empty_timestamp": {
+        "name": "Hora estimada de batería agotada"
+      },
+      "full_charge_timestamp": {
+        "name": "Hora estimada de carga completa"
+      },
+      "smoothed_discharge_time": {
+        "name": "Autonomía de descarga suavizada"
+      },
+      "calc_ac_input_kwh": {
+        "name": "Energía importada de la red AC"
+      },
+      "calc_dc_input_kwh": {
+        "name": "Energía solar generada"
+      },
+      "calc_total_output_kwh": {
+        "name": "Energía total suministrada"
+      },
+      "calc_ac_output_kwh": {
+        "name": "Energía AC suministrada"
+      },
+      "calc_battery_discharged_kwh": {
+        "name": "Energía descargada de batería"
+      },
+      "calc_daily_ac_input_kwh": {
+        "name": "Energía diaria importada de la red AC"
+      },
+      "calc_daily_charging_cost_eur": {
+        "name": "Coste diario de carga"
+      },
+      "calc_monthly_charging_cost_eur": {
+        "name": "Coste mensual de carga"
+      },
+      "calc_daily_savings_eur": {
+        "name": "Ahorro solar diario"
+      },
+      "calc_monthly_savings_eur": {
+        "name": "Ahorro solar mensual"
+      },
+      "calc_daily_net_savings_eur": {
+        "name": "Balance neto diario"
+      },
+      "calc_lifetime_savings_eur": {
+        "name": "Ahorro solar acumulado"
+      },
+      "calc_lifetime_charging_cost_eur": {
+        "name": "Coste de carga acumulado"
+      }
+    },
+    "binary_sensor": {
+      "on_battery": {
+        "name": "Funcionando con batería"
+      },
+      "device_online": {
+        "name": "Dispositivo en línea"
+      }
+    },
+    "switch": {
+      "ac_switch": {
+        "name": "Salida AC"
+      },
+      "dc_switch": {
+        "name": "Salida DC 12V"
+      },
+      "usb_switch": {
+        "name": "Salida USB"
+      },
+      "pause_integration": {
+        "name": "Pausar integración"
+      }
+    },
+    "button": {
+      "reload": {
+        "name": "Recargar conexión"
+      }
+    },
+    "number": {
+      "ac_charging_limit": {
+        "name": "Límite de carga AC"
+      }
+    },
+    "select": {
+      "output_frequency": {
+        "name": "Frecuencia de salida",
+        "state": {
+          "50Hz": "50 Hz",
+          "60Hz": "60 Hz"
+        }
+      },
+      "output_voltage": {
+        "name": "Voltaje de salida",
+        "state": {
+          "200V": "200 V",
+          "208V": "208 V",
+          "220V": "220 V",
+          "230V": "230 V",
+          "240V": "240 V"
+        }
+      }
+    }
   }
 }

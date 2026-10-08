@@ -41,11 +41,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
     """Output Frequency Setting (50Hz / 60Hz)."""
 
+    _attr_has_entity_name = True
+    _attr_translation_key = "output_frequency"
+
     def __init__(self, coordinator: OukitelDataCoordinator, client):
         super().__init__(coordinator)
         self.client = client
         self._key = "Frequency_Switchover"
-        self._attr_name = f"{client.device_name} Output Frequency"
+        self._attr_name = "Output Frequency"
         self._attr_unique_id = f"oukitel_{client.device_key}_{self._key}"
         self._attr_icon = "mdi:sine-wave"
         self._attr_options = ["50Hz", "60Hz"]
@@ -134,11 +137,14 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
 class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
     """Output Voltage Setting (200V, 208V, 220V, 230V, 240V)."""
 
+    _attr_has_entity_name = True
+    _attr_translation_key = "output_voltage"
+
     def __init__(self, coordinator: OukitelDataCoordinator, client):
         super().__init__(coordinator)
         self.client = client
         self._key = "ACvoltage_Switchover"
-        self._attr_name = f"{client.device_name} Output Voltage"
+        self._attr_name = "Output Voltage"
         self._attr_unique_id = f"oukitel_{client.device_key}_{self._key}"
         self._attr_icon = "mdi:lightning-bolt-circle"
         self._attr_options = VOLTAGE_OPTIONS

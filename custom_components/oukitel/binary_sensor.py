@@ -34,10 +34,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class OukitelOnBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Binary sensor indicating if the power station is currently running on battery (mains/solar input absent)."""
 
+    _attr_has_entity_name = True
+    _attr_translation_key = "on_battery"
+
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = f"{client.device_name} Battery-powered (Inferred)"
+        self._attr_name = "Battery Powered"
         self._attr_unique_id = f"oukitel_{client.device_key}_on_battery"
         self._last_state: bool = False
 
@@ -97,11 +100,13 @@ class OukitelConnectionBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
     _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+    _attr_translation_key = "device_online"
 
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = f"{client.device_name} Device Online"
+        self._attr_name = "Device Online"
         self._attr_unique_id = f"oukitel_{client.device_key}_online"
 
     @property

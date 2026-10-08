@@ -1065,6 +1065,12 @@ class OukitelCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const prevLang = this._currentLang;
+    this._currentLang = (
+      (hass && (hass.locale?.language || hass.language)) ||
+      (navigator && navigator.language) ||
+      "en"
+    ).toLowerCase();
     this._hass = hass;
     this._mapped = findOukitelEntities(hass, this._config);
     const displayCard = this.shadowRoot.querySelector("#inner-display");
@@ -1075,7 +1081,7 @@ class OukitelCard extends HTMLElement {
       }
       displayCard.hass = hass;
     }
-    if (!this._hasRendered) {
+    if (!this._hasRendered || (prevLang && prevLang !== this._currentLang)) {
       this._render();
       this._hasRendered = true;
     }
@@ -1087,6 +1093,50 @@ class OukitelCard extends HTMLElement {
   }
 
   _render() {
+    const isEs = (this._currentLang || "en").startsWith("es");
+
+    const t = isEs ? {
+      outputControl: "Control de Salidas",
+      acTooltip: "Interruptor para encender o apagar las tomas de corriente alterna de 230V.",
+      dcTooltip: "Interruptor para encender o apagar la salida de mechero de 12V DC.",
+      usbTooltip: "Interruptor para encender o apagar los puertos de carga USB y Type-C.",
+      financesTitle: "Balance Energético y Económico (Hoy)",
+      gridCost: "Gasto Red",
+      gridCostTooltip: "Coste económico acumulado de la recarga desde la red eléctrica hoy.",
+      solarSavings: "Ahorro Solar",
+      solarSavingsTooltip: "Ahorro económico generado hoy gracias al autoconsumo solar fotovoltaico.",
+      netBalance: "Balance Neto",
+      netBalanceTooltip: "Balance económico neto del día (ahorro solar menos coste de recarga de red).",
+      connTooltip: "Canal de comunicación activo con Home Assistant: red local (LAN) o servidores Cloud.",
+      inverter: "Inversor",
+      inverterTooltip: "Temperatura interna de los disipadores y electrónica de potencia del inversor AC.",
+      battery: "Batería",
+      batteryTooltip: "Temperatura interna general del compartimento de celdas de la batería.",
+      status: "Estado",
+      statusTooltip: "Estado operativo del hardware y protecciones activas (temperatura, sobrecarga, batería).",
+      normal: "Normal",
+    } : {
+      outputControl: "Output Control",
+      acTooltip: "Switch to toggle the 230V AC output sockets on or off.",
+      dcTooltip: "Switch to toggle the 12V DC car socket and barrel ports on or off.",
+      usbTooltip: "Switch to toggle the USB and Type-C charging ports on or off.",
+      financesTitle: "Energy & Financial Balance (Today)",
+      gridCost: "Grid Cost",
+      gridCostTooltip: "Accumulated economic cost of grid charging today.",
+      solarSavings: "Solar Savings",
+      solarSavingsTooltip: "Economic savings generated today from solar photovoltaic self-consumption.",
+      netBalance: "Net Balance",
+      netBalanceTooltip: "Daily net financial balance (solar savings minus grid charging cost).",
+      connTooltip: "Active communication transport with Home Assistant: local network (LAN) or Cloud servers.",
+      inverter: "Inverter",
+      inverterTooltip: "Internal temperature of the AC inverter power electronics and heatsinks.",
+      battery: "Battery",
+      batteryTooltip: "Internal temperature of the battery cell compartment.",
+      status: "Status",
+      statusTooltip: "Operating hardware status and active protections (thermal, overload, battery).",
+      normal: "Normal",
+    };
+
     this.shadowRoot.innerHTML = `
       <style>
         :host {
@@ -1271,10 +1321,10 @@ class OukitelCard extends HTMLElement {
         ${this._config.show_screen ? '<oukitel-display-card id="inner-display" style="margin-bottom: 10px;"></oukitel-display-card>' : ''}
 
         <!-- DISCREET MINI TACTILE SWITCHES -->
-        <div class="section-title">Control de Salidas</div>
+        <div class="section-title">${t.outputControl}</div>
         <div class="switches-grid">
           <!-- 1. AC 230V SWITCH -->
-          <div class="switch-btn" id="btn-sw-ac" title="Interruptor para encender o apagar las tomas de corriente alterna de 230V.">
+          <div class="switch-btn" id="btn-sw-ac" title="${t.acTooltip}">
             <div class="btn-left">
               <svg class="btn-icon" viewBox="0 0 24 24">
                 <path d="M7 2V11H10V22L17 10H14L17 2H7Z"/>
@@ -1285,7 +1335,7 @@ class OukitelCard extends HTMLElement {
           </div>
 
           <!-- 2. DC 12V SWITCH -->
-          <div class="switch-btn" id="btn-sw-dc" title="Interruptor para encender o apagar la salida de mechero de 12V DC.">
+          <div class="switch-btn" id="btn-sw-dc" title="${t.dcTooltip}">
             <div class="btn-left">
               <svg class="btn-icon" viewBox="0 0 24 24">
                 <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5H6.5C5.84 5 5.28 5.42 5.08 6.01L3 12V20C3 20.55 3.45 21 4 21H5C5.55 21 6 20.55 6 20V19H18V20C18 20.55 18.45 21 19 21H20C20.55 21 21 20.55 21 20V12L18.92 6.01M6.5 6.5H17.5L18.83 10.5H5.17L6.5 6.5M6.5 13C7.33 13 8 13.67 8 14.5S7.33 16 6.5 16 5 15.33 5 14.5 5.67 13 6.5 13M17.5 13C18.33 13 19 13.67 19 14.5S18.33 16 17.5 16 16 15.33 16 14.5 16.67 13 17.5 13Z"/>
@@ -1296,7 +1346,7 @@ class OukitelCard extends HTMLElement {
           </div>
 
           <!-- 3. USB SWITCH -->
-          <div class="switch-btn" id="btn-sw-usb" title="Interruptor para encender o apagar los puertos de carga USB y Type-C.">
+          <div class="switch-btn" id="btn-sw-usb" title="${t.usbTooltip}">
             <div class="btn-left">
               <svg class="btn-icon" viewBox="0 0 24 24">
                 <path d="M15 7V4H16V2H8V4H9V7H7V10H8V14C8 15.1 8.9 16 10 16H11V20H10V22H14V20H13V16H14C15.1 16 16 15.1 16 14V10H17V7H15M10 4H14V7H10V4Z"/>
@@ -1308,36 +1358,36 @@ class OukitelCard extends HTMLElement {
         </div>
 
         <!-- FINANCIAL & ENERGY SUMMARY -->
-        <div class="section-title">Balance Energético y Económico (Hoy)</div>
+        <div class="section-title">${t.financesTitle}</div>
         <div class="metrics-grid">
-          <div class="metric-card" title="Coste económico acumulado de la recarga desde la red eléctrica hoy.">
-            <span class="metric-label">Gasto Red</span>
+          <div class="metric-card" title="${t.gridCostTooltip}">
+            <span class="metric-label">${t.gridCost}</span>
             <span class="metric-value cost" id="val-daily-cost">0,00 €</span>
           </div>
-          <div class="metric-card" title="Ahorro económico generado hoy gracias al autoconsumo solar fotovoltaico.">
-            <span class="metric-label">Ahorro Solar</span>
+          <div class="metric-card" title="${t.solarSavingsTooltip}">
+            <span class="metric-label">${t.solarSavings}</span>
             <span class="metric-value savings" id="val-daily-savings">0,00 €</span>
           </div>
-          <div class="metric-card" title="Balance económico neto del día (ahorro solar menos coste de recarga de red).">
-            <span class="metric-label">Balance Neto</span>
+          <div class="metric-card" title="${t.netBalanceTooltip}">
+            <span class="metric-label">${t.netBalance}</span>
             <span class="metric-value net" id="val-daily-net">0,00 €</span>
           </div>
         </div>
 
         <!-- FOOTER DIAGNOSTICS -->
         <div class="footer-badges">
-          <div class="badge-item" title="Canal de comunicación activo con Home Assistant: red local (LAN) o servidores Cloud.">
+          <div class="badge-item" title="${t.connTooltip}">
             <span class="badge-dot" id="dot-status"></span>
             <span id="txt-conn-mode">LAN (0ms)</span>
           </div>
-          <div class="badge-item" title="Temperatura interna de los disipadores y electrónica de potencia del inversor AC.">
-            <span>Inversor: <strong id="txt-inv-temp" style="color: #e2e8f0;">--°C</strong></span>
+          <div class="badge-item" title="${t.inverterTooltip}">
+            <span>${t.inverter}: <strong id="txt-inv-temp" style="color: #e2e8f0;">--°C</strong></span>
           </div>
-          <div class="badge-item" title="Temperatura interna general del compartimento de celdas de la batería.">
-            <span>Batería: <strong id="txt-batt-temp" style="color: #e2e8f0;">--°C</strong></span>
+          <div class="badge-item" title="${t.batteryTooltip}">
+            <span>${t.battery}: <strong id="txt-batt-temp" style="color: #e2e8f0;">--°C</strong></span>
           </div>
-          <div class="badge-item" title="Estado operativo del hardware y protecciones activas (temperatura, sobrecarga, batería).">
-            <span>Estado: <strong id="txt-fault" style="color: #94a3b8;">Normal</strong></span>
+          <div class="badge-item" title="${t.statusTooltip}">
+            <span>${t.status}: <strong id="txt-fault" style="color: #94a3b8;">${t.normal}</strong></span>
           </div>
         </div>
       </ha-card>
@@ -1489,17 +1539,19 @@ class OukitelCard extends HTMLElement {
       battTempEl.textContent = t !== null && t !== undefined && !isNaN(parseFloat(t)) ? `${Math.round(parseFloat(t))}°C` : "--°C";
     }
 
+    const isEs = (this._currentLang || "en").startsWith("es");
     const modeEl = this.shadowRoot.getElementById("txt-conn-mode");
     if (modeEl) {
       const m = getState("connection_mode");
-      modeEl.textContent = m || "Automático";
+      modeEl.textContent = m || (isEs ? "Automático" : "Automatic");
     }
 
     const faultEl = this.shadowRoot.getElementById("txt-fault");
     if (faultEl) {
       const f = getState("fault_status");
-      faultEl.textContent = f && f.toLowerCase() !== "normal" && f !== "0" ? f : "Normal";
-      faultEl.style.color = faultEl.textContent === "Normal" ? "#94a3b8" : "#f87171";
+      const isNormal = !f || f.toLowerCase() === "normal" || f === "0";
+      faultEl.textContent = isNormal ? "Normal" : f;
+      faultEl.style.color = isNormal ? "#94a3b8" : "#f87171";
     }
   }
 }
@@ -1514,11 +1566,14 @@ if (!customElements.get("oukitel-card")) {
 
 // Window card declarations for Lovelace visual card picker
 window.customCards = window.customCards || [];
+const isEsPicker = ((navigator && navigator.language) || "en").toLowerCase().startsWith("es");
 if (!window.customCards.some((c) => c.type === "oukitel-display-card")) {
   window.customCards.push({
     type: "oukitel-display-card",
     name: "Oukitel LCD Screen Display",
-    description: "Réplica 100% fotorealista en SVG de la pantalla LCD física de la estación Oukitel",
+    description: isEsPicker
+      ? "Réplica 100% fotorrealista en SVG de la pantalla LCD física de la estación Oukitel"
+      : "100% photorealistic SVG replica of the physical Oukitel power station LCD display",
     preview: true,
   });
 }
@@ -1526,7 +1581,9 @@ if (!window.customCards.some((c) => c.type === "oukitel-card")) {
   window.customCards.push({
     type: "oukitel-card",
     name: "Oukitel Control Card",
-    description: "Tarjeta de control completo con interruptores táctiles AC/DC/USB, confirmación de seguridad y balance financiero",
+    description: isEsPicker
+      ? "Tarjeta de control completo con interruptores táctiles AC/DC/USB, confirmación de seguridad y balance financiero"
+      : "Complete control dashboard card with AC/DC/USB tactile switches, safety confirmation, and financial balance",
     preview: true,
   });
 }

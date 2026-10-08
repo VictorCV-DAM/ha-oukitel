@@ -30,12 +30,14 @@ class OukitelReloadButton(CoordinatorEntity, ButtonEntity):
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:reload"
+    _attr_has_entity_name = True
+    _attr_translation_key = "reload"
 
     def __init__(self, coordinator: OukitelDataCoordinator, client, entry_id: str) -> None:
         super().__init__(coordinator)
         self.client = client
         self._entry_id = entry_id
-        self._attr_name = f"{client.device_name} Reload"
+        self._attr_name = "Reload Connection"
         self._attr_unique_id = f"oukitel_{client.device_key}_reload"
 
     @property

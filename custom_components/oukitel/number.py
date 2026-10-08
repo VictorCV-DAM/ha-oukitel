@@ -33,11 +33,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
     """Control for AC Upper Limit Charging Power slider (3% to 100%)."""
 
+    _attr_has_entity_name = True
+    _attr_translation_key = "ac_charging_limit"
+
     def __init__(self, coordinator: OukitelDataCoordinator, client):
         super().__init__(coordinator)
         self.client = client
         self._key = "ac_charging_limit"
-        self._attr_name = f"{client.device_name} AC Charging Limit"
+        self._attr_name = "AC Charging Limit"
         self._attr_unique_id = f"oukitel_{client.device_key}_{self._key}"
         self._attr_icon = "mdi:gauge"
         self._attr_native_unit_of_measurement = PERCENTAGE
