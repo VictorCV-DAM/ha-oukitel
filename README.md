@@ -243,6 +243,15 @@ The integration automatically exposes **58 entities** organized across **2 linke
 - **Device 1: Primary Power Station (`36 entities`)**: Live telemetry, per-port outputs, bidirectional switches, and hardware controls.
 - **Device 2: Calculated Energy & Financial Metrics (`22 entities`)**: Energy kWh accumulators, financial ROI metrics, battery health, and predictive timestamps.
 
+> [!NOTE]
+> **Entities Enabled vs. Disabled by Default (Entidades Habilitadas vs. Deshabilitadas por Defecto)**:
+> Out of the 58 total entities exposed by the integration, **49 entities are enabled by default** for immediate plug-and-play monitoring. To prevent dashboard clutter, **9 secondary entities are disabled by default** in Home Assistant's entity registry:
+> - **`sensor.oukitel_remaining_time`**: Generic display countdown (disabled in favor of the dedicated, direction-aware `remaining_discharge_time` and `remaining_charge_time`).
+> - **Per-port USB wattage breakdown**: `usb_a_power`, `usb_c_qc_power`, `typec1_power`, `typec2_power`, `typec3_power`, `typec4_power`.
+> - **Secondary 12V DC metrics**: `dc_output_voltage` and `dc_output_current` (the main `dc_output_power` is enabled by default).
+> 
+> *You can enable any of these secondary sensors at any time in Home Assistant under **Settings ➔ Devices & Services ➔ Oukitel Power Station ➔ Entities**, selecting the disabled sensor and clicking **Enable entity**.*
+
 ### 🔋 Core Telemetry & Energy
 - `sensor.oukitel_battery`: Battery level (%) with dynamic real-time charging/discharging animated icons.
 - `sensor.oukitel_total_input_power`: Total aggregate incoming power from AC grid and solar DC (W).
@@ -254,22 +263,22 @@ The integration automatically exposes **58 entities** organized across **2 linke
 
 ### ⏱️ Smart Physics-Based Autonomy & Remaining Times
 Unlike native station firmware which can confuse charging and discharging when solar production is lower than household consumption, this integration implements a **real-time net power balance engine**:
-- `sensor.oukitel_remaining_time`: Station LCD display equivalent time (minutes).
+- `sensor.oukitel_remaining_time`: Station LCD display equivalent time (minutes) *(Disabled by default in favor of separate charge/discharge sensors)*.
 - `sensor.oukitel_remaining_discharge_time`: True battery autonomy countdown while net discharging (minutes). Automatically sets to `0` when net charging.
 - `sensor.oukitel_remaining_charge_time`: Intelligent estimate to reach 100% full capacity while net charging (minutes). Automatically sets to `0` when net discharging or already at 100%. Bypasses the station's 99-hour (5,940m) display overflow cap with dynamic calculations.
 
 ### 🔌 Per-Port Individual Telemetry
 - `sensor.oukitel_ac_output_power`: 230V Pure Sine Wave inverter output (W).
 - `sensor.oukitel_ac_output_voltage`: Real-time inverter output voltage (V). Accurately reports active voltage (e.g. 230V) when inverted output is active, and 0V when off.
-- `sensor.oukitel_type_c_1_power`: Fast-charge Type-C 1 port power (W).
-- `sensor.oukitel_type_c_2_power`: Type-C 2 port power (W).
-- `sensor.oukitel_type_c_3_power`: Type-C 3 port power (W).
-- `sensor.oukitel_type_c_4_power`: Type-C 4 port power (W).
-- `sensor.oukitel_usb_a_power`: Standard USB-A port power (W).
-- `sensor.oukitel_usb_c_qc_power`: Quick Charge USB-C port power (W).
+- `sensor.oukitel_type_c_1_power`: Fast-charge Type-C 1 port power (W) *(Disabled by default)*.
+- `sensor.oukitel_type_c_2_power`: Type-C 2 port power (W) *(Disabled by default)*.
+- `sensor.oukitel_type_c_3_power`: Type-C 3 port power (W) *(Disabled by default)*.
+- `sensor.oukitel_type_c_4_power`: Type-C 4 port power (W) *(Disabled by default)*.
+- `sensor.oukitel_usb_a_power`: Standard USB-A port power (W) *(Disabled by default)*.
+- `sensor.oukitel_usb_c_qc_power`: Quick Charge USB-C port power (W) *(Disabled by default)*.
 - `sensor.oukitel_dc_car_output_power`: 12V DC cigarette lighter socket power (W).
-- `sensor.oukitel_dc_car_output_voltage`: 12V DC car socket voltage (V).
-- `sensor.oukitel_dc_car_output_current`: 12V DC car socket current (A).
+- `sensor.oukitel_dc_car_output_voltage`: 12V DC car socket voltage (V) *(Disabled by default)*.
+- `sensor.oukitel_dc_car_output_current`: 12V DC car socket current (A) *(Disabled by default)*.
 
 *(Note: All port power sensors default to `0 W` immediately upon startup, guaranteeing zero `Unknown` states even before individual sub-packets arrive).*
 
