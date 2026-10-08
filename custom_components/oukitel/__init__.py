@@ -63,6 +63,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except Exception as err:
                 _LOGGER.debug("oukitel: Frontend registration notice: %s", err)
 
+            try:
+                from homeassistant.components.frontend import add_extra_js_url
+                add_extra_js_url(hass, "/oukitel_frontend/oukitel-station.js?v=3.5.0")
+            except Exception as err:
+                _LOGGER.debug("oukitel: Frontend extra JS notice: %s", err)
+
     region = entry.data.get(CONF_REGION, DEFAULT_REGION)
     email = entry.data[CONF_EMAIL]
     password = entry.data[CONF_PASSWORD]

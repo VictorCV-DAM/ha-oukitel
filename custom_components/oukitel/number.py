@@ -40,7 +40,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         super().__init__(coordinator)
         self.client = client
         self._key = "ac_charging_limit"
-        self._attr_name = "AC Charging Limit"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_{self._key}"
         self._attr_icon = "mdi:gauge"
         self._attr_native_unit_of_measurement = PERCENTAGE

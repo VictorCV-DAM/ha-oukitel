@@ -40,7 +40,7 @@ class OukitelOnBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Battery Powered"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_on_battery"
         self._last_state: bool = False
 
@@ -106,7 +106,7 @@ class OukitelConnectionBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Device Online"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_online"
 
     @property

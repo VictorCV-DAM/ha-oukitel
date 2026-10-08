@@ -48,7 +48,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
         super().__init__(coordinator)
         self.client = client
         self._key = "Frequency_Switchover"
-        self._attr_name = "Output Frequency"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_{self._key}"
         self._attr_icon = "mdi:sine-wave"
         self._attr_options = ["50Hz", "60Hz"]
@@ -144,7 +144,7 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
         super().__init__(coordinator)
         self.client = client
         self._key = "ACvoltage_Switchover"
-        self._attr_name = "Output Voltage"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_{self._key}"
         self._attr_icon = "mdi:lightning-bolt-circle"
         self._attr_options = VOLTAGE_OPTIONS

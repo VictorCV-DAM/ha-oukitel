@@ -83,7 +83,9 @@ ENTITY_DESCRIPTIONS_ES = {
     "dc_output_current": "Intensidad de corriente continua en amperios en la salida de 12V DC.",
     "wifi_signal": "Intensidad de la señal Wi-Fi recibida por la estación en dBm.",
     "BMS_Version": "Versión de firmware del sistema de gestión de batería (BMS).",
+    "bms_version": "Versión de firmware del sistema de gestión de batería (BMS).",
     "AC_Version": "Versión de firmware del controlador del inversor de corriente alterna.",
+    "ac_version": "Versión de firmware del controlador del inversor de corriente alterna.",
     "device_fault_status": "Estado operativo del hardware y protecciones activas (temperatura, sobrecarga, batería).",
     "connection_mode": "Canal de comunicación activo con Home Assistant: red local (LAN) o servidores Cloud.",
 
@@ -120,8 +122,11 @@ ENTITY_DESCRIPTIONS_ES = {
 
     # Switches & Controls
     "ac_output": "Interruptor para encender o apagar las tomas de corriente alterna de 230V.",
+    "ac_switch": "Interruptor para encender o apagar las tomas de corriente alterna de 230V.",
     "dc_12v_output": "Interruptor para encender o apagar la salida de mechero de 12V DC.",
+    "dc_switch": "Interruptor para encender o apagar la salida de mechero de 12V DC.",
     "usb_output": "Interruptor para encender o apagar los puertos de carga USB y Type-C.",
+    "usb_switch": "Interruptor para encender o apagar los puertos de carga USB y Type-C.",
     "pause_integration": "Pausa la comunicación con la estación para permitir su reposo profundo.",
     "ac_charging_limit": "Ajuste del límite de potencia de recarga desde la red eléctrica (del 3% al 100%).",
     "output_frequency": "Frecuencia de salida de la corriente alterna (50 Hz o 60 Hz).",
@@ -159,7 +164,9 @@ ENTITY_DESCRIPTIONS_EN = {
     "dc_output_current": "Direct current intensity in amperes at the 12V DC output.",
     "wifi_signal": "Wi-Fi signal strength received by the power station in dBm.",
     "BMS_Version": "Firmware version of the Battery Management System (BMS).",
+    "bms_version": "Firmware version of the Battery Management System (BMS).",
     "AC_Version": "Firmware version of the AC inverter controller.",
+    "ac_version": "Firmware version of the AC inverter controller.",
     "device_fault_status": "Operating hardware status and active protections (thermal, overload, battery).",
     "connection_mode": "Active communication transport with Home Assistant: local network (LAN) or Cloud servers.",
 
@@ -196,8 +203,11 @@ ENTITY_DESCRIPTIONS_EN = {
 
     # Switches & Controls
     "ac_output": "Switch to toggle the 230V AC output sockets on or off.",
+    "ac_switch": "Switch to toggle the 230V AC output sockets on or off.",
     "dc_12v_output": "Switch to toggle the 12V DC car socket and barrel ports on or off.",
+    "dc_switch": "Switch to toggle the 12V DC car socket and barrel ports on or off.",
     "usb_output": "Switch to toggle the USB and Type-C charging ports on or off.",
+    "usb_switch": "Switch to toggle the USB and Type-C charging ports on or off.",
     "pause_integration": "Pauses communication with the station to allow deep sleep standby.",
     "ac_charging_limit": "Adjustment of the AC grid charging power limit (from 3% to 100%).",
     "output_frequency": "AC output frequency setting (50 Hz or 60 Hz).",
@@ -216,12 +226,19 @@ ENTITY_DESCRIPTIONS = ENTITY_DESCRIPTIONS_ES
 
 def get_entity_description(key: str, hass=None) -> str:
     """Retrieve entity functional description localized to the user's Home Assistant language."""
+    if not key:
+        return ""
     lang = "en"
     if hass and hasattr(hass, "config") and getattr(hass.config, "language", None):
         lang = str(hass.config.language).lower()
-    if lang.startswith("es"):
-        return ENTITY_DESCRIPTIONS_ES.get(key, ENTITY_DESCRIPTIONS_EN.get(key, ""))
-    return ENTITY_DESCRIPTIONS_EN.get(key, ENTITY_DESCRIPTIONS_ES.get(key, ""))
+    primary = ENTITY_DESCRIPTIONS_ES if lang.startswith("es") else ENTITY_DESCRIPTIONS_EN
+    fallback = ENTITY_DESCRIPTIONS_EN if lang.startswith("es") else ENTITY_DESCRIPTIONS_ES
+
+    k_str = str(key)
+    res = primary.get(k_str) or primary.get(k_str.lower())
+    if not res:
+        res = fallback.get(k_str) or fallback.get(k_str.lower())
+    return res or ""
 
 
 def get_battery_capacity_wh(client) -> float:

@@ -49,7 +49,7 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
         self.client = client
         self._key = key
         self._attr_translation_key = key
-        self._attr_name = name
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_{key}"
         self._attr_icon = icon
 
@@ -133,7 +133,7 @@ class OukitelPauseSwitch(CoordinatorEntity, SwitchEntity, RestoreEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Pause Integration"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_pause_integration"
         self._attr_icon = "mdi:pause-circle"
 

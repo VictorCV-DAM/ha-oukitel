@@ -37,7 +37,7 @@ class OukitelReloadButton(CoordinatorEntity, ButtonEntity):
         super().__init__(coordinator)
         self.client = client
         self._entry_id = entry_id
-        self._attr_name = "Reload Connection"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_reload"
 
     @property

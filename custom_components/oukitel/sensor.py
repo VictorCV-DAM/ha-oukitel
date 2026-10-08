@@ -276,7 +276,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         self.client = client
         self._key = key
         self._attr_translation_key = key.lower()
-        self._attr_name = name
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_{key}"
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = dev_class
@@ -337,6 +337,12 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         desc = get_entity_description(self._key, self.hass)
         if self._key == "device_fault_status":
+            if not self.coordinator.data:
+                return {
+                    "description": desc or "Operating hardware status and active protections.",
+                    "fault_details": "None",
+                    "possible_states": FAULT_STATUS_OPTIONS,
+                }
             details = []
             temp = float(self.coordinator.data.get("temp") or 0)
             batt = self.coordinator.data.get("battery_percentage")
@@ -562,7 +568,7 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_has_entity_name = True
     _attr_translation_key = "connection_mode"
-    _attr_name = "Connection Mode"
+    _attr_name = None
     _attr_icon = "mdi:lan-connect"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = ["LAN", "Cloud", "Paused"]
@@ -618,7 +624,7 @@ class OukitelInverterIdlePowerSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Inverter Standby Consumption"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_inverter_idle_power"
 
     @property
@@ -662,7 +668,7 @@ class OukitelInverterEfficiencySensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Inverter Efficiency"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_inverter_efficiency"
 
     @property
@@ -724,7 +730,7 @@ class OukitelInverterLossPowerSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Inverter Loss Power"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_inverter_loss_power"
 
     @property
@@ -768,7 +774,7 @@ class OukitelBatteryCyclesSensor(CoordinatorEntity, RestoreEntity, SensorEntity)
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Battery Equivalent Cycles"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_battery_cycles_count"
         self._capacity_wh = _get_battery_capacity_wh(client)
         self._cycles: float = 0.0
@@ -844,7 +850,7 @@ class OukitelBatteryHealthSensor(CoordinatorEntity, RestoreEntity, SensorEntity)
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Estimated Battery Health"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_battery_state_of_health_estimated"
         self._capacity_wh = _get_battery_capacity_wh(client)
         self._soh: float = 100.0
@@ -903,7 +909,7 @@ class OukitelDaysSinceFullChargeSensor(CoordinatorEntity, RestoreEntity, SensorE
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Days Since Last Full Charge"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_days_since_last_full_charge"
         self._last_full_charge_ts: float = time.time()
 
@@ -977,7 +983,7 @@ class OukitelCalculatedEnergySensor(CoordinatorEntity, RestoreEntity, SensorEnti
         self._is_daily = is_daily
         self._unique_suffix = unique_suffix
         self._attr_translation_key = unique_suffix
-        self._attr_name = name_suffix
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_{unique_suffix}"
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
         self._attr_device_class = SensorDeviceClass.ENERGY
@@ -1091,7 +1097,7 @@ class OukitelCalculatedSavingsSensor(CoordinatorEntity, RestoreEntity, SensorEnt
         self._currency = currency
         self._unique_suffix = unique_suffix
         self._attr_translation_key = unique_suffix
-        self._attr_name = name_suffix
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_{unique_suffix}"
         self._attr_native_unit_of_measurement = currency
         self._attr_device_class = SensorDeviceClass.MONETARY
@@ -1222,7 +1228,7 @@ class OukitelEmptyTimestampSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client):
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Predicted Empty Time"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_empty_timestamp"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_icon = "mdi:battery-clock-outline"
@@ -1268,7 +1274,7 @@ class OukitelFullChargeTimestampSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client):
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Predicted Full Charge Time"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_full_charge_timestamp"
         self._attr_device_class = SensorDeviceClass.TIMESTAMP
         self._attr_icon = "mdi:battery-charging-100"
@@ -1314,7 +1320,7 @@ class OukitelSmoothedDischargeSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: OukitelDataCoordinator, client):
         super().__init__(coordinator)
         self.client = client
-        self._attr_name = "Smoothed Discharge Time"
+        self._attr_name = None
         self._attr_unique_id = f"oukitel_{client.device_key}_smoothed_discharge_time"
         self._attr_native_unit_of_measurement = UnitOfTime.MINUTES
         self._attr_device_class = SensorDeviceClass.DURATION

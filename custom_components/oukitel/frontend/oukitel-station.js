@@ -86,13 +86,23 @@ const OUKITEL_DESCRIPTIONS_ES = {
 
   // Switches & Controls
   ac_output: "Interruptor para encender o apagar las tomas de corriente alterna de 230V.",
+  ac_switch: "Interruptor para encender o apagar las tomas de corriente alterna de 230V.",
   dc_12v_output: "Interruptor para encender o apagar la salida de mechero de 12V DC.",
+  dc_switch: "Interruptor para encender o apagar la salida de mechero de 12V DC.",
   usb_output: "Interruptor para encender o apagar los puertos de carga USB y Type-C.",
+  usb_switch: "Interruptor para encender o apagar los puertos de carga USB y Type-C.",
   pause_integration: "Pausa la comunicación con la estación para permitir su reposo profundo.",
   ac_charging_limit: "Ajuste del límite de potencia de recarga desde la red eléctrica (del 3% al 100%).",
   output_frequency: "Frecuencia de salida de la corriente alterna (50 Hz o 60 Hz).",
   output_voltage: "Tensión nominal de salida de la corriente alterna (200V - 240V).",
   reload: "Reinicia la sesión y reconecta los protocolos de la estación de forma inmediata.",
+
+  // Predictive Autonomy & Smart Timestamps
+  empty_timestamp: "Hora exacta prevista en la que se agotará la batería (0%) calculada con filtro de media móvil de consumo.",
+  full_charge_timestamp: "Hora exacta prevista en la que la batería alcanzará el 100% de carga calculada con filtro de media móvil.",
+  smoothed_discharge_time: "Autonomía restante de descarga en minutos suavizada con filtro de media móvil de 15 minutos.",
+  bms_version: "Versión de firmware del sistema de gestión de batería (BMS).",
+  ac_version: "Versión de firmware del controlador del inversor de corriente alterna.",
 };
 
 // Universal Tooltip Descriptions for Oukitel Entities (English)
@@ -158,23 +168,33 @@ const OUKITEL_DESCRIPTIONS_EN = {
 
   // Switches & Controls
   ac_output: "Switch to toggle the 230V AC output sockets on or off.",
+  ac_switch: "Switch to toggle the 230V AC output sockets on or off.",
   dc_12v_output: "Switch to toggle the 12V DC car socket and barrel ports on or off.",
+  dc_switch: "Switch to toggle the 12V DC car socket and barrel ports on or off.",
   usb_output: "Switch to toggle the USB and Type-C charging ports on or off.",
+  usb_switch: "Switch to toggle the USB and Type-C charging ports on or off.",
   pause_integration: "Pauses communication with the station to allow deep sleep standby.",
   ac_charging_limit: "Adjustment of the AC grid charging power limit (from 3% to 100%).",
   output_frequency: "AC output frequency setting (50 Hz or 60 Hz).",
   output_voltage: "Nominal AC output voltage setting (200V - 240V).",
   reload: "Restarts the session and reconnects protocols immediately.",
+
+  // Predictive Autonomy & Smart Timestamps
+  empty_timestamp: "Estimated exact timestamp when the battery will reach 0% based on smoothed moving average discharge load.",
+  full_charge_timestamp: "Estimated exact timestamp when the battery will reach 100% full charge based on smoothed incoming charging power.",
+  smoothed_discharge_time: "Remaining discharge autonomy in minutes calculated with 15-minute moving average (immune to appliance startup spikes).",
+  bms_version: "Firmware version of the Battery Management System (BMS).",
+  ac_version: "Firmware version of the AC inverter controller.",
 };
 
 const OUKITEL_DESCRIPTIONS = OUKITEL_DESCRIPTIONS_ES;
 
-function getOukitelDescription(entityId, hass) {
-  if (!entityId || typeof entityId !== "string") return null;
+function getOukitelDescription(entityOrText, hass) {
+  if (!entityOrText || typeof entityOrText !== "string") return null;
 
   // 1. Direct state attributes description (already localized by HA backend)
-  if (hass && hass.states && hass.states[entityId]) {
-    const st = hass.states[entityId];
+  if (hass && hass.states && hass.states[entityOrText]) {
+    const st = hass.states[entityOrText];
     if (st.attributes && st.attributes.description) {
       return st.attributes.description;
     }
@@ -188,69 +208,73 @@ function getOukitelDescription(entityId, hass) {
   ).toLowerCase();
   const dict = lang.startsWith("es") ? OUKITEL_DESCRIPTIONS_ES : OUKITEL_DESCRIPTIONS_EN;
 
-  const id = entityId.toLowerCase();
+  const id = entityOrText.toLowerCase().replace(/[\s-]+/g, "_");
 
-  // 3. Exact or substring matching
+  // 3. Substring matching (supports entity ID, translation keys, and display names)
   if (id.includes("inverter_temp") || id.includes("inverter_temperature")) return dict.inverter_temp;
-  if (id.includes("inverter_idle")) return dict.inverter_idle_power;
-  if (id.includes("inverter_eff")) return dict.inverter_efficiency;
-  if (id.includes("inverter_loss")) return dict.inverter_loss_power;
-  if (id.includes("battery_cycles") || id.includes("cycles_count")) return dict.battery_cycles_count;
-  if (id.includes("battery_state_of_health") || id.includes("health_estimated") || id.includes("battery_health")) return dict.battery_state_of_health_estimated;
-  if (id.includes("days_since") || id.includes("last_full_charge")) return dict.days_since_last_full_charge;
+  if (id.includes("inverter_idle") || id.includes("standby_consumption") || id.includes("consumo_parásito") || id.includes("consumo_parasito")) return dict.inverter_idle_power;
+  if (id.includes("inverter_eff") || id.includes("eficiencia")) return dict.inverter_efficiency;
+  if (id.includes("inverter_loss") || id.includes("pérdidas_inversor") || id.includes("perdidas_inversor")) return dict.inverter_loss_power;
+  if (id.includes("battery_cycles") || id.includes("cycles_count") || id.includes("ciclos")) return dict.battery_cycles_count;
+  if (id.includes("battery_state_of_health") || id.includes("health_estimated") || id.includes("battery_health") || id.includes("salud_batería") || id.includes("salud_bateria")) return dict.battery_state_of_health_estimated;
+  if (id.includes("days_since") || id.includes("last_full_charge") || id.includes("días_desde") || id.includes("dias_desde")) return dict.days_since_last_full_charge;
 
-  if (id.includes("calc_ac_input_kwh")) return dict.calc_ac_input_kwh;
-  if (id.includes("calc_dc_input_kwh")) return dict.calc_dc_input_kwh;
-  if (id.includes("calc_total_output_kwh")) return dict.calc_total_output_kwh;
-  if (id.includes("calc_ac_output_kwh")) return dict.calc_ac_output_kwh;
-  if (id.includes("calc_battery_discharged_kwh")) return dict.calc_battery_discharged_kwh;
-  if (id.includes("calc_daily_ac_input_kwh")) return dict.calc_daily_ac_input_kwh;
+  if (id.includes("calc_ac_input_kwh") || id.includes("entrada_ac_acumulada")) return dict.calc_ac_input_kwh;
+  if (id.includes("calc_dc_input_kwh") || id.includes("solar_dc_acumulada")) return dict.calc_dc_input_kwh;
+  if (id.includes("calc_total_output_kwh") || id.includes("salida_total_acumulada")) return dict.calc_total_output_kwh;
+  if (id.includes("calc_ac_output_kwh") || id.includes("salida_ac_acumulada")) return dict.calc_ac_output_kwh;
+  if (id.includes("calc_battery_discharged_kwh") || id.includes("descarga_batería_acumulada") || id.includes("descarga_bateria_acumulada")) return dict.calc_battery_discharged_kwh;
+  if (id.includes("calc_daily_ac_input_kwh") || id.includes("entrada_ac_diaria")) return dict.calc_daily_ac_input_kwh;
 
-  if (id.includes("calc_daily_charging_cost")) return dict.calc_daily_charging_cost_eur;
-  if (id.includes("calc_monthly_charging_cost")) return dict.calc_monthly_charging_cost_eur;
-  if (id.includes("calc_daily_savings")) return dict.calc_daily_savings_eur;
-  if (id.includes("calc_monthly_savings")) return dict.calc_monthly_savings_eur;
-  if (id.includes("calc_daily_net_savings")) return dict.calc_daily_net_savings_eur;
-  if (id.includes("calc_lifetime_savings")) return dict.calc_lifetime_savings_eur;
-  if (id.includes("calc_lifetime_charging_cost")) return dict.calc_lifetime_charging_cost_eur;
+  if (id.includes("calc_daily_charging_cost") || id.includes("coste_diario_de_recarga")) return dict.calc_daily_charging_cost_eur;
+  if (id.includes("calc_monthly_charging_cost") || id.includes("coste_mensual_de_recarga")) return dict.calc_monthly_charging_cost_eur;
+  if (id.includes("calc_daily_savings") || id.includes("ahorro_solar_diario")) return dict.calc_daily_savings_eur;
+  if (id.includes("calc_monthly_savings") || id.includes("ahorro_solar_mensual")) return dict.calc_monthly_savings_eur;
+  if (id.includes("calc_daily_net_savings") || id.includes("balance_neto_diario")) return dict.calc_daily_net_savings_eur;
+  if (id.includes("calc_lifetime_savings") || id.includes("ahorro_solar_histórico") || id.includes("ahorro_solar_historico")) return dict.calc_lifetime_savings_eur;
+  if (id.includes("calc_lifetime_charging_cost") || id.includes("coste_de_recarga_histórico") || id.includes("coste_de_recarga_historico")) return dict.calc_lifetime_charging_cost_eur;
 
-  if (id.includes("total_input_power")) return dict.total_input_power;
-  if (id.includes("total_output_power")) return dict.total_output_power;
-  if (id.includes("ac_input")) return dict.ac_input;
-  if (id.includes("dc_input")) return dict.dc_input;
-  if (id.includes("ac_output_power")) return dict.ac_output_power;
-  if (id.includes("ac_output_voltage")) return dict.ac_output_voltage;
-  if (id.includes("usb_a_power")) return dict.usb_a_power;
-  if (id.includes("usb_c_qc_power")) return dict.usb_c_qc_power;
-  if (id.includes("typec1_power")) return dict.typec1_power;
-  if (id.includes("typec2_power")) return dict.typec2_power;
-  if (id.includes("typec3_power")) return dict.typec3_power;
-  if (id.includes("typec4_power")) return dict.typec4_power;
-  if (id.includes("dc_output_power")) return dict.dc_output_power;
-  if (id.includes("dc_output_voltage")) return dict.dc_output_voltage;
-  if (id.includes("dc_output_current")) return dict.dc_output_current;
-  if (id.includes("wifi_signal")) return dict.wifi_signal;
-  if (id.includes("bms_version")) return dict.BMS_Version;
-  if (id.includes("ac_version")) return dict.AC_Version;
-  if (id.includes("device_fault_status") || id.includes("fault_status")) return dict.device_fault_status;
-  if (id.includes("connection_mode")) return dict.connection_mode;
-  if (id.includes("remaining_time")) return dict.remaining_time;
-  if (id.includes("remain_charging_time")) return dict.remain_charging_time;
-  if (id.includes("remain_time")) return dict.remain_time;
-  if (id.includes("temp") && !id.includes("inverter")) return dict.temp;
-  if (id.includes("on_battery")) return dict.on_battery;
-  if (id.includes("device_online") || id.endsWith("_online")) return dict.device_online;
-  if (id.includes("pause_integration")) return dict.pause_integration;
-  if (id.includes("ac_charging_limit")) return dict.ac_charging_limit;
-  if (id.includes("frequency")) return dict.output_frequency;
-  if (id.includes("voltage") && id.startsWith("select.")) return dict.output_voltage;
-  if (id.includes("reload")) return dict.reload;
+  if (id.includes("empty_timestamp") || id.includes("hora_prevista_batería_agotada") || id.includes("empty_time") || id.includes("predicted_empty")) return dict.empty_timestamp;
+  if (id.includes("full_charge_timestamp") || id.includes("hora_prevista_carga_completa") || id.includes("full_charge_time") || id.includes("predicted_full_charge")) return dict.full_charge_timestamp;
+  if (id.includes("smoothed_discharge") || id.includes("autonomía_suavizada") || id.includes("autonomia_suavizada")) return dict.smoothed_discharge_time;
 
-  if (id.includes("ac_switch") || id.endsWith("_ac_output")) return dict.ac_output;
-  if (id.includes("dc_switch") || id.includes("dc_12v_output")) return dict.dc_12v_output;
-  if (id.includes("usb_switch") || id.includes("usb_output")) return dict.usb_output;
+  if (id.includes("total_input_power") || id.includes("potencia_total_entrada")) return dict.total_input_power;
+  if (id.includes("total_output_power") || id.includes("potencia_total_salida")) return dict.total_output_power;
+  if (id.includes("ac_input") || id.includes("potencia_entrada_ac")) return dict.ac_input;
+  if (id.includes("dc_input") || id.includes("potencia_entrada_dc")) return dict.dc_input;
+  if (id.includes("ac_output_power") || id.includes("potencia_salida_ac")) return dict.ac_output_power;
+  if (id.includes("ac_output_voltage") || id.includes("voltaje_salida_ac")) return dict.ac_output_voltage;
+  if (id.includes("usb_a_power") || id.includes("potencia_usb_a")) return dict.usb_a_power;
+  if (id.includes("usb_c_qc_power") || id.includes("potencia_usb_c_qc")) return dict.usb_c_qc_power;
+  if (id.includes("typec1_power") || id.includes("potencia_type_c_1")) return dict.typec1_power;
+  if (id.includes("typec2_power") || id.includes("potencia_type_c_2")) return dict.typec2_power;
+  if (id.includes("typec3_power") || id.includes("potencia_type_c_3")) return dict.typec3_power;
+  if (id.includes("typec4_power") || id.includes("potencia_type_c_4")) return dict.typec4_power;
+  if (id.includes("dc_output_power") || id.includes("potencia_salida_dc")) return dict.dc_output_power;
+  if (id.includes("dc_output_voltage") || id.includes("voltaje_salida_dc")) return dict.dc_output_voltage;
+  if (id.includes("dc_output_current") || id.includes("corriente_salida_dc")) return dict.dc_output_current;
+  if (id.includes("wifi_signal") || id.includes("señal_wi_fi") || id.includes("senal_wi_fi") || id.includes("wifi")) return dict.wifi_signal;
+  if (id.includes("bms_version") || id.includes("versión_de_bms") || id.includes("version_de_bms")) return dict.BMS_Version;
+  if (id.includes("ac_version") || id.includes("inverter_version") || id.includes("versión_de_inversor") || id.includes("version_de_inversor")) return dict.AC_Version;
+  if (id.includes("hardware_fault") || id.includes("device_fault") || id.includes("fault_status") || id.includes("estado_operativo_del_hardware")) return dict.device_fault_status;
+  if (id.includes("connection_mode") || id.includes("modo_de_conexión") || id.includes("modo_de_conexion")) return dict.connection_mode;
+  if (id.includes("remaining_time") || id.includes("tiempo_restante")) return dict.remaining_time;
+  if (id.includes("remain_charging_time") || id.includes("tiempo_restante_de_carga")) return dict.remain_charging_time;
+  if (id.includes("remain_time") || id.includes("tiempo_restante_de_descarga")) return dict.remain_time;
+  if ((id.includes("temp") || id.includes("temperatura")) && !id.includes("inverter")) return dict.temp;
+  if (id.includes("on_battery") || id.includes("alimentado_por_batería") || id.includes("alimentado_por_bateria")) return dict.on_battery;
+  if (id.includes("device_online") || id.endsWith("_online") || id.includes("dispositivo_en_línea") || id.includes("dispositivo_en_linea")) return dict.device_online;
+  if (id.includes("pause_integration") || id.includes("pausar_integración") || id.includes("pausar_integracion")) return dict.pause_integration;
+  if (id.includes("ac_charging_limit") || id.includes("límite_de_carga_ac") || id.includes("limite_de_carga_ac")) return dict.ac_charging_limit;
+  if (id.includes("frequency") || id.includes("frecuencia")) return dict.output_frequency;
+  if ((id.includes("voltage") || id.includes("tensión") || id.includes("tension") || id.includes("voltaje")) && (id.includes("select") || id.includes("output_voltage"))) return dict.output_voltage;
+  if (id.includes("reload") || id.includes("recargar")) return dict.reload;
 
-  if (id.includes("battery_percentage") || id.endsWith("_battery")) return dict.battery_percentage;
+  if (id.includes("ac_switch") || id.endsWith("_ac_output") || id.includes("salida_ac")) return dict.ac_output;
+  if (id.includes("dc_switch") || id.includes("dc_12v_output") || id.includes("salida_dc")) return dict.dc_12v_output;
+  if (id.includes("usb_switch") || id.includes("usb_output") || id.includes("salida_usb")) return dict.usb_output;
+
+  if (id.includes("battery_percentage") || id.endsWith("_battery") || id.includes("batería") || id.includes("bateria")) return dict.battery_percentage;
 
   return null;
 }
@@ -273,10 +297,10 @@ function setupOukitelTooltips() {
           const desc = getOukitelDescription(entityId, this.hass);
           if (desc) {
             const root = this.shadowRoot || this;
-            const infoEl = root.querySelector(".info, .text-content");
-            if (infoEl) infoEl.title = desc;
-            const badge = root.querySelector("state-badge, ha-state-icon");
-            if (badge) badge.title = desc;
+            const elements = root.querySelectorAll(".name, .info, .text-content, state-badge, ha-state-icon, div[title]");
+            elements.forEach((el) => {
+              el.title = desc;
+            });
             this.title = desc;
           }
         }
@@ -304,15 +328,44 @@ function setupOukitelTooltips() {
 
         for (const el of path) {
           if (!el || !el.tagName) continue;
+
+          // 1. Check entity attributes
           const entityId =
-            el.entity ||
-            el._config?.entity ||
-            el.config?.entity ||
-            el.stateObj?.entity_id ||
-            (el.getAttribute && (el.getAttribute("data-entity-id") || el.getAttribute("entity")));
-          if (entityId) {
-            const hass = el.hass || window.document.querySelector("home-assistant")?.hass;
+            (typeof el.entity === "string" ? el.entity : null) ||
+            (typeof el._config?.entity === "string" ? el._config.entity : null) ||
+            (typeof el.config?.entity === "string" ? el.config.entity : null) ||
+            (typeof el.stateObj?.entity_id === "string" ? el.stateObj.entity_id : null) ||
+            (typeof el._stateObj?.entity_id === "string" ? el._stateObj.entity_id : null) ||
+            (el.getAttribute && (el.getAttribute("data-entity-id") || el.getAttribute("entity") || el.getAttribute("data-row-id")));
+
+          const hass = el.hass || window.document.querySelector("home-assistant")?.hass;
+
+          if (entityId && typeof entityId === "string") {
             const desc = getOukitelDescription(entityId, hass);
+            if (desc) {
+              foundDesc = desc;
+              targetRow = el;
+              break;
+            }
+          }
+
+          // 2. Check links (device page entity tables: <a href="/config/entities/sensor.xyz">)
+          if (el.href && typeof el.href === "string") {
+            const m = el.href.match(/\/config\/entities\/([^/?#]+)/) || el.href.match(/entity_id=([^&#]+)/);
+            if (m) {
+              const desc = getOukitelDescription(decodeURIComponent(m[1]), hass);
+              if (desc) {
+                foundDesc = desc;
+                targetRow = el;
+                break;
+              }
+            }
+          }
+
+          // 3. Check existing title attribute or text content
+          const txt = (el.title && typeof el.title === "string" ? el.title : "") || (el.innerText && el.innerText.length < 80 ? el.innerText : "");
+          if (txt && (txt.toLowerCase().includes("oukitel") || txt.toLowerCase().includes("p2001") || txt.toLowerCase().includes("bms") || txt.toLowerCase().includes("inverter") || txt.toLowerCase().includes("hardware") || txt.toLowerCase().includes("operativo") || txt.toLowerCase().includes("fault") || txt.toLowerCase().includes("fallo"))) {
+            const desc = getOukitelDescription(txt, hass);
             if (desc) {
               foundDesc = desc;
               targetRow = el;
@@ -324,18 +377,8 @@ function setupOukitelTooltips() {
         if (foundDesc) {
           for (const subEl of path) {
             if (!subEl || !subEl.tagName) continue;
-            if (subEl === targetRow) {
-              subEl.title = foundDesc;
-              break;
-            }
-            if (
-              (subEl.classList && (subEl.classList.contains("info") || subEl.classList.contains("name") || subEl.classList.contains("text-content"))) ||
-              subEl.tagName.toLowerCase() === "state-badge" ||
-              subEl.tagName.toLowerCase() === "ha-state-icon" ||
-              (subEl.title && subEl.title !== foundDesc)
-            ) {
-              subEl.title = foundDesc;
-            }
+            subEl.title = foundDesc;
+            if (subEl === targetRow) break;
           }
         }
       } catch (e) {}
