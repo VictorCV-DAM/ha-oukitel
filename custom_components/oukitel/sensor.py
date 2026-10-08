@@ -55,6 +55,21 @@ def _clean_model_name(raw: str | None) -> str:
     return name.strip() or "Oukitel Power Station"
 
 
+def _get_battery_capacity_wh(client) -> float:
+    raw = (getattr(client, "product_name", None) or getattr(client, "device_name", "") or "").lower()
+    if "5000" in raw:
+        return 5120.0
+    if "3000" in raw:
+        return 3072.0
+    if "1000" in raw or "1024" in raw:
+        return 1024.0
+    if "1200" in raw or "960" in raw:
+        return 960.0
+    if "500" in raw or "505" in raw:
+        return 505.0
+    return 2048.0
+
+
 def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInfo:
     mac = _format_mac(client.device_key or "")
     host = getattr(coordinator, "lan_host", None)
@@ -153,6 +168,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     entities.append(OukitelInverterIdlePowerSensor(coordinator, client))
     entities.append(OukitelInverterEfficiencySensor(coordinator, client))
     entities.append(OukitelInverterLossPowerSensor(coordinator, client))
+    entities.append(OukitelBatteryCyclesSensor(coordinator, client))
+    entities.append(OukitelBatteryHealthSensor(coordinator, client))
+    entities.append(OukitelDaysSinceFullChargeSensor(coordinator, client))
 
     # Options for dynamic electricity pricing
     price_sensor = entry.options.get(
@@ -571,7 +589,7 @@ class OukitelInverterIdlePowerSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return _build_device_info(self.coordinator, self.client)
+        return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
     def native_value(self) -> float:
@@ -611,7 +629,7 @@ class OukitelInverterEfficiencySensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return _build_device_info(self.coordinator, self.client)
+        return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
     def native_value(self) -> float:
@@ -669,7 +687,7 @@ class OukitelInverterLossPowerSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        return _build_device_info(self.coordinator, self.client)
+        return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
     def native_value(self) -> float:
@@ -689,6 +707,197 @@ class OukitelInverterLossPowerSensor(CoordinatorEntity, SensorEntity):
 
         p_loss = 18.0 + (0.035 * ac_out) + (0.000025 * (ac_out ** 2))
         return round(p_loss, 1)
+
+
+class OukitelBatteryCyclesSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
+    """Cumulative battery full equivalent cycles (IEC 62620 standard)."""
+
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _attr_icon = "mdi:battery-sync"
+    _attr_native_unit_of_measurement = "cycles"
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = f"{client.device_name} Battery Equivalent Cycles"
+        self._attr_unique_id = f"oukitel_{client.device_key}_battery_cycles_count"
+        self._capacity_wh = _get_battery_capacity_wh(client)
+        self._cycles: float = 0.0
+        self._last_time: float | None = None
+        self._last_power: float | None = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_calculated_device_info(self.coordinator, self.client)
+
+    @property
+    def native_value(self) -> float:
+        return round(self._cycles, 2)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {
+            "nominal_capacity_wh": self._capacity_wh,
+            "total_discharged_kwh": round(self._cycles * (self._capacity_wh / 1000.0), 3),
+            "rated_cycle_life": 3500,
+        }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state not in (None, "unknown", "unavailable"):
+            try:
+                self._cycles = float(last_state.state)
+            except ValueError:
+                self._cycles = 0.0
+
+    def _handle_coordinator_update(self) -> None:
+        cur_time = time.monotonic()
+        if not self.coordinator.data or self.coordinator.is_paused:
+            self._last_time = cur_time
+            self.async_write_ha_state()
+            return
+
+        batt_p = float(self.coordinator.data.get("battery_power") or 0.0)
+        if batt_p <= 0:
+            tot_in = float(self.coordinator.data.get("total_input_power") or 0.0)
+            tot_out = float(self.coordinator.data.get("total_output_power") or 0.0)
+            ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
+            if ac_in <= 10.0 and tot_out > tot_in:
+                batt_p = max(0.0, tot_out - tot_in)
+            else:
+                batt_p = 0.0
+
+        if self._last_time is not None and self._last_power is not None:
+            delta_s = cur_time - self._last_time
+            if 0 < delta_s < 120.0 and (self._last_power > 0 or batt_p > 0):
+                avg_watts = (self._last_power + batt_p) / 2.0
+                delta_wh = (avg_watts * delta_s) / 3600.0
+                delta_cycles = delta_wh / self._capacity_wh
+                self._cycles += delta_cycles
+
+        self._last_time = cur_time
+        self._last_power = batt_p
+        self.async_write_ha_state()
+
+
+class OukitelBatteryHealthSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
+    """Estimated Battery State of Health (SoH %) based on LiFePO4 cycle degradation."""
+
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:battery-heart-variant"
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = f"{client.device_name} Battery Health (SoH)"
+        self._attr_unique_id = f"oukitel_{client.device_key}_battery_state_of_health_estimated"
+        self._capacity_wh = _get_battery_capacity_wh(client)
+        self._soh: float = 100.0
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_calculated_device_info(self.coordinator, self.client)
+
+    @property
+    def native_value(self) -> float:
+        return round(self._soh, 1)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {
+            "battery_chemistry": "LiFePO4 (LFP)",
+            "rated_cycles_to_80_pct": 3500,
+            "health_status": "Excellent" if self._soh >= 95.0 else ("Good" if self._soh >= 88.0 else "Fair"),
+        }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.state not in (None, "unknown", "unavailable"):
+            try:
+                self._soh = float(last_state.state)
+            except ValueError:
+                self._soh = 100.0
+
+    def _handle_coordinator_update(self) -> None:
+        if self.hass:
+            cycle_entity_id = f"sensor.oukitel_{self.client.device_key}_battery_cycles_count"
+            st = self.hass.states.get(cycle_entity_id)
+            if st and st.state not in (None, "unknown", "unavailable"):
+                try:
+                    cycles = float(st.state)
+                    loss = cycles * (20.0 / 3500.0)
+                    self._soh = max(80.0, min(100.0, 100.0 - loss))
+                except ValueError:
+                    pass
+        self.async_write_ha_state()
+
+
+class OukitelDaysSinceFullChargeSensor(CoordinatorEntity, RestoreEntity, SensorEntity):
+    """Days since last 100% full charge for LiFePO4 cell balancing and calibration."""
+
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = UnitOfTime.DAYS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:calendar-clock"
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = f"{client.device_name} Days Since Full Charge"
+        self._attr_unique_id = f"oukitel_{client.device_key}_days_since_last_full_charge"
+        self._last_full_charge_ts: float = time.time()
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_calculated_device_info(self.coordinator, self.client)
+
+    @property
+    def native_value(self) -> float:
+        now_ts = time.time()
+        elapsed_s = max(0.0, now_ts - self._last_full_charge_ts)
+        return round(elapsed_s / 86400.0, 1)
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        days = self.native_value
+        return {
+            "last_full_charge_timestamp": dt_util.utc_from_timestamp(self._last_full_charge_ts).isoformat(),
+            "calibration_needed": days >= 30.0,
+            "recommended_action": "BMS calibrated and balanced" if days < 30.0 else "Charge to 100% to calibrate cell balance",
+        }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state and last_state.attributes:
+            iso_ts = last_state.attributes.get("last_full_charge_timestamp")
+            if iso_ts:
+                try:
+                    parsed = dt_util.parse_datetime(iso_ts)
+                    if parsed:
+                        self._last_full_charge_ts = parsed.timestamp()
+                except Exception:
+                    pass
+
+    def _handle_coordinator_update(self) -> None:
+        if not self.coordinator.data or self.coordinator.is_paused:
+            self.async_write_ha_state()
+            return
+
+        batt = self.coordinator.data.get("battery_percentage")
+        try:
+            if batt is not None and float(batt) >= 100.0:
+                self._last_full_charge_ts = time.time()
+        except (ValueError, TypeError):
+            pass
+
+        self.async_write_ha_state()
 
 
 class OukitelCalculatedEnergySensor(CoordinatorEntity, RestoreEntity, SensorEntity):

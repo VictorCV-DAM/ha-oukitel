@@ -182,6 +182,11 @@ Unlike native station firmware which can confuse charging and discharging when s
 - `sensor.oukitel_inverter_efficiency`: Real-time power conversion efficiency (%). Features calibrated Sandia quadratic inverter loss modeling for Oukitel bidirectional inverters (up to 98.5% in UPS bypass passthrough; 92.5% peak inverting curve).
 - `sensor.oukitel_inverter_loss_power`: Real-time internal thermal dissipation and conversion losses in Watts (W).
 
+### 🩺 Battery Health & Degradation Tracker
+- `sensor.oukitel_battery_cycles_count`: Cumulative full equivalent charge/discharge cycles (IEC 62620 standard) calculated by tracking total energy throughput against rated capacity (e.g. 2,048 Wh for P2001 Plus).
+- `sensor.oukitel_battery_state_of_health_estimated`: Estimated State of Health (SoH %) based on the LiFePO4 cell degradation curve (3,500 cycles to 80% capacity).
+- `sensor.oukitel_days_since_last_full_charge`: Elapsed days since the last 100% charge. Alerts when top-balancing calibration is recommended (>30 days).
+
 ### 🛡️ Diagnostic & Health Sensors
 - `sensor.oukitel_hardware_fault_status`: **Official Home Assistant ENUM sensor** with predefined, standardized states for direct use in automations.
 - `sensor.oukitel_connection_mode`: Active transport layer (`LAN` or `Cloud`) · *Diagnostic*.
