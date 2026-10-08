@@ -18,6 +18,7 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -87,14 +88,31 @@ def _build_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInf
 
 
 def _build_calculated_device_info(coordinator: OukitelDataCoordinator, client) -> DeviceInfo:
-    return DeviceInfo(
-        identifiers={(DOMAIN, f"{client.device_key}_calculated")},
-        via_device=(DOMAIN, client.device_key),
-        name=f"{client.device_name} Calculated Sensors",
-        manufacturer="OUKITEL",
-        model="Calculated Energy & Financial Metrics",
-        sw_version=f"Cloud+LAN {VERSION}",
-    )
+    parent_device_id = None
+    try:
+        dev_reg = dr.async_get(coordinator.hass)
+        parent_device = dev_reg.async_get_device(identifiers={(DOMAIN, client.device_key)})
+        if not parent_device and coordinator.entry:
+            parent_device = dev_reg.async_get_or_create(
+                config_entry_id=coordinator.entry.entry_id,
+                identifiers={(DOMAIN, client.device_key)},
+            )
+        if parent_device:
+            parent_device_id = parent_device.id
+    except Exception:
+        pass
+
+    kwargs = {
+        "identifiers": {(DOMAIN, f"{client.device_key}_calculated")},
+        "name": f"{client.device_name} Calculated Sensors",
+        "manufacturer": "OUKITEL",
+        "model": "Calculated Energy & Financial Metrics",
+        "sw_version": f"Cloud+LAN {VERSION}",
+    }
+    if parent_device_id:
+        kwargs["via_device_id"] = parent_device_id
+
+    return DeviceInfo(**kwargs)
 
 
 FAULT_STATUS_OPTIONS = [
