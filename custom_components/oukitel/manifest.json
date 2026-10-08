@@ -3,6 +3,7 @@
   "name": "Oukitel Power Station",
   "codeowners": ["@VictorCV-DAM"],
   "config_flow": true,
+  "dependencies": ["http"],
   "documentation": "https://github.com/VictorCV-DAM/ha-oukitel",
   "integration_type": "hub",
   "iot_class": "local_push",
