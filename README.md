@@ -79,9 +79,16 @@ Click the button below to add this repository directly to your HACS:
 1. Open **HACS** in your Home Assistant.
 2. Click the three dots in the top right corner and select **Custom repositories**.
 3. Add this repository URL: `https://github.com/VictorCV-DAM/ha-oukitel` and category **Integration**.
-4. Click **Download** and restart Home Assistant.
+4. Click **Download** and **restart Home Assistant** (**Settings ➔ System ➔ Restart**).
 5. In Home Assistant, go to **Settings** -> **Devices & Services** -> **Add Integration** -> Search for **Oukitel Power Station**.
 6. Enter your account email, password, and region.
+
+> [!IMPORTANT]
+> **⚠️ Mandatory Home Assistant Restart After Install / Update (Reinicio Obligatorio de Home Assistant)**:
+> Due to Home Assistant Core and Python architecture, all custom integrations loaded from HACS require a complete restart of Home Assistant to compile and load the new Python modules from disk into memory (`sys.modules`):
+> - **After installing or updating via HACS**: Go to **Settings ➔ System** and click **Restart Home Assistant** before configuring the integration or expecting new entities to appear.
+> - **Why is this necessary?** If you do not restart, newly introduced sensor classes (such as the 22 calculated energy and financial metrics) may temporarily show as `Unavailable` because the running server process is still executing the previous code cached in memory.
+> - **Zero restarts during normal operation**: Once restarted with the installed version, adding or removing power stations, switching connection modes (LAN / Cloud), and modifying electricity tariffs in device options operates **100% dynamically on-the-fly with zero restarts required**.
 
 ---
 
