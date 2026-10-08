@@ -342,6 +342,19 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         if not self.coordinator.data:
             return None
 
+        # Calculate accurate net power balance
+        # Positive net_power = charging battery; Negative net_power = discharging battery
+        total_in = float(self.coordinator.data.get("total_input_power") or 0)
+        total_out = float(self.coordinator.data.get("total_output_power") or 0)
+        ac_in = float(self.coordinator.data.get("ac_input") or 0)
+        dc_in = float(self.coordinator.data.get("dc_input") or 0)
+        ac_out = float(self.coordinator.data.get("ac_output_power") or 0)
+        dc_out = float(self.coordinator.data.get("dc_output_power") or 0)
+
+        real_in = max(total_in, ac_in + dc_in)
+        real_out = max(total_out, ac_out + dc_out)
+        net_power = real_in - real_out
+
         # 1. Remaining Time: General LCD display value (what appears on station LCD)
         if self._key == "remaining_time":
             val = self.coordinator.data.get("remain_time")
@@ -356,19 +369,6 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                 elif net_power > 5.0 and batt < 100:
                     val = int((((100.0 - batt) / 100.0) * 2048.0 / net_power) * 60)
             return val
-
-        # Calculate accurate net power balance
-        # Positive net_power = charging battery; Negative net_power = discharging battery
-        total_in = float(self.coordinator.data.get("total_input_power") or 0)
-        total_out = float(self.coordinator.data.get("total_output_power") or 0)
-        ac_in = float(self.coordinator.data.get("ac_input") or 0)
-        dc_in = float(self.coordinator.data.get("dc_input") or 0)
-        ac_out = float(self.coordinator.data.get("ac_output_power") or 0)
-        dc_out = float(self.coordinator.data.get("dc_output_power") or 0)
-
-        real_in = max(total_in, ac_in + dc_in)
-        real_out = max(total_out, ac_out + dc_out)
-        net_power = real_in - real_out
 
         # 2. Remaining Discharge Time: Autonomy remaining while draining battery
         if self._key == "remain_time":

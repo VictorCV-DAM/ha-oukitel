@@ -440,25 +440,25 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             return
 
         if self.connection_mode == MODE_CLOUD:
-            _LOGGER.warning("oukitel: Connection mode set to Cloud Only — skipping LAN setup")
+            _LOGGER.info("oukitel: Connection mode set to Cloud Only — skipping LAN setup")
             return
 
         if not self.client.device_key:
             await self.hass.async_add_executor_job(self.client.fetch_device_info)
 
-        _LOGGER.warning("oukitel: Scanning LAN for device %s …", self.client.device_key)
+        _LOGGER.info("oukitel: Scanning LAN for device %s …", self.client.device_key)
         host = await find_device_on_lan(self.client.device_key or "")
         if not host:
-            _LOGGER.warning("oukitel: Device not found on LAN — running in cloud mode")
+            _LOGGER.info("oukitel: Device not found on LAN — running in cloud mode")
             return
 
         self.lan_host = host
         auth_key = await self.hass.async_add_executor_job(self.client.fetch_auth_key)
         if not auth_key:
-            _LOGGER.warning("oukitel: authKey unavailable — running in cloud mode")
+            _LOGGER.info("oukitel: authKey unavailable — running in cloud mode")
             return
 
-        _LOGGER.warning("oukitel: Device found at %s — starting LAN session", host)
+        _LOGGER.info("oukitel: Device found at %s — starting LAN session", host)
         await self._start_lan_session(host, auth_key)
 
     async def _start_lan_session(self, host: str, auth_key: str) -> None:
@@ -476,7 +476,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         self._lan_active = True
         self._lan_connected_at = time.monotonic()
-        _LOGGER.warning("oukitel: LAN session established and active with %s!", host)
+        _LOGGER.info("oukitel: LAN session established and active with %s!", host)
         self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
 
     async def _lan_read_loop(self, host: str, auth_key: str) -> None:
@@ -586,6 +586,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if self._lan_active:
             return await self._update_lan()
         if self.connection_mode == MODE_LAN:
+            # If LAN session is initializing in the background during setup, wait up to 4s
+            for _ in range(20):
+                if self._lan_active:
+                    return await self._update_lan()
+                await asyncio.sleep(0.2)
             raise UpdateFailed("LAN session not active and mode is set to LAN Only")
         return await self._update_cloud()
 
