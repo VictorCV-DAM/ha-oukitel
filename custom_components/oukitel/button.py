@@ -53,5 +53,5 @@ class OukitelReloadButton(CoordinatorEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Reload the config entry."""
-        _LOGGER.warning("oukitel: Reload button pressed — reloading entry %s", self._entry_id)
+        _LOGGER.info("oukitel: Reload button pressed — reloading entry %s", self._entry_id)
         self.hass.async_create_task(self.hass.config_entries.async_reload(self._entry_id))

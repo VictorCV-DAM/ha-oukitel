@@ -88,7 +88,7 @@ class LocalSession:
     # ------------------------------------------------------------------
 
     async def connect(self) -> None:
-        _LOGGER.warning("oukitel: LAN connecting to %s:%s", self._host, _TCP_PORT)
+        _LOGGER.debug("oukitel: LAN connecting to %s:%s", self._host, _TCP_PORT)
         try:
             self._reader, self._writer = await asyncio.wait_for(
                 asyncio.open_connection(self._host, _TCP_PORT),
@@ -97,9 +97,9 @@ class LocalSession:
         except (OSError, asyncio.TimeoutError) as exc:
             raise LocalSessionError(f"Cannot reach {self._host}:{_TCP_PORT}") from exc
 
-        _LOGGER.warning("oukitel: LAN TCP socket open, starting handshake")
+        _LOGGER.debug("oukitel: LAN TCP socket open, starting handshake")
         await self._handshake()
-        _LOGGER.warning("oukitel: LAN subscribing to telemetry")
+        _LOGGER.debug("oukitel: LAN subscribing to telemetry")
         await self._subscribe()
         self._keepalive_task = asyncio.ensure_future(self._keepalive_loop())
 
@@ -173,11 +173,11 @@ class LocalSession:
                     return payload
 
     async def _handshake(self) -> None:
-        _LOGGER.warning("oukitel: LAN sending CMD_HELLO (%s)", _CMD_HELLO)
+        _LOGGER.debug("oukitel: LAN sending CMD_HELLO (%s)", _CMD_HELLO)
         await self._send_raw(_CMD_HELLO)
 
         nonce_payload = await self._recv_cmd(_CMD_NONCE)
-        _LOGGER.warning("oukitel: LAN received CMD_NONCE (%s bytes)", len(nonce_payload))
+        _LOGGER.debug("oukitel: LAN received CMD_NONCE (%s bytes)", len(nonce_payload))
         nonce_fields = ttlv_decode(nonce_payload)
         nonce_str = next(
             (v for v in nonce_fields.values() if isinstance(v, str)), None
@@ -186,24 +186,24 @@ class LocalSession:
             raise LocalAuthError("Device did not send a nonce")
 
         self._iv = nonce_str.encode()
-        _LOGGER.warning("oukitel: LAN extracted nonce and set session IV")
+        _LOGGER.debug("oukitel: LAN extracted nonce and set session IV")
 
         token = session_token(self._key, nonce_str)
         token_bytes = token.encode()
         login_body = struct.pack(">H", (2 << 3) | 3) + struct.pack(">H", len(token_bytes)) + token_bytes
-        _LOGGER.warning("oukitel: LAN sending CMD_LOGIN token")
+        _LOGGER.debug("oukitel: LAN sending CMD_LOGIN token")
         await self._send_raw(_CMD_LOGIN, login_body)
 
         result_payload = await self._recv_cmd(_CMD_LOGIN_OK)
         result_fields = ttlv_decode(result_payload)
-        _LOGGER.warning("oukitel: LAN CMD_LOGIN_OK raw hex: %s, parsed fields: %s", result_payload.hex(), result_fields)
+        _LOGGER.debug("oukitel: LAN CMD_LOGIN_OK raw hex: %s, parsed fields: %s", result_payload.hex(), result_fields)
         
         result = next(
             (v for v in result_fields.values() if isinstance(v, (int, float))),
             None,
         )
         if result == 0:
-            _LOGGER.warning("oukitel: LAN login OK! Handshake succeeded with %s", self._host)
+            _LOGGER.info("oukitel: LAN login OK! Handshake succeeded with %s", self._host)
             return
 
         raise LocalAuthError(f"Station rejected login (result={result}, fields={result_fields})")

@@ -414,7 +414,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             return
         self._paused = paused
         if paused:
-            _LOGGER.warning(
+            _LOGGER.info(
                 "oukitel: Pausing integration — disconnecting LAN, stopping wake requests, setting active power to 0W"
             )
             await self.async_shutdown_lan()
@@ -422,7 +422,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             self._lan_state = paused_data
             self.async_set_updated_data(paused_data)
         else:
-            _LOGGER.warning(
+            _LOGGER.info(
                 "oukitel: Resuming integration — re-establishing connection and requesting refresh"
             )
             if self.connection_mode != MODE_CLOUD:
@@ -605,9 +605,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         )
         if stale:
             if self.connection_mode == MODE_LAN:
-                _LOGGER.warning("oukitel: LAN telemetry stale (LAN Only mode — keeping state)")
+                _LOGGER.debug("oukitel: LAN telemetry stale (LAN Only mode — keeping state)")
             else:
-                _LOGGER.warning("oukitel: LAN telemetry stale — falling back to cloud")
+                _LOGGER.info("oukitel: LAN telemetry stale — falling back to cloud")
                 self._lan_active = False
                 return await self._update_cloud()
 
