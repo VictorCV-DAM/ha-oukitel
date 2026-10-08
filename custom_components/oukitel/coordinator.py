@@ -366,18 +366,30 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             except Exception as exc:
                 _LOGGER.warning("oukitel: LAN write failed: %s", exc)
 
-        # Always synchronize clean single-property switch command to Cloud
+        # Always synchronize clean single-property switch command to Cloud if not LAN-only
         # (exact same method as voltage), so Quectel cloud shadow aligns immediately and WonderFree stops bouncing
         cloud_ok = False
+        if self.connection_mode != MODE_LAN:
+            try:
+                cloud_ok = await self.hass.async_add_executor_job(
+                    self.client.control_device,
+                    [{key: value}],
+                )
+            except Exception as exc:
+                _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
+
+        return lan_ok or cloud_ok
+
+    async def _async_sync_physical_change_to_cloud(self, key: str, value: bool) -> None:
+        """Propagate physical hardware switch changes to Cloud shadow so WonderFree updates in < 1s."""
         try:
-            cloud_ok = await self.hass.async_add_executor_job(
+            await self.hass.async_add_executor_job(
                 self.client.control_device,
                 [{key: value}],
             )
+            _LOGGER.debug("oukitel: Successfully synced physical switch %s=%s to Cloud", key, value)
         except Exception as exc:
-            _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
-
-        return lan_ok or cloud_ok
+            _LOGGER.debug("oukitel: Failed to sync physical switch %s to Cloud: %s", key, exc)
 
     def _apply_user_overrides(self, target: dict[str, Any]) -> None:
         """Apply active user overrides to incoming telemetry dictionary."""
@@ -582,6 +594,26 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         _unpack_port_data(current_data)
         self._apply_user_overrides(current_data)
+
+        # In Auto mode, synchronize physical button changes to Cloud shadow immediately
+        # so Wonderfree app reflects physical presses in < 1s instead of waiting ~40s
+        if self.connection_mode != MODE_LAN and self._lan_state:
+            for sw_key in ("ac_switch", "usb_switch", "dc_switch"):
+                old_val = self._lan_state.get(sw_key)
+                new_val = current_data.get(sw_key)
+                if (
+                    old_val is not None
+                    and new_val is not None
+                    and old_val != new_val
+                    and sw_key not in self._user_overrides
+                ):
+                    _LOGGER.debug(
+                        "oukitel: Physical change detected for %s (%s -> %s), syncing to Cloud shadow",
+                        sw_key, old_val, new_val,
+                    )
+                    self.hass.async_create_task(
+                        self._async_sync_physical_change_to_cloud(sw_key, new_val)
+                    )
 
         self._lan_state = current_data
         self.hass.loop.call_soon_threadsafe(
