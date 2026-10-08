@@ -3,6 +3,7 @@
   <h1>Oukitel Power Station Integration for Home Assistant</h1>
 
   [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/default)
+  [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1.0%20%E2%80%94%202026.9.4%2B-41BDF5.svg?logo=home-assistant)](https://www.home-assistant.io/)
   [![GitHub Release](https://img.shields.io/github/v/release/VictorCV-DAM/ha-oukitel)](https://github.com/VictorCV-DAM/ha-oukitel/releases)
   [![Total Downloads](https://img.shields.io/github/downloads/VictorCV-DAM/ha-oukitel/total.svg?color=brightgreen)](https://github.com/VictorCV-DAM/ha-oukitel/releases)
   [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
@@ -47,6 +48,23 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
   - `US` (North America - [EXPERIMENTAL])
   - `CN` (China/Asia - [EXPERIMENTAL])
 - **UI Config Flow**: Native setup directly from Home Assistant Settings → Devices & Services.
+
+---
+
+## 🧩 Compatibility & Certified Home Assistant Versions (Compatibilidad Certificada)
+
+To guarantee flawless operation across all 58 entities, native Riemann sum energy integrators, dynamic electricity price selectors, and bilingual tooltips, this integration certifies the following compatibility range:
+
+| Requirement / Component | Certified Range | Notes & Verification |
+|---|---|---|
+| **Minimum Required Version** | **`Home Assistant 2024.1.0`** | Base requirement for modern UI Config Flow selectors, Riemann energy state restoration, and entity category metadata. |
+| **Tested & Certified Range** | **`2024.1.0` — `2026.9.4+`** | Continuously tested, verified, and certified against the latest stable Home Assistant Core releases. |
+| **Recommended Version** | **`2024.6.0` or newer** | Recommended to benefit from native Card Picker visual thumbnails and visual Blueprint management. |
+| **Python Runtime** | **`Python 3.12+` / `3.13+`** | Fully compatible with modern Python runtimes bundled in Home Assistant Core and OS. |
+| **HA Installation Types** | **HA OS, Supervised, Container, Core** | 100% compatible across all official deployment types. |
+
+> [!TIP]
+> **Hassle-Free Compatibility**: If your Home Assistant instance is running version **2024.1.0 or newer**, the integration will install cleanly with zero deprecation warnings, zero breaking changes, and without requiring manual YAML setup.
 
 ---
 

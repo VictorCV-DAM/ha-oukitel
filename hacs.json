@@ -2,5 +2,6 @@
   "name": "Oukitel Power Station",
   "render_readme": true,
   "zip_release": true,
-  "filename": "oukitel.zip"
+  "filename": "oukitel.zip",
+  "homeassistant": "2024.1.0"
 }
