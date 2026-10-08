@@ -141,13 +141,14 @@ function findOukitelEntities(hass, explicitConfig = {}) {
   }
 
   if (devicePrefix || batteryId) {
-    const findEntity = (domain, patterns) => {
+    const findEntity = (domain, patterns, excludePatterns = []) => {
       // 1. Strict match: exact domain AND starts with domain.devicePrefix, EXCLUDING Riemann sums and calculated kWh
       if (devicePrefix) {
         let found = allIds.find((id) => {
           if (domain && !id.startsWith(`${domain}.`)) return false;
           if (!id.startsWith(`${domain}.${devicePrefix}`)) return false;
           if (id.includes("energy_") || id.includes("calculated") || id.endsWith("_kwh") || id.endsWith("_cost")) return false;
+          if (excludePatterns.some((ex) => id.includes(ex))) return false;
           return patterns.some((p) => id.includes(p));
         });
         if (found) return found;
@@ -157,6 +158,7 @@ function findOukitelEntities(hass, explicitConfig = {}) {
           if (domain && !id.startsWith(`${domain}.`)) return false;
           if (!id.includes(devicePrefix)) return false;
           if (id.includes("energy_") || id.includes("calculated") || id.endsWith("_kwh") || id.endsWith("_cost")) return false;
+          if (excludePatterns.some((ex) => id.includes(ex))) return false;
           return patterns.some((p) => id.includes(p));
         });
         if (found) return found;
@@ -168,6 +170,7 @@ function findOukitelEntities(hass, explicitConfig = {}) {
           if (domain && !id.startsWith(`${domain}.`)) return false;
           if (hass.entities[id]?.platform !== "oukitel") return false;
           if (id.includes("energy_") || id.includes("calculated") || id.endsWith("_kwh") || id.endsWith("_cost")) return false;
+          if (excludePatterns.some((ex) => id.includes(ex))) return false;
           return patterns.some((p) => id.includes(p));
         });
         if (found) return found;
@@ -177,6 +180,7 @@ function findOukitelEntities(hass, explicitConfig = {}) {
       return allIds.find((id) => {
         if (domain && !id.startsWith(`${domain}.`)) return false;
         if (id.includes("energy_") || id.includes("calculated") || id.endsWith("_kwh") || id.endsWith("_cost")) return false;
+        if (excludePatterns.some((ex) => id.includes(ex))) return false;
         return patterns.some((p) => id.includes(p));
       });
     };
@@ -201,7 +205,7 @@ function findOukitelEntities(hass, explicitConfig = {}) {
     // Diagnostics & Selects
     config.frequency = config.frequency || findEntity("select", ["output_frequency"]);
     config.inverter_temp = config.inverter_temp || findEntity("sensor", ["inverter_temperature", "inverter_temp"]);
-    config.battery_temp = config.battery_temp || findEntity("sensor", ["temperature", "temp"]);
+    config.battery_temp = config.battery_temp || findEntity("sensor", ["p2001_plus_temperature", "battery_temperature", "temperature", "temp"], ["inverter"]);
     config.wifi_signal = config.wifi_signal || findEntity("sensor", ["wifi_signal"]);
     config.connection_mode = config.connection_mode || findEntity("sensor", ["connection_mode"]);
     config.fault_status = config.fault_status || findEntity("sensor", ["hardware_fault_status", "device_fault_status", "fault_status"]);
