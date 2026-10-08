@@ -459,7 +459,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             if val is not None and val > 0:
                 return val
             val = self.coordinator.data.get("temp")
-            return val if val is not None else 0.0
+            return val if val is not None else None
 
         # 7. Individual port outputs and power metrics default to 0 if None/inactive (prevents "Unknown" states)
         if self._key in (
@@ -479,10 +479,13 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             val = self.coordinator.data.get(self._key)
             return val if val is not None else 0
 
-        # 8. Temperature default to 0.0 if not received
+        # 8. Temperature: return unit temperature, fallback to inverter_temp
         if self._key == "temp":
             val = self.coordinator.data.get("temp")
-            return val if val is not None else 0.0
+            if val is not None:
+                return val
+            val = self.coordinator.data.get("inverter_temp")
+            return val if val is not None else None
 
         # 9. Battery default to 0 if not received
         if self._key == "battery_percentage":

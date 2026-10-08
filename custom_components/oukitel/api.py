@@ -258,9 +258,15 @@ class AcceleronixCloudClient:
                         is_online = val.strip().lower() in ("1", "true", "online")
                         break
 
+            sig = device_data.get("signalStrength")
+            if sig is None:
+                for sk in ("rssi", "wifi_signal", "signal", "wifiSignal"):
+                    if sk in device_data and device_data[sk] is not None:
+                        sig = device_data[sk]
+                        break
             metrics = {
                 "online": is_online,
-                "wifi_signal": device_data.get("signalStrength", -100),
+                "wifi_signal": sig if sig is not None else -100,
             }
 
             for item in tsl_list:
@@ -285,6 +291,9 @@ class AcceleronixCloudClient:
                         metrics[code] = val_raw
                 else:
                     metrics[code] = val_raw
+
+            if "temp" in metrics and ("inverter_temp" not in metrics or metrics["inverter_temp"] is None):
+                metrics["inverter_temp"] = metrics["temp"]
 
             return metrics
 

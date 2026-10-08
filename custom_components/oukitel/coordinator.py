@@ -36,6 +36,18 @@ _LOGGER = logging.getLogger(__name__)
 
 _LAN_STALE_TIMEOUT = 150.0
 _LAN_RECONNECT_DELAY = 10.0
+_CLOUD_SNAPSHOT_INTERVAL = 60.0
+
+STATIC_METADATA_KEYS = (
+    "temp",
+    "inverter_temp",
+    "BMS_Version",
+    "AC_Version",
+    "wifi_signal",
+    "Frequency_Switchover",
+    "ACvoltage_Switchover",
+    "ac_charging_limit",
+)
 
 
 def _unpack_port_data(target: dict[str, Any]) -> None:
@@ -53,12 +65,17 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
         return {}
 
     # 1. AC Info: 1=ac_switch, 2=AC output power (W), 3=AC output voltage (V)
-    ac_val = _parse_dict(target.get(6) or target.get("6") or target.get("AC_Info"))
+    ac_val = _parse_dict(target.get(6) or target.get("6") or target.get("AC_Info") or target.get("ac_data"))
     if ac_val:
         sw = ac_val.get(1) if 1 in ac_val else (ac_val.get("1") if "1" in ac_val else ac_val.get("ac_switch"))
         if sw is not None:
             target["ac_switch"] = bool(sw)
         p = ac_val.get(2) if 2 in ac_val else ac_val.get("2")
+        if p is None and "ac1_output" in ac_val:
+            try:
+                p = float(ac_val["ac1_output"])
+            except (ValueError, TypeError):
+                p = 0
         v = ac_val.get(3) if 3 in ac_val else ac_val.get("3")
         if p is not None:
             target["ac_output_power"] = p
@@ -66,25 +83,55 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
             target["ac_output_voltage"] = v
 
     # 2. USB Info: 1=usb_switch, 2=USB-A power (W), 3=USB-C QC power (W)
-    usb_val = _parse_dict(target.get(7) or target.get("7") or target.get("USB_Info"))
+    usb_val = _parse_dict(target.get(7) or target.get("7") or target.get("USB_Info") or target.get("usb_data"))
     if usb_val:
         sw = usb_val.get(1) if 1 in usb_val else (usb_val.get("1") if "1" in usb_val else usb_val.get("usb_switch"))
         if sw is not None:
             target["usb_switch"] = bool(sw)
         usb_a = usb_val.get(2) if 2 in usb_val else usb_val.get("2")
         usb_c = usb_val.get(3) if 3 in usb_val else usb_val.get("3")
+        if usb_a is None and "USB_QC1_output" in usb_val:
+            try:
+                usb_a = float(usb_val["USB_QC1_output"])
+            except (ValueError, TypeError):
+                pass
+        if usb_c is None and "USB_QC2_output" in usb_val:
+            try:
+                usb_c = float(usb_val["USB_QC2_output"])
+            except (ValueError, TypeError):
+                pass
         if usb_a is not None:
             target["usb_a_power"] = usb_a
         if usb_c is not None:
             target["usb_c_qc_power"] = usb_c
 
     # 3. Type-C Info: 2=Type-C 1 (W), 5=Type-C 2 (W), 6=Type-C 3 (W), 7=Type-C 4 (W)
-    typec_val = _parse_dict(target.get(8) or target.get("8") or target.get("TypeC_Info"))
+    typec_val = _parse_dict(target.get(8) or target.get("8") or target.get("TypeC_Info") or target.get("typec_data"))
     if typec_val:
         c1 = typec_val.get(2) if 2 in typec_val else typec_val.get("2")
         c2 = typec_val.get(5) if 5 in typec_val else typec_val.get("5")
         c3 = typec_val.get(6) if 6 in typec_val else typec_val.get("6")
         c4 = typec_val.get(7) if 7 in typec_val else typec_val.get("7")
+        if c1 is None and "Typec1_output" in typec_val:
+            try:
+                c1 = float(typec_val["Typec1_output"])
+            except (ValueError, TypeError):
+                pass
+        if c2 is None and "Typec2_output" in typec_val:
+            try:
+                c2 = float(typec_val["Typec2_output"])
+            except (ValueError, TypeError):
+                pass
+        if c3 is None and "Typec3_output" in typec_val:
+            try:
+                c3 = float(typec_val["Typec3_output"])
+            except (ValueError, TypeError):
+                pass
+        if c4 is None and "Typec4_output" in typec_val:
+            try:
+                c4 = float(typec_val["Typec4_output"])
+            except (ValueError, TypeError):
+                pass
         if c1 is not None:
             target["typec1_power"] = c1
         if c2 is not None:
@@ -95,12 +142,17 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
             target["typec4_power"] = c4
 
     # 4. DC Info: 1=dc_switch, 2=DC Car output power (W), 3=voltage (V), 4=current (A)
-    dc_val = _parse_dict(target.get(9) or target.get("9") or target.get("DC_Info"))
+    dc_val = _parse_dict(target.get(9) or target.get("9") or target.get("DC_Info") or target.get("dc_data"))
     if dc_val:
         sw = dc_val.get(1) if 1 in dc_val else (dc_val.get("1") if "1" in dc_val else dc_val.get("dc_switch"))
         if sw is not None:
             target["dc_switch"] = bool(sw)
         dc_p = dc_val.get(2) if 2 in dc_val else dc_val.get("2")
+        if dc_p is None and "car1_output" in dc_val:
+            try:
+                dc_p = float(dc_val["car1_output"])
+            except (ValueError, TypeError):
+                pass
         dc_v = dc_val.get(3) if 3 in dc_val else dc_val.get("3")
         dc_a = dc_val.get(4) if 4 in dc_val else dc_val.get("4")
         if dc_p is not None:
@@ -323,6 +375,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._last_device_list_check: float = 0.0
         self.last_user_command_time: float = 0.0
         self._static_metadata: dict[str, Any] = {}
+        self._last_cloud_snapshot: float = 0.0
 
     def async_set_updated_data(self, data: dict[str, Any]) -> None:
         """Update coordinator data and refresh predictive autonomy tracker."""
@@ -471,24 +524,20 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info("oukitel: authKey unavailable — running in cloud mode")
             return
 
-        # Seed static diagnostics (BMS_Version, AC_Version, wifi_signal, etc.) from Cloud shadow
+        # Seed static diagnostics (temp, BMS_Version, AC_Version, wifi_signal, etc.) from Cloud shadow
         try:
             cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
             if cloud_snapshot:
-                static_keys = (
-                    "BMS_Version",
-                    "AC_Version",
-                    "wifi_signal",
-                    "Frequency_Switchover",
-                    "ACvoltage_Switchover",
-                    "ac_charging_limit",
-                )
-                for k in static_keys:
+                for k in STATIC_METADATA_KEYS:
                     val = cloud_snapshot.get(k)
                     if val is not None:
                         self._static_metadata[k] = val
                         self._lan_state[k] = val
+                if "temp" in cloud_snapshot and "inverter_temp" not in self._static_metadata:
+                    self._static_metadata["inverter_temp"] = cloud_snapshot["temp"]
+                    self._lan_state["inverter_temp"] = cloud_snapshot["temp"]
                 _unpack_port_data(self._lan_state)
+                self._last_cloud_snapshot = time.monotonic()
         except Exception as exc:
             _LOGGER.debug("oukitel: Could not seed initial static metadata from cloud: %s", exc)
 
@@ -593,14 +642,15 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             if tag in tag_map:
                 key = tag_map[tag]
                 current_data[key] = val
-                if key in (
-                    "BMS_Version",
-                    "AC_Version",
-                    "wifi_signal",
-                    "Frequency_Switchover",
-                    "ACvoltage_Switchover",
-                    "ac_charging_limit",
-                ):
+                if tag == 14:
+                    current_data["inverter_temp"] = current_data.get("inverter_temp") or val
+                    self._static_metadata["temp"] = val
+                    self._static_metadata["inverter_temp"] = self._static_metadata.get("inverter_temp") or val
+                elif tag == 33:
+                    current_data["temp"] = current_data.get("temp") or val
+                    self._static_metadata["inverter_temp"] = val
+                    self._static_metadata["temp"] = self._static_metadata.get("temp") or val
+                elif key in STATIC_METADATA_KEYS:
                     self._static_metadata[key] = val
             if tag == 2:
                 current_data["remaining_time"] = val
@@ -608,7 +658,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             if tag in (6, 7, 8, 9, 43, 44, 46):
                 current_data[tag] = val
 
-        # Ensure static metadata (versions, switchovers, wifi signal) is always preserved
+        # Ensure static metadata (temp, versions, switchovers, wifi signal) is always preserved
         for k, v in self._static_metadata.items():
             if k not in current_data or current_data[k] is None:
                 current_data[k] = v
@@ -700,18 +750,51 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             if k not in data or data[k] is None:
                 data[k] = v
         if self.data:
-            for k in (
-                "ACvoltage_Switchover",
-                "Frequency_Switchover",
-                "BMS_Version",
-                "AC_Version",
-                "wifi_signal",
-                "ac_charging_limit",
-            ):
+            for k in STATIC_METADATA_KEYS:
                 if k in self.data and (k not in data or data[k] is None):
                     data[k] = self.data[k]
         self._apply_user_overrides(data)
+
+        # Trigger background cloud shadow refresh every 60s in auto/cloud mode
+        now = time.monotonic()
+        if (
+            self.connection_mode != MODE_LAN
+            and (now - self._last_cloud_snapshot) >= _CLOUD_SNAPSHOT_INTERVAL
+        ):
+            self.hass.async_create_task(self._async_refresh_cloud_shadow())
+
         return data
+
+    async def _async_refresh_cloud_shadow(self) -> None:
+        """Periodic background refresh of cloud-only metrics (temp, wifi_signal, versions) while LAN runs."""
+        if self._paused or not getattr(self.client, "access_token", None):
+            return
+        self._last_cloud_snapshot = time.monotonic()
+        try:
+            cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
+            if cloud_snapshot:
+                updated = False
+                for k in STATIC_METADATA_KEYS:
+                    val = cloud_snapshot.get(k)
+                    if val is not None and self._static_metadata.get(k) != val:
+                        self._static_metadata[k] = val
+                        if self._lan_state is not None:
+                            self._lan_state[k] = val
+                        updated = True
+                if "temp" in cloud_snapshot and "inverter_temp" not in self._static_metadata:
+                    self._static_metadata["inverter_temp"] = cloud_snapshot["temp"]
+                    if self._lan_state is not None:
+                        self._lan_state["inverter_temp"] = cloud_snapshot["temp"]
+                    updated = True
+
+                if updated and self.data:
+                    merged = dict(self.data)
+                    for k in STATIC_METADATA_KEYS:
+                        if k in self._static_metadata:
+                            merged[k] = self._static_metadata[k]
+                    self.async_set_updated_data(merged)
+        except Exception as exc:
+            _LOGGER.debug("oukitel: Cloud shadow refresh notice: %s", exc)
 
     async def _update_cloud(self) -> dict:
         if self._paused:
@@ -751,14 +834,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         merged = dict(self.data or {})
         merged.update(data)
-        for k in (
-            "BMS_Version",
-            "AC_Version",
-            "wifi_signal",
-            "Frequency_Switchover",
-            "ACvoltage_Switchover",
-            "ac_charging_limit",
-        ):
+        for k in STATIC_METADATA_KEYS:
             if k in merged and merged[k] is not None:
                 self._static_metadata[k] = merged[k]
         _unpack_port_data(merged)
