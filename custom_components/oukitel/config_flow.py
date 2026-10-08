@@ -14,6 +14,9 @@ from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
 )
 
 from .api import AcceleronixCloudClient
@@ -35,6 +38,9 @@ from .const import (
     DEFAULT_POLL_INTERVAL,
     DEFAULT_REGION,
     DOMAIN,
+    MODE_AUTO,
+    MODE_CLOUD,
+    MODE_LAN,
     REGION_SERVERS,
 )
 
@@ -220,11 +226,19 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(
                     CONF_CONNECTION_MODE,
                     default=current_mode,
-                ): vol.In(CONNECTION_MODES),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[MODE_AUTO, MODE_LAN, MODE_CLOUD],
+                        translation_key="connection_mode",
+                        mode=SelectSelectorMode.RADIO,
+                    )
+                ),
                 vol.Optional(
                     CONF_HOST,
                     description={"suggested_value": current_host} if current_host else {},
-                ): cv.string,
+                ): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.TEXT)
+                ),
                 vol.Required(
                     CONF_POLL_INTERVAL,
                     default=current_interval,

@@ -35,12 +35,28 @@
         "description": "Ajustes específicos para {device_name} (modo de conexión, IP local, intervalos y tarifas).",
         "data": {
           "connection_mode": "Modo de conexión",
-          "host": "IP Local de la Estación (Opcional: déjalo vacío para detección auto. Recomendable si tiene IP estática para agilizar la conexión)",
+          "host": "IP Local de la Estación",
           "poll_interval": "Intervalo de actualización Cloud (segundos, 3-120s)",
-          "price_sensor": "Sensor de precio de la luz dinámico (Opcional, ej. PVPC)",
-          "currency": "Divisa o Símbolo Monetario (ej. €, $, £, CHF)",
+          "price_sensor": "Sensor de precio de la luz dinámico (Opcional)",
+          "currency": "Divisa o Símbolo Monetario",
           "fixed_price": "Tarifa fija o precio de reserva"
+        },
+        "data_description": {
+          "host": "Opcional: déjalo vacío para detección automática en la red local. Recomendable si tiene IP estática para agilizar y mejorar la conexión.",
+          "poll_interval": "Frecuencia de consulta de datos cuando se conecta mediante la nube.",
+          "price_sensor": "Opcional: entidad que provee el precio del kWh en tiempo real (ej. PVPC o Nord Pool).",
+          "currency": "Símbolo o código de la divisa (ej. €, $, £, CHF).",
+          "fixed_price": "Tarifa fija por kWh a utilizar en caso de no configurar un sensor dinámico."
         }
+      }
+    }
+  },
+  "selector": {
+    "connection_mode": {
+      "options": {
+        "auto": "Automático (LAN preferente + Cloud)",
+        "lan": "Solo LAN (Tiempo real directo)",
+        "cloud": "Solo Cloud (Nube / Polling)"
       }
     }
   }
