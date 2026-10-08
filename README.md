@@ -109,7 +109,7 @@ Click the button below to add this repository directly to your HACS:
       <td width="50%" align="center">
         <b>5. Device Management Hub</b><br/><br/>
         <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/03_hub_device.png" alt="Hub Device View" width="95%"/><br/>
-        <sub>Hub entry point with direct access to options and diagnostics.</sub>
+        <sub>Hub entry point managing both the physical station and calculated metrics devices (58 entities).</sub>
       </td>
       <td width="50%" align="center">
         <b>6. Device Options, Modes & Tariffs</b><br/><br/>
