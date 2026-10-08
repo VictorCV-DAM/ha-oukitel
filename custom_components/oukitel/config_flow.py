@@ -21,6 +21,7 @@ from .const import (
     CONF_CONNECTION_MODE,
     CONF_CURRENCY,
     CONF_EMAIL,
+    CONF_HOST,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
     CONF_PRICE_SENSOR,
@@ -113,6 +114,10 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
             CONF_CONNECTION_MODE,
             self._config_entry.data.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE)
         )
+        current_host = self._config_entry.options.get(
+            CONF_HOST,
+            self._config_entry.data.get(CONF_HOST, "")
+        )
         current_interval = self._config_entry.options.get(
             CONF_POLL_INTERVAL,
             self._config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
@@ -153,6 +158,10 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_CONNECTION_MODE,
                     default=current_mode,
                 ): vol.In(CONNECTION_MODES),
+                vol.Optional(
+                    CONF_HOST,
+                    description={"suggested_value": current_host} if current_host else {},
+                ): cv.string,
                 vol.Required(
                     CONF_POLL_INTERVAL,
                     default=current_interval,

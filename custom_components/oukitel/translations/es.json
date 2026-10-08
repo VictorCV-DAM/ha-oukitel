@@ -28,6 +28,7 @@
         "description": "Ajusta la configuración, tarifas y frecuencia de actualización de esta batería Oukitel.",
         "data": {
           "connection_mode": "Modo de conexión",
+          "host": "IP Local de la Estación (Opcional: déjalo vacío para detección auto. Recomendable si tiene IP estática para agilizar la conexión)",
           "poll_interval": "Intervalo de actualización Cloud (segundos, 3-120s)",
           "price_sensor": "Sensor de precio de la luz dinámico (Opcional, ej. PVPC)",
           "currency": "Divisa o Símbolo Monetario (ej. €, $, £, CHF)",

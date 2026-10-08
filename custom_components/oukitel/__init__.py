@@ -11,6 +11,7 @@ from .api import AcceleronixCloudClient
 from .const import (
     CONF_CONNECTION_MODE,
     CONF_EMAIL,
+    CONF_HOST,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
     CONF_REGION,
@@ -76,7 +77,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE)
     )
 
-    _LOGGER.debug("oukitel: Setting up entry for %s (mode=%s)", email, connection_mode)
+    host = entry.options.get(
+        CONF_HOST,
+        entry.data.get(CONF_HOST)
+    )
+
+    _LOGGER.debug("oukitel: Setting up entry for %s (mode=%s, host=%s)", email, connection_mode, host)
     client = AcceleronixCloudClient(email=email, password=password, region=region)
     success = await hass.async_add_executor_job(client.login)
     if not success:
@@ -91,6 +97,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         client,
         poll_interval=poll_interval,
         connection_mode=connection_mode,
+        host=host,
     )
     
     # Attempt LAN mode in the background immediately if not forced to Cloud

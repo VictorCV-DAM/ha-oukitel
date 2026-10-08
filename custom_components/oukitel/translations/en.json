@@ -28,6 +28,7 @@
         "description": "Adjust the telemetry update frequency for this Oukitel device.",
         "data": {
           "connection_mode": "Connection Mode",
+          "host": "Station Local IP (Optional: leave empty for auto-discovery. Recommended if static IP to improve connection)",
           "poll_interval": "Cloud Update Interval (seconds, 3-120s)",
           "price_sensor": "Dynamic Electricity Price Sensor (Optional, e.g. PVPC / Nord Pool)",
           "currency": "Currency Symbol / Code (e.g. €, $, £, CHF)",

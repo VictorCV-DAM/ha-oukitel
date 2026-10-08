@@ -298,6 +298,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         client: AcceleronixCloudClient,
         poll_interval: int = DEFAULT_POLL_INTERVAL,
         connection_mode: str = DEFAULT_CONNECTION_MODE,
+        host: str | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -308,7 +309,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self.client = client
         self.connection_mode = connection_mode
         self.last_wake_time: float = 0.0
-        self.lan_host: str | None = None
+        self.lan_host: str | None = host.strip() if (host and isinstance(host, str) and host.strip()) else None
         self.predictive_tracker = OukitelPredictiveTracker(client)
 
         self._lan_session: LocalSession | None = None
@@ -465,13 +466,17 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if not self.client.device_key:
             await self.hass.async_add_executor_job(self.client.fetch_device_info)
 
-        _LOGGER.info("oukitel: Scanning LAN for device %s …", self.client.device_key)
-        host = await find_device_on_lan(self.client.device_key or "")
-        if not host:
-            _LOGGER.info("oukitel: Device not found on LAN — running in cloud mode")
-            return
+        host = self.lan_host
+        if host:
+            _LOGGER.info("oukitel: Using configured static host %s for LAN connection", host)
+        else:
+            _LOGGER.info("oukitel: Scanning LAN for device %s …", self.client.device_key)
+            host = await find_device_on_lan(self.client.device_key or "")
+            if not host:
+                _LOGGER.info("oukitel: Device not found on LAN — running in cloud mode")
+                return
+            self.lan_host = host
 
-        self.lan_host = host
         auth_key = await self.hass.async_add_executor_job(self.client.fetch_auth_key)
         if not auth_key:
             _LOGGER.info("oukitel: authKey unavailable — running in cloud mode")
@@ -653,6 +658,18 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 await asyncio.sleep(0.1)
             if self._lan_active:
                 return await self._update_lan()
+            # If this is the initial setup/refresh and LAN hasn't connected yet,
+            # seed from cloud snapshot so Home Assistant doesn't fail with ConfigEntryNotReady
+            if not self.data:
+                _LOGGER.warning(
+                    "oukitel: LAN session not established during initial setup; seeding baseline from Cloud while LAN connects in background"
+                )
+                try:
+                    cloud_baseline = await self._update_cloud()
+                    if cloud_baseline:
+                        return cloud_baseline
+                except Exception as exc:
+                    _LOGGER.debug("oukitel: Cloud initial fallback attempt failed: %s", exc)
             raise UpdateFailed("LAN session not active and mode is set to LAN Only")
         return await self._update_cloud()
 
