@@ -93,11 +93,6 @@ const OUKITEL_DESCRIPTIONS_ES = {
   output_frequency: "Frecuencia de salida de la corriente alterna (50 Hz o 60 Hz).",
   output_voltage: "Tensión nominal de salida de la corriente alterna (200V - 240V).",
   reload: "Reinicia la sesión y reconecta los protocolos de la estación de forma inmediata.",
-
-  // Predictive Autonomy & Smart Timestamps
-  empty_timestamp: "Hora exacta prevista en la que se agotará la batería (0%) calculada con filtro de media móvil de consumo.",
-  full_charge_timestamp: "Hora exacta prevista en la que la batería alcanzará el 100% de carga calculada con filtro de media móvil.",
-  smoothed_discharge_time: "Autonomía restante de descarga en minutos suavizada con filtro de media móvil de 15 minutos.",
 };
 
 // Universal Tooltip Descriptions for Oukitel Entities (English)
@@ -170,11 +165,6 @@ const OUKITEL_DESCRIPTIONS_EN = {
   output_frequency: "AC output frequency setting (50 Hz or 60 Hz).",
   output_voltage: "Nominal AC output voltage setting (200V - 240V).",
   reload: "Restarts the session and reconnects protocols immediately.",
-
-  // Predictive Autonomy & Smart Timestamps
-  empty_timestamp: "Estimated exact timestamp when the battery will reach 0% based on smoothed moving average discharge load.",
-  full_charge_timestamp: "Estimated exact timestamp when the battery will reach 100% full charge based on smoothed incoming charging power.",
-  smoothed_discharge_time: "Remaining discharge autonomy in minutes calculated with 15-minute moving average (immune to appliance startup spikes).",
 };
 
 const OUKITEL_DESCRIPTIONS = OUKITEL_DESCRIPTIONS_ES;
@@ -247,9 +237,6 @@ function getOukitelDescription(entityId, hass) {
   if (id.includes("remaining_time")) return dict.remaining_time;
   if (id.includes("remain_charging_time")) return dict.remain_charging_time;
   if (id.includes("remain_time")) return dict.remain_time;
-  if (id.includes("empty_timestamp") || id.includes("empty_time")) return dict.empty_timestamp;
-  if (id.includes("full_charge_timestamp") || id.includes("full_charge_time")) return dict.full_charge_timestamp;
-  if (id.includes("smoothed_discharge")) return dict.smoothed_discharge_time;
   if (id.includes("temp") && !id.includes("inverter")) return dict.temp;
   if (id.includes("on_battery")) return dict.on_battery;
   if (id.includes("device_online") || id.endsWith("_online")) return dict.device_online;
@@ -528,13 +515,10 @@ function findOukitelEntities(hass, explicitConfig = {}) {
     config.ac_output_power = config.ac_output_power || findEntity("sensor", ["ac_output_power"]);
     config.ac_voltage = config.ac_voltage || findEntity("sensor", ["ac_output_voltage", "ac_voltage"]);
 
-    // Remaining time & Predictive Autonomy
+    // Remaining time
     config.remaining_charge = config.remaining_charge || findEntity("sensor", ["remaining_charge_time", "remain_charging_time"]);
     config.remaining_discharge = config.remaining_discharge || findEntity("sensor", ["remaining_discharge_time", "remain_time"]);
     config.remaining_time = config.remaining_time || findEntity("sensor", ["remaining_time"]);
-    config.empty_timestamp = config.empty_timestamp || findEntity("sensor", ["empty_timestamp", "battery_empty_time", "empty_time"]);
-    config.full_charge_timestamp = config.full_charge_timestamp || findEntity("sensor", ["full_charge_timestamp", "battery_full_charge_time", "full_charge_time"]);
-    config.smoothed_discharge = config.smoothed_discharge || findEntity("sensor", ["smoothed_discharge_time", "smoothed_discharge"]);
 
     // Switches
     config.switch_ac = config.switch_ac || findEntity("switch", ["ac_output", "ac_switch", "toma_ac"]);
@@ -731,9 +715,6 @@ class OukitelDisplayCard extends HTMLElement {
             <circle cx="13" cy="13" r="12" fill="none" stroke="#ef4444" stroke-width="1.8" />
             <text x="13" y="18" text-anchor="middle" fill="#ef4444" font-family="'Orbitron', sans-serif" font-size="13" font-weight="900">!</text>
           </g>
-
-          <!-- Predictive Clock (Exact shutoff or 100% time) -->
-          <text id="txt-rem-clock" x="174" y="200" fill="#00e5ff" font-family="'Orbitron', monospace" font-size="12" font-weight="700" letter-spacing="1" opacity="0" filter="url(#lcd-cyan-glow)">--:--</text>
         </g>
 
         <!-- ========================================================
@@ -884,12 +865,11 @@ class OukitelDisplayCard extends HTMLElement {
     const isSupercharge = inputW > 900;
     const isAcConnected = getVal("ac_input", 0) > 10 || isCharging;
 
-    const remDisSmoothed = getVal("smoothed_discharge", null);
     let remMinutes = null;
     if (isCharging) {
       remMinutes = remChg !== null && remChg > 0 ? remChg : remTot;
     } else if (isDischarging) {
-      remMinutes = (remDisSmoothed !== null && remDisSmoothed > 0) ? remDisSmoothed : (remDis !== null && remDis > 0 ? remDis : remTot);
+      remMinutes = remDis !== null && remDis > 0 ? remDis : remTot;
     } else {
       remMinutes = remTot;
     }
@@ -922,49 +902,6 @@ class OukitelDisplayCard extends HTMLElement {
         // Balanced clearance: 14px after digits (tight and clean, zero overlap)
         const digitsWidth = remNum.length * 44;
         txtRemUnit.setAttribute("x", `${90 + digitsWidth + 14}`);
-      }
-    }
-
-    // 2b. Predictive Autonomy Exact Clock (Timestamp prediction)
-    const txtRemClock = this.shadowRoot.getElementById("txt-rem-clock");
-    if (txtRemClock) {
-      let clockStr = "";
-      let clockTip = "";
-      const isEs = (this.hass?.locale?.language || this.hass?.language || navigator.language || "es").toLowerCase().startsWith("es");
-
-      if (isDischarging) {
-        const emptyState = this.config.empty_timestamp && this.hass?.states[this.config.empty_timestamp]?.state;
-        if (emptyState && !["unavailable", "unknown", "None"].includes(emptyState)) {
-          try {
-            const dt = new Date(emptyState);
-            if (!isNaN(dt.getTime())) {
-              const formattedTime = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-              clockStr = `OFF: ${formattedTime}`;
-              clockTip = isEs ? `Hora estimada de apagado: ${formattedTime} (suavizado 15m)` : `Estimated empty time: ${formattedTime} (15m smoothed)`;
-            }
-          } catch (e) {}
-        }
-      } else if (isCharging) {
-        const fullState = this.config.full_charge_timestamp && this.hass?.states[this.config.full_charge_timestamp]?.state;
-        if (fullState && !["unavailable", "unknown", "None"].includes(fullState)) {
-          try {
-            const dt = new Date(fullState);
-            if (!isNaN(dt.getTime())) {
-              const formattedTime = dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-              clockStr = `FULL: ${formattedTime}`;
-              clockTip = isEs ? `Carga 100% prevista: ${formattedTime}` : `Estimated full charge: ${formattedTime}`;
-            }
-          } catch (e) {}
-        }
-      }
-
-      if (clockStr) {
-        txtRemClock.textContent = clockStr;
-        txtRemClock.style.opacity = "0.85";
-        txtRemClock.setAttribute("title", clockTip);
-      } else {
-        txtRemClock.textContent = "";
-        txtRemClock.style.opacity = "0";
       }
     }
 
