@@ -23,64 +23,159 @@ if (!document.head.querySelector("link[href*='Orbitron']")) {
   document.head.appendChild(fontLink);
 }
 
-// Auto-discovery helper for Oukitel entities with strict device-prefix matching
+// Universal Auto-discovery helper for Oukitel entities (supports any entity name, model or custom rename)
 function findOukitelEntities(hass, explicitConfig = {}) {
-  const states = hass.states;
+  const states = hass.states || {};
   const config = { ...explicitConfig };
   const allIds = Object.keys(states);
 
+  // 1. Explicit device prefix override in card config (e.g. device: "p2001_plus_tt_ab76" or "mi_estacion")
+  let explicitDevicePrefix = config.device
+    ? String(config.device).trim().replace(/^sensor\./, "").replace(/_battery$/, "")
+    : null;
+
+  // 2. Battery discovery:
   let batteryId = config.battery;
+
   if (!batteryId || !states[batteryId]) {
-    // 1. Strict match on active integration entity (e.g. sensor.p2001_plus_..._battery)
-    batteryId = allIds.find(
-      (id) =>
-        id.startsWith("sensor.") &&
-        (id.includes("p2001_plus_tt_") || id.includes("oukitel_tt_") || id.includes("p2001_plus_") || id.includes("bp3000_")) &&
-        id.endsWith("_battery") &&
-        !id.includes("calculated") &&
-        !id.includes("energy_")
-    );
-    // 2. Fallback
+    // Strategy A: If device prefix is specified in YAML
+    if (explicitDevicePrefix) {
+      const match = allIds.find(
+        (id) => id.startsWith("sensor.") && id.includes(explicitDevicePrefix) && id.endsWith("_battery") && !id.includes("calculated")
+      );
+      if (match) batteryId = match;
+    }
+
+    // Strategy B: Check Home Assistant Entity Registry (hass.entities) for platform == "oukitel"
+    if (!batteryId && hass.entities) {
+      const oukitelEntities = Object.keys(hass.entities).filter(
+        (id) => hass.entities[id] && hass.entities[id].platform === "oukitel"
+      );
+      batteryId = oukitelEntities.find(
+        (id) => id.startsWith("sensor.") && id.endsWith("_battery") && !id.includes("calculated") && !id.includes("energy_")
+      );
+    }
+
+    // Strategy C: Correlated cluster signature (unique to Oukitel: total_input_power + total_output_power)
+    // Works EVEN IF the user named their battery "furgoneta" or "estacion_solar"
+    if (!batteryId) {
+      const powerEntity = allIds.find(
+        (id) =>
+          id.startsWith("sensor.") &&
+          (id.endsWith("_total_input_power") || id.endsWith("_total_output_power")) &&
+          !id.includes("calculated") &&
+          !id.includes("energy_")
+      );
+      if (powerEntity) {
+        const guessedPrefix = powerEntity
+          .replace(/^sensor\./, "")
+          .replace(/_total_input_power$/, "")
+          .replace(/_total_output_power$/, "");
+        const candBattery = `sensor.${guessedPrefix}_battery`;
+        if (states[candBattery]) {
+          batteryId = candBattery;
+        } else {
+          // Find any battery sharing this guessed prefix
+          batteryId = allIds.find(
+            (id) => id.startsWith("sensor.") && id.includes(guessedPrefix) && id.endsWith("_battery") && !id.includes("calculated")
+          );
+        }
+      }
+    }
+
+    // Strategy D: Known Oukitel model identifiers (P2001 Plus, BP2000, BP3000, P5000, etc.)
     if (!batteryId) {
       batteryId = allIds.find(
         (id) =>
           id.startsWith("sensor.") &&
-          (id.includes("oukitel") || id.includes("p2001") || id.includes("bp3000") || id.includes("p1000")) &&
+          (id.includes("p2001_plus_tt_") || id.includes("oukitel_tt_") || id.includes("p2001_plus_") || id.includes("bp3000_") || id.includes("bp2000_") || id.includes("p5000_") || id.includes("p1200_") || id.includes("p1000_")) &&
           id.endsWith("_battery") &&
           !id.includes("calculated") &&
           !id.includes("energy_")
       );
     }
+
+    // Strategy E: Generic brand keyword in entity_id
+    if (!batteryId) {
+      batteryId = allIds.find(
+        (id) =>
+          id.startsWith("sensor.") &&
+          (id.includes("oukitel") || id.includes("p2001") || id.includes("bp3000") || id.includes("bp2000") || id.includes("p5000") || id.includes("p1000")) &&
+          id.endsWith("_battery") &&
+          !id.includes("calculated") &&
+          !id.includes("energy_")
+      );
+    }
+
+    // Strategy F: Friendly name match (if user renamed entity in HA to "Oukitel ..." or "P2001 ...")
+    if (!batteryId) {
+      batteryId = allIds.find((id) => {
+        if (!id.startsWith("sensor.") || !id.endsWith("_battery") || id.includes("calculated") || id.includes("energy_")) return false;
+        const fn = (states[id]?.attributes?.friendly_name || "").toLowerCase();
+        return fn.includes("oukitel") || fn.includes("p2001") || fn.includes("power station");
+      });
+    }
+
+    // Strategy G: Fallback to any power station battery sensor
+    if (!batteryId) {
+      batteryId = allIds.find(
+        (id) =>
+          id.startsWith("sensor.") &&
+          id.endsWith("_battery") &&
+          !id.includes("calculated") &&
+          !id.includes("energy_") &&
+          !id.includes("phone") &&
+          !id.includes("mobile") &&
+          !id.includes("tablet")
+      );
+    }
+
     config.battery = batteryId;
   }
 
-  if (batteryId) {
+  // 3. Extract common device prefix for related entities
+  let devicePrefix = explicitDevicePrefix;
+  if (!devicePrefix && batteryId) {
     const raw = batteryId.replace(/^sensor\./, "").replace(/_battery$/, "");
-    const devicePrefix = raw.replace(/_p2001_plus$/, "").replace(/_oukitel$/, "");
+    devicePrefix = raw.replace(/_p2001_plus$/, "").replace(/_oukitel$/, "");
+  }
 
+  if (devicePrefix || batteryId) {
     const findEntity = (domain, patterns) => {
       // 1. Strict match: exact domain AND starts with domain.devicePrefix, EXCLUDING Riemann sums and calculated kWh
-      let found = allIds.find((id) => {
-        if (domain && !id.startsWith(`${domain}.`)) return false;
-        if (!id.startsWith(`${domain}.${devicePrefix}`)) return false;
-        if (id.includes("energy_") || id.includes("calculated") || id.endsWith("_kwh") || id.endsWith("_cost")) return false;
-        return patterns.some((p) => id.includes(p));
-      });
-      if (found) return found;
+      if (devicePrefix) {
+        let found = allIds.find((id) => {
+          if (domain && !id.startsWith(`${domain}.`)) return false;
+          if (!id.startsWith(`${domain}.${devicePrefix}`)) return false;
+          if (id.includes("energy_") || id.includes("calculated") || id.endsWith("_kwh") || id.endsWith("_cost")) return false;
+          return patterns.some((p) => id.includes(p));
+        });
+        if (found) return found;
 
-      // 2. Secondary match containing devicePrefix
-      found = allIds.find((id) => {
-        if (domain && !id.startsWith(`${domain}.`)) return false;
-        if (!id.includes(devicePrefix)) return false;
-        if (id.includes("energy_") || id.includes("calculated") || id.endsWith("_kwh") || id.endsWith("_cost")) return false;
-        return patterns.some((p) => id.includes(p));
-      });
-      if (found) return found;
+        // 2. Secondary match containing devicePrefix
+        found = allIds.find((id) => {
+          if (domain && !id.startsWith(`${domain}.`)) return false;
+          if (!id.includes(devicePrefix)) return false;
+          if (id.includes("energy_") || id.includes("calculated") || id.endsWith("_kwh") || id.endsWith("_cost")) return false;
+          return patterns.some((p) => id.includes(p));
+        });
+        if (found) return found;
+      }
 
-      // 3. Generic fallback
+      // 3. Match from oukitel platform in entity registry
+      if (hass.entities) {
+        const found = Object.keys(hass.entities).find((id) => {
+          if (domain && !id.startsWith(`${domain}.`)) return false;
+          if (hass.entities[id]?.platform !== "oukitel") return false;
+          if (id.includes("energy_") || id.includes("calculated") || id.endsWith("_kwh") || id.endsWith("_cost")) return false;
+          return patterns.some((p) => id.includes(p));
+        });
+        if (found) return found;
+      }
+
+      // 4. Generic fallback across all entities
       return allIds.find((id) => {
         if (domain && !id.startsWith(`${domain}.`)) return false;
-        if (!id.includes("p2001") && !id.includes("oukitel")) return false;
         if (id.includes("energy_") || id.includes("calculated") || id.endsWith("_kwh") || id.endsWith("_cost")) return false;
         return patterns.some((p) => id.includes(p));
       });
@@ -89,33 +184,39 @@ function findOukitelEntities(hass, explicitConfig = {}) {
     config.input_power = config.input_power || findEntity("sensor", ["total_input_power", "input_power"]);
     config.output_power = config.output_power || findEntity("sensor", ["total_output_power", "output_power"]);
     config.ac_input = config.ac_input || findEntity("sensor", ["ac_input_power", "ac_input"]);
-    config.dc_input = config.dc_input || findEntity("sensor", ["dc_solar_input_power", "dc_input"]);
+    config.dc_input = config.dc_input || findEntity("sensor", ["dc_solar_input_power", "dc_input", "solar_input"]);
     config.ac_output_power = config.ac_output_power || findEntity("sensor", ["ac_output_power"]);
-    config.ac_voltage = config.ac_voltage || findEntity("sensor", ["ac_output_voltage"]);
+    config.ac_voltage = config.ac_voltage || findEntity("sensor", ["ac_output_voltage", "ac_voltage"]);
 
     // Remaining time
-    config.remaining_charge = config.remaining_charge || findEntity("sensor", ["remaining_charge_time"]);
-    config.remaining_discharge = config.remaining_discharge || findEntity("sensor", ["remaining_discharge_time"]);
+    config.remaining_charge = config.remaining_charge || findEntity("sensor", ["remaining_charge_time", "remain_charging_time"]);
+    config.remaining_discharge = config.remaining_discharge || findEntity("sensor", ["remaining_discharge_time", "remain_time"]);
     config.remaining_time = config.remaining_time || findEntity("sensor", ["remaining_time"]);
 
     // Switches
-    config.switch_ac = config.switch_ac || findEntity("switch", ["ac_output", "ac_switch"]);
-    config.switch_dc = config.switch_dc || findEntity("switch", ["dc_12v_output", "dc_output", "dc_switch"]);
-    config.switch_usb = config.switch_usb || findEntity("switch", ["usb_output", "usb_switch"]);
+    config.switch_ac = config.switch_ac || findEntity("switch", ["ac_output", "ac_switch", "toma_ac"]);
+    config.switch_dc = config.switch_dc || findEntity("switch", ["dc_12v_output", "dc_output", "dc_switch", "salida_dc"]);
+    config.switch_usb = config.switch_usb || findEntity("switch", ["usb_output", "usb_switch", "puertos_usb"]);
 
     // Diagnostics & Selects
     config.frequency = config.frequency || findEntity("select", ["output_frequency"]);
     config.inverter_temp = config.inverter_temp || findEntity("sensor", ["inverter_temperature", "inverter_temp"]);
-    config.battery_temp = config.battery_temp || findEntity("sensor", ["temperature"]);
+    config.battery_temp = config.battery_temp || findEntity("sensor", ["temperature", "temp"]);
     config.wifi_signal = config.wifi_signal || findEntity("sensor", ["wifi_signal"]);
     config.connection_mode = config.connection_mode || findEntity("sensor", ["connection_mode"]);
-    config.fault_status = config.fault_status || findEntity("sensor", ["fault_status", "hardware_fault_status"]);
+    config.fault_status = config.fault_status || findEntity("sensor", ["hardware_fault_status", "device_fault_status", "fault_status"]);
 
     // Financial (these DO use calculated)
-    const findFinancial = (patterns) => allIds.find(id => id.startsWith("sensor.") && id.includes(devicePrefix) && patterns.some(p => id.includes(p)));
-    config.daily_cost = config.daily_cost || findFinancial(["daily_charging_cost"]);
+    const findFinancial = (patterns) =>
+      allIds.find(
+        (id) =>
+          id.startsWith("sensor.") &&
+          (devicePrefix ? id.includes(devicePrefix) : true) &&
+          patterns.some((p) => id.includes(p))
+      );
+    config.daily_cost = config.daily_cost || findFinancial(["daily_charging_cost", "daily_cost"]);
     config.daily_savings = config.daily_savings || findFinancial(["daily_savings"]);
-    config.daily_net = config.daily_net || findFinancial(["daily_net_savings"]);
+    config.daily_net = config.daily_net || findFinancial(["daily_net_savings", "daily_net"]);
   }
 
   return config;
