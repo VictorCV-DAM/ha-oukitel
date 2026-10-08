@@ -9,5 +9,5 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/VictorCV-DAM/ha-oukitel/issues",
   "requirements": ["pycryptodome>=3.18.0"],
-  "version": "1.5.3"
+  "version": "1.5.4"
 }

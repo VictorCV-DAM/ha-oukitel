@@ -583,14 +583,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         if self.connection_mode == MODE_CLOUD:
             return await self._update_cloud()
-        if self._lan_active:
+        if self._lan_active and self._lan_state:
             return await self._update_lan()
         if self.connection_mode == MODE_LAN:
             # If LAN session is initializing in the background during setup, wait up to 4s
-            for _ in range(20):
-                if self._lan_active:
+            for _ in range(40):
+                if self._lan_active and self._lan_state:
                     return await self._update_lan()
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.1)
+            if self._lan_active:
+                return await self._update_lan()
             raise UpdateFailed("LAN session not active and mode is set to LAN Only")
         return await self._update_cloud()
 
@@ -618,6 +620,14 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 pass
 
         if not self._lan_state:
+            for _ in range(40):
+                if self._lan_state:
+                    break
+                await asyncio.sleep(0.1)
+
+        if not self._lan_state:
+            if self.data:
+                return dict(self.data)
             raise UpdateFailed("LAN session connected but no telemetry received yet")
 
 
