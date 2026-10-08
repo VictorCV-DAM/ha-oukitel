@@ -50,6 +50,35 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 
 ---
 
+## 📦 Quick Installation via HACS
+
+<div align="center">
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=VictorCV-DAM&repository=ha-oukitel&category=integration)
+
+</div>
+
+### ⚡ 1-Click Fast Install
+Click the badge above or use the direct link to open this repository inside your Home Assistant HACS store, then click **Download**.
+
+### 🛠️ Manual HACS Installation
+1. Open **HACS** in Home Assistant.
+2. Click the three dots (top right corner) and select **Custom repositories**.
+3. Add repository URL: `https://github.com/VictorCV-DAM/ha-oukitel` with category **Integration**.
+4. Click **Download** and then **Restart Home Assistant**.
+5. Go to **Settings ➔ Devices & Services ➔ Add Integration** ➔ Search for **Oukitel Power Station**.
+6. Enter your account credentials (email, password, and server region `EU` / `US` / `CN`) to automatically discover your station.
+7. **Perform one post-setup restart**: Quick restart via **Settings ➔ System ➔ Restart** to finalize registering all entities and Riemann energy integrators cleanly.
+
+> [!IMPORTANT]
+> **⚠️ Restart Home Assistant Once After Adding Your Device**:
+> Immediately after completing the initial setup flow and adding your Oukitel Power Station:
+> - **Perform a single restart of Home Assistant** (**Settings ➔ System ➔ Restart**).
+> - **Why?** This ensures that Home Assistant's Entity Registry and Recorder engine cleanly initialize the linked secondary device (*Calculated Sensors*), Riemann trapezoidal energy integrators (kWh), and financial ROI metrics. Without this initial restart, calculated entities may temporarily appear as `Unavailable`.
+> - **Zero subsequent restarts required**: Normal daily operation, live LAN push telemetry, tariff adjustments, and hardware control switches run 100% on-the-fly without needing any further restarts.
+
+---
+
 ## 🧩 Compatibility & Certified Home Assistant Versions
 
 To guarantee flawless operation across all 58 entities, native Riemann sum energy integrators, dynamic electricity price selectors, and bilingual tooltips, this integration certifies the following compatibility range:
@@ -64,31 +93,6 @@ To guarantee flawless operation across all 58 entities, native Riemann sum energ
 
 > [!TIP]
 > **Hassle-Free Compatibility**: If your Home Assistant instance is running version **2024.1.0 or newer**, the integration will install cleanly with zero deprecation warnings, zero breaking changes, and without requiring manual YAML setup.
-
----
-
-## 📦 Installation via HACS
-
-### 1-Click Installation:
-Click the button below to add this repository directly to your HACS:
-
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=VictorCV-DAM&repository=ha-oukitel&category=integration)
-
-### Manual Installation:
-1. Open **HACS** in your Home Assistant.
-2. Click the three dots in the top right corner and select **Custom repositories**.
-3. Add this repository URL: `https://github.com/VictorCV-DAM/ha-oukitel` and category **Integration**.
-4. Click **Download** and restart Home Assistant.
-5. In Home Assistant, go to **Settings** -> **Devices & Services** -> **Add Integration** -> Search for **Oukitel Power Station**.
-6. Enter your account email, password, and region to discover your power station.
-7. **Restart Home Assistant once**: Perform a quick restart (**Settings ➔ System ➔ Restart**) to finalize registering all entities and Riemann energy integrators cleanly.
-
-> [!IMPORTANT]
-> **⚠️ Restart Home Assistant Once After Adding Your Device**:
-> Immediately after completing the setup flow and adding your Oukitel Power Station in Home Assistant:
-> - **Perform a single restart of Home Assistant** (**Settings ➔ System ➔ Restart**).
-> - **Why?** This ensures that Home Assistant's Entity Registry and Recorder engine cleanly initialize the linked secondary device (*Calculated Sensors*), Riemann trapezoidal energy integrators (kWh), and financial ROI metrics. Without this initial restart, calculated entities may temporarily appear as `Unavailable`.
-> - **Zero subsequent restarts**: Once this initial post-setup restart is done, normal daily operation, live LAN push telemetry, tariff adjustments, and hardware control switches run 100% on-the-fly with zero further restarts required.
 
 ---
 
