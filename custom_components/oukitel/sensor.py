@@ -93,14 +93,41 @@ def _build_calculated_device_info(coordinator: OukitelDataCoordinator, client) -
     if coordinator.hass and hasattr(coordinator.hass, "config") and getattr(coordinator.hass.config, "language", None):
         is_es = str(coordinator.hass.config.language).lower().startswith("es")
 
-    return DeviceInfo(
+    via_device_id = None
+    hass = coordinator.hass
+    config_entry_id = getattr(coordinator, "config_entry_id", None)
+    device_key = getattr(client, "device_key", None)
+    if hass and config_entry_id and device_key:
+        identifier = (DOMAIN, device_key)
+        lookup_device_id = getattr(dr, "async_get_device_id_by_identifier", None)
+        if lookup_device_id:
+            try:
+                via_device_id = lookup_device_id(
+                    hass,
+                    identifier,
+                    config_entry_id=config_entry_id,
+                )
+            except ValueError:
+                # The parent device may not be registered yet during startup.
+                pass
+        else:
+            # Compatibility for Home Assistant versions before the scoped helper.
+            parent_device = dr.async_get(hass).async_get_device(
+                identifiers={identifier}
+            )
+            if parent_device:
+                via_device_id = parent_device.id
+
+    device_info = DeviceInfo(
         identifiers={(DOMAIN, f"{client.device_key}_calculated")},
-        via_device=(DOMAIN, client.device_key),
         name=f"{client.device_name} Sensores Calculados" if is_es else f"{client.device_name} Calculated Sensors",
         manufacturer="OUKITEL",
         model="Métricas Energéticas y Económicas Calculadas" if is_es else "Calculated Energy & Financial Metrics",
         sw_version=f"Cloud+LAN {VERSION}",
     )
+    if via_device_id:
+        device_info["via_device_id"] = via_device_id
+    return device_info
 
 
 FAULT_STATUS_OPTIONS = [

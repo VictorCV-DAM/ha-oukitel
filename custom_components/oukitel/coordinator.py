@@ -31,6 +31,7 @@ from .const import (
 )
 from .local_scan import find_device_on_lan
 from .local_session import LocalSession, LocalAuthError, LocalSessionError
+from .switch_protocol import SWITCH_PROTOCOLS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -351,6 +352,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         poll_interval: int = DEFAULT_POLL_INTERVAL,
         connection_mode: str = DEFAULT_CONNECTION_MODE,
         host: str | None = None,
+        config_entry_id: str | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -359,6 +361,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=poll_interval),
         )
         self.client = client
+        self.config_entry_id = config_entry_id
         self.connection_mode = connection_mode
         self.last_wake_time: float = 0.0
         self.lan_host: str | None = host.strip() if (host and isinstance(host, str) and host.strip()) else None
@@ -405,32 +408,56 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._user_overrides.pop(key, None)
 
     async def async_send_switch_command(self, key: str, value: bool) -> bool:
-        """Send switch command immediately via LAN if active, and synchronize with Cloud."""
-        tag_map = {
-            "ac_switch": 43,
-            "usb_switch": 44,
-            "dc_switch": 46,
-        }
-        tag = tag_map.get(key)
+        """Send a switch command using the product's registered protocol."""
+        product_key = getattr(self.client, "product_key", None)
+        strategy, exact_match = SWITCH_PROTOCOLS.resolve(product_key)
+        if not exact_match:
+            _LOGGER.debug(
+                "oukitel: No switch protocol registered for product_key %s; using %s",
+                product_key,
+                strategy.name,
+            )
+
+        lan_write = strategy.lan_write(key, value)
+        if lan_write is None:
+            return False
+
         lan_ok = False
-        if tag is not None and self._lan_active and self._lan_session:
+        if self._lan_active and self._lan_session:
             try:
-                await self._lan_session.send_write(tag, "bool", value)
+                await self._lan_session.send_write(
+                    lan_write.tag, lan_write.kind, lan_write.value
+                )
                 lan_ok = True
-                _LOGGER.debug("oukitel: Instant LAN switch write: tag %s = %s", tag, value)
+                _LOGGER.debug(
+                    "oukitel: Instant LAN %s switch write: tag %s kind %s = %s",
+                    strategy.name,
+                    lan_write.tag,
+                    lan_write.kind,
+                    lan_write.value,
+                )
             except Exception as exc:
                 _LOGGER.warning("oukitel: LAN write failed: %s", exc)
 
-        # Synchronize clean single-property switch command to Cloud only if not LAN-only
         cloud_ok = False
-        if self.connection_mode != MODE_LAN:
+        cloud_mode = self.connection_mode != MODE_LAN
+        should_sync_cloud = cloud_mode and (
+            not lan_ok or strategy.sync_cloud_after_lan
+        )
+        cloud_payload = strategy.cloud_payload(key, value)
+        if should_sync_cloud and cloud_payload is not None:
             try:
                 cloud_ok = await self.hass.async_add_executor_job(
                     self.client.control_device,
-                    [{key: value}],
+                    cloud_payload,
                 )
             except Exception as exc:
                 _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
+        elif should_sync_cloud and cloud_payload is None and not lan_ok:
+            _LOGGER.error(
+                "oukitel: Cloud switch control is not available for protocol %s; use LAN mode",
+                strategy.name,
+            )
 
         return lan_ok or cloud_ok
 

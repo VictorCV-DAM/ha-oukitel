@@ -170,9 +170,10 @@ class AcceleronixCloudClient:
         self.auth_key = dev.get("authKey")
         self.is_online = self._parse_device_online_status(dev)
         _LOGGER.debug(
-            "oukitel: Device ready — %s (%s), authKey present: %s, is_online: %s",
+            "oukitel: Device ready — %s (device_key=%s, product_key=%s), authKey present: %s, is_online: %s",
             self.device_name,
             self.device_key,
+            self.product_key,
             bool(self.auth_key),
             self.is_online,
         )
@@ -193,7 +194,7 @@ class AcceleronixCloudClient:
             "cacheTime": 60,
             "isCache": 1,
             "isCover": 1,
-            "dataFormat": 0,
+            "dataFormat": 2,
             "type": 2,
         }
 
@@ -208,7 +209,11 @@ class AcceleronixCloudClient:
             if code == 5032:
                 self.login()
                 return self.control_device(properties_list)
-            _LOGGER.error("oukitel: Cloud control error: %s (code %s)", res.get("msg"), code)
+            _LOGGER.error(
+                "oukitel: Cloud control error: %s (code %s)",
+                res.get("msg"),
+                code,
+            )
             return False
         except Exception as err:
             _LOGGER.error("oukitel: Exception in control_device: %s", err)

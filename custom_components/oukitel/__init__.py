@@ -106,8 +106,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.async_add_executor_job(client.fetch_device_info)
     _LOGGER.debug(
-        "oukitel: Fetched device info for %s (%s). authKey present: %s",
-        client.device_name, client.device_key, bool(client.auth_key),
+        "oukitel: Fetched device info for %s (device_key=%s, product_key=%s). authKey present: %s",
+        client.device_name,
+        client.device_key,
+        client.product_key,
+        bool(client.auth_key),
     )
 
     coordinator = OukitelDataCoordinator(
@@ -116,6 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         poll_interval=poll_interval,
         connection_mode=connection_mode,
         host=host,
+        config_entry_id=entry.entry_id,
     )
     
     # Attempt LAN mode in the background immediately if not forced to Cloud
