@@ -26,10 +26,10 @@ class SwitchProtocol(Protocol):
         """Return the Cloud payload, or None when Cloud writes are unsupported."""
 
 
-class DirectTagSwitchProtocol:
-    """Build direct-tag LAN and flat Cloud commands for existing models."""
+class FlatBooleanSwitchProtocol:
+    """Encode direct-tag LAN writes and flat Boolean Cloud values."""
 
-    name = "direct_tags"
+    name = "flat_boolean"
     sync_cloud_after_lan = True
     _TAGS = {
         "ac_switch": 43,
@@ -49,8 +49,8 @@ class DirectTagSwitchProtocol:
         return [{key: bool(value)}]
 
 
-class BP2000ProSwitchProtocol:
-    """Build nested-struct LAN commands for the BP2000 Pro protocol."""
+class NestedStructSwitchProtocol:
+    """Encode switch values inside nested STRUCT payloads."""
 
     name = "nested_struct"
     sync_cloud_after_lan = False
@@ -117,15 +117,15 @@ class SwitchProtocolRegistry:
         return strategy, True
 
 
-DIRECT_TAG_PROTOCOL = DirectTagSwitchProtocol()
-BP2000_PRO_PROTOCOL = BP2000ProSwitchProtocol()
+FLAT_BOOLEAN_PROTOCOL = FlatBooleanSwitchProtocol()
+NESTED_STRUCT_PROTOCOL = NestedStructSwitchProtocol()
 
 # Register each model-specific product key here. Unknown keys retain the
-# established direct-tag protocol for compatibility with existing stations.
+# established flat-Boolean protocol for compatibility with existing stations.
 SWITCH_PROTOCOLS = SwitchProtocolRegistry(
-    default=DIRECT_TAG_PROTOCOL,
+    default=FLAT_BOOLEAN_PROTOCOL,
     registrations={
-        "p11wN7": DIRECT_TAG_PROTOCOL,
-        "p11sSr": BP2000_PRO_PROTOCOL,
+        "p11wN7": FLAT_BOOLEAN_PROTOCOL,
+        "p11sSr": NESTED_STRUCT_PROTOCOL,
     },
 )
