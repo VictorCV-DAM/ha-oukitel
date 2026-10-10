@@ -376,6 +376,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self.last_user_command_time: float = 0.0
         self._static_metadata: dict[str, Any] = {}
         self._last_cloud_snapshot: float = 0.0
+        self._use_struct_switch_protocol: bool | None = None
 
     def async_set_updated_data(self, data: dict[str, Any]) -> None:
         """Update coordinator data and refresh predictive autonomy tracker."""
@@ -404,30 +405,89 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         """Cancel user command override immediately (e.g. if cloud command failed)."""
         self._user_overrides.pop(key, None)
 
+    def _detect_switch_protocol(self) -> bool:
+        """Detect whether the station uses nested STRUCT TSL tags (BP series/P5000) or flat tags (P2001 Plus)."""
+        if self._use_struct_switch_protocol is not None:
+            return self._use_struct_switch_protocol
+
+        # 1. Check known product_key
+        pk = (getattr(self.client, "product_key", None) or "").strip().lower()
+        if pk in ("p11ssr",):  # BP2000 Pro / BP2000
+            self._use_struct_switch_protocol = True
+            return True
+        if pk in ("p11wn7",):  # P2001 Plus
+            self._use_struct_switch_protocol = False
+            return False
+
+        # 2. Check telemetry signature: if station reports Tag 6, 7 or 9 as dict/struct
+        for t in (6, 7, 9):
+            if self._lan_state and isinstance(self._lan_state.get(t), dict):
+                self._use_struct_switch_protocol = True
+                return True
+            if self.data and isinstance(self.data.get(t), dict):
+                self._use_struct_switch_protocol = True
+                return True
+
+        # Default fallback to flat tags (P2001 Plus baseline)
+        return False
+
     async def async_send_switch_command(self, key: str, value: bool) -> bool:
-        """Send switch command immediately via LAN if active, and synchronize with Cloud."""
-        tag_map = {
-            "ac_switch": 43,
-            "usb_switch": 44,
-            "dc_switch": 46,
-        }
-        tag = tag_map.get(key)
+        """Send switch command adaptively via LAN if active, and synchronize with Cloud."""
+        is_struct = self._detect_switch_protocol()
+
+        # 1. LAN write dispatch
         lan_ok = False
-        if tag is not None and self._lan_active and self._lan_session:
+        if self._lan_active and self._lan_session:
             try:
-                await self._lan_session.send_write(tag, "bool", value)
-                lan_ok = True
-                _LOGGER.debug("oukitel: Instant LAN switch write: tag %s = %s", tag, value)
+                if is_struct:
+                    struct_map = {
+                        "ac_switch": (6, 1),
+                        "usb_switch": (7, 1),
+                        "dc_switch": (9, 1),
+                    }
+                    if key in struct_map:
+                        tag, subtag = struct_map[key]
+                        await self._lan_session.send_write(tag, "struct", [(subtag, "bool", value)])
+                        lan_ok = True
+                        _LOGGER.debug(
+                            "oukitel: Instant LAN struct switch write: tag %s subtag %s = %s",
+                            tag, subtag, value,
+                        )
+                else:
+                    tag_map = {
+                        "ac_switch": 43,
+                        "usb_switch": 44,
+                        "dc_switch": 46,
+                    }
+                    tag = tag_map.get(key)
+                    if tag is not None:
+                        await self._lan_session.send_write(tag, "bool", value)
+                        lan_ok = True
+                        _LOGGER.debug("oukitel: Instant LAN flat switch write: tag %s = %s", tag, value)
             except Exception as exc:
                 _LOGGER.warning("oukitel: LAN write failed: %s", exc)
 
-        # Synchronize clean single-property switch command to Cloud only if not LAN-only
+        # 2. Cloud shadow synchronization (always sync unless in Solo LAN mode)
         cloud_ok = False
         if self.connection_mode != MODE_LAN:
             try:
+                if is_struct:
+                    cloud_struct_map = {
+                        "ac_switch": "ac_data",
+                        "usb_switch": "usb_data",
+                        "dc_switch": "dc_data",
+                    }
+                    prop = cloud_struct_map.get(key)
+                    if prop:
+                        cloud_payload = [{prop: [{key: "true" if value else "false"}]}]
+                    else:
+                        cloud_payload = [{key: value}]
+                else:
+                    cloud_payload = [{key: value}]
+
                 cloud_ok = await self.hass.async_add_executor_job(
                     self.client.control_device,
-                    [{key: value}],
+                    cloud_payload,
                 )
             except Exception as exc:
                 _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)

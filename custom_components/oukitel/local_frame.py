@@ -157,6 +157,9 @@ def ttlv_encode(fields: list[tuple[int, str, Any]]) -> bytes:
         elif kind == "num":
             out += struct.pack(">H", (tag << 3) | 2)
             out += _encode_int(int(value))
+        elif kind == "struct":
+            out += struct.pack(">HH", (tag << 3) | 4, len(value))
+            out += ttlv_encode(value)
         else:
             raise ValueError(f"unknown TTLV kind: {kind}")
     return bytes(out)
