@@ -169,7 +169,7 @@ You can configure the active connection mode at any time directly in Home Assist
 
 ---
 
-## 🚀 What's New in v1.5.5: Hybrid LAN + Cloud Shadow, Bilingual Localization & Connection Reload
+## 🚀 What's New in v1.5.6: Hybrid LAN + Cloud Shadow, Bilingual Localization & Connection Reload
 
 - **⚡ Hybrid LAN + Cloud Shadow Dynamic Sync:** Real-time push for all active power meters (W), switches, and battery SoC via local TCP socket (6607), combined with continuous background shadow synchronization for temperature (`temp`), WiFi signal strength (`wifi_signal`), and firmware versions (`BMS_Version`, `AC_Version`).
 - **🔄 Instant Connection Reload Button:** Added and documented the **Reload Connection** entity (`button.oukitel_reload_connection`), allowing one-click instant session re-establishment and full telemetry synchronization when switching between connection modes.
