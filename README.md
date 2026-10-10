@@ -166,15 +166,6 @@ You can configure the active connection mode at any time directly in Home Assist
 > [!TIP]
 > The **Connection Mode** diagnostic sensor on the device page always reports whether the station is actively communicating via `LAN` or `Cloud`.
 
-> [!IMPORTANT]
-> **Mode Switching & Initial Synchronization:**
-> When manually switching between connection modes (**Automatic**, **LAN Only**, or **Cloud Only**) in the integration options, Home Assistant must re-negotiate the connection session. It **may take a few seconds to retrieve and populate all sensor states for the first time**.
-> 
-> 👉 **Recommendation**: After switching modes, click the **Reload Connection** button (located under the **Diagnostic** section of your device card) to trigger an immediate telemetry refresh and ensure instant state synchronization across all entities.
-> 
-> <div align="center">
->   <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/14_reload_connection_button.png" alt="Reload Connection Button" width="340" />
-> </div>
 
 ---
 
