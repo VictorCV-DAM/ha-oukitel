@@ -640,6 +640,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def _lan_read_loop(self, host: str, auth_key: str) -> None:
         reconnect_delay = _LAN_RECONNECT_DELAY
+        reported_disconnect = False
         while True:
             if self._paused:
                 _LOGGER.debug("oukitel: LAN read loop stopped because integration is paused")
@@ -658,7 +659,15 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             if self._paused:
                 break
 
-            _LOGGER.info("oukitel: LAN disconnected — reconnecting in %.1fs", reconnect_delay)
+            if not reported_disconnect:
+                _LOGGER.info(
+                    "oukitel: LAN disconnected — retrying connection in background (initial delay %.1fs)",
+                    reconnect_delay,
+                )
+                reported_disconnect = True
+            else:
+                _LOGGER.debug("oukitel: LAN waiting to reconnect in %.1fs", reconnect_delay)
+
             await asyncio.sleep(reconnect_delay)
 
             if self._paused:
@@ -680,6 +689,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 self._lan_active = True
                 self._lan_connected_at = time.monotonic()
                 reconnect_delay = _LAN_RECONNECT_DELAY
+                reported_disconnect = False
                 _LOGGER.info("oukitel: LAN session re-established with %s!", target)
             except (LocalSessionError, LocalAuthError) as exc:
                 _LOGGER.debug("oukitel: LAN reconnect attempt failed: %s", exc)
@@ -721,10 +731,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         for tag, val in fields.items():
             if tag in tag_map:
                 key = tag_map[tag]
-                # Filter out transient 0% battery glitch if previous valid battery was > 0
+                # Filter out transient 0% battery glitch from handshake frames if previous was > 5%
+                # Legitimate slow discharge down to 0% (<= 5.0%) is preserved and accepted
                 if key == "battery_percentage" and val == 0:
                     prev_batt = current_data.get("battery_percentage")
-                    if prev_batt is not None and prev_batt > 0:
+                    if prev_batt is not None and prev_batt > 5.0:
                         _LOGGER.debug(
                             "oukitel: Ignoring transient 0%% battery frame (previous valid was %s%%)",
                             prev_batt,
