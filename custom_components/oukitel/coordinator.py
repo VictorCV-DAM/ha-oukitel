@@ -37,6 +37,7 @@ _LOGGER = logging.getLogger(__name__)
 _LAN_STALE_TIMEOUT = 150.0
 _LAN_RECONNECT_DELAY = 10.0
 _CLOUD_SNAPSHOT_INTERVAL = 60.0
+_LAN_RETRY_INTERVAL = 60.0
 
 STATIC_METADATA_KEYS = (
     "temp",
@@ -370,6 +371,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_last_report: float | None = None
         self._lan_connected_at: float | None = None
         self._lan_active = False
+        self._lan_has_valid_telemetry: bool = False
+        self._last_lan_attempt: float = 0.0
+        self._cached_auth_key: str | None = None
         self._paused: bool = False
         self._user_overrides: dict[str, tuple] = {}
         self._last_device_list_check: float = 0.0
@@ -581,13 +585,19 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         auth_key = await self.hass.async_add_executor_job(self.client.fetch_auth_key)
         if not auth_key:
+            auth_key = self._cached_auth_key
+        if not auth_key:
             _LOGGER.info("oukitel: authKey unavailable — running in cloud mode")
             return
+        self._cached_auth_key = auth_key
 
-        # Seed static diagnostics (temp, BMS_Version, AC_Version, wifi_signal, etc.) from Cloud shadow
+        # Seed initial state and static diagnostics (temp, BMS_Version, AC_Version, etc.) from Cloud shadow
         try:
             cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
             if cloud_snapshot:
+                for k, val in cloud_snapshot.items():
+                    if val is not None:
+                        self._lan_state[k] = val
                 for k in STATIC_METADATA_KEYS:
                     val = cloud_snapshot.get(k)
                     if val is not None:
@@ -599,7 +609,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 _unpack_port_data(self._lan_state)
                 self._last_cloud_snapshot = time.monotonic()
         except Exception as exc:
-            _LOGGER.debug("oukitel: Could not seed initial static metadata from cloud: %s", exc)
+            _LOGGER.debug("oukitel: Could not seed initial telemetry from cloud: %s", exc)
 
         _LOGGER.info("oukitel: Device found at %s — starting LAN session", host)
         await self._start_lan_session(host, auth_key)
@@ -629,6 +639,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
 
     async def _lan_read_loop(self, host: str, auth_key: str) -> None:
+        reconnect_delay = _LAN_RECONNECT_DELAY
         while True:
             if self._paused:
                 _LOGGER.debug("oukitel: LAN read loop stopped because integration is paused")
@@ -642,11 +653,13 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 await self._lan_session.close()
                 self._lan_session = None
 
+            self._lan_active = False
+
             if self._paused:
                 break
 
-            _LOGGER.info("oukitel: LAN disconnected — reconnecting in %ss", _LAN_RECONNECT_DELAY)
-            await asyncio.sleep(_LAN_RECONNECT_DELAY)
+            _LOGGER.info("oukitel: LAN disconnected — reconnecting in %.1fs", reconnect_delay)
+            await asyncio.sleep(reconnect_delay)
 
             if self._paused:
                 break
@@ -664,12 +677,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             )
             try:
                 await self._lan_session.connect()
+                self._lan_active = True
                 self._lan_connected_at = time.monotonic()
+                reconnect_delay = _LAN_RECONNECT_DELAY
+                _LOGGER.info("oukitel: LAN session re-established with %s!", target)
             except (LocalSessionError, LocalAuthError) as exc:
-                _LOGGER.warning("oukitel: LAN reconnect failed: %s", exc)
+                _LOGGER.debug("oukitel: LAN reconnect attempt failed: %s", exc)
                 self._lan_session = None
                 self._lan_active = False
-                return
+                reconnect_delay = min(reconnect_delay * 1.5, 30.0)
+                continue
 
     def _on_lan_telemetry(self, fields: dict[int, Any]) -> None:
         if self._paused:
@@ -697,10 +714,22 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             46: "dc_switch",
         }
         
-        current_data = dict(self._lan_state or self.data or {})
+        current_data = dict(self.data or {})
+        if self._lan_state:
+            current_data.update(self._lan_state)
+
         for tag, val in fields.items():
             if tag in tag_map:
                 key = tag_map[tag]
+                # Filter out transient 0% battery glitch if previous valid battery was > 0
+                if key == "battery_percentage" and val == 0:
+                    prev_batt = current_data.get("battery_percentage")
+                    if prev_batt is not None and prev_batt > 0:
+                        _LOGGER.debug(
+                            "oukitel: Ignoring transient 0%% battery frame (previous valid was %s%%)",
+                            prev_batt,
+                        )
+                        continue
                 current_data[key] = val
                 if tag == 14:
                     current_data["inverter_temp"] = current_data.get("inverter_temp") or val
@@ -726,6 +755,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         _unpack_port_data(current_data)
         self._apply_user_overrides(current_data)
 
+        if current_data.get("battery_percentage") is not None:
+            self._lan_has_valid_telemetry = True
+
         self._lan_state = current_data
         self.hass.loop.call_soon_threadsafe(
             self.async_set_updated_data, dict(self._lan_state)
@@ -742,6 +774,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             await self._lan_session.close()
             self._lan_session = None
         self._lan_active = False
+        self._lan_has_valid_telemetry = False
 
     # ------------------------------------------------------------------
     # DataUpdateCoordinator
@@ -752,22 +785,42 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("oukitel: Polling skipped — integration is paused (returning zeroed power metrics)")
             return _build_paused_data(self.data or self._lan_state)
 
+        # In Auto mode, if LAN session is dead or never started, periodically retry starting LAN
+        now = time.monotonic()
+        if (
+            self.connection_mode == MODE_AUTO
+            and not self._lan_active
+            and (self._lan_listen_task is None or self._lan_listen_task.done())
+            and (now - self._last_lan_attempt >= _LAN_RETRY_INTERVAL)
+        ):
+            self._last_lan_attempt = now
+            self.hass.async_create_task(self.async_setup_lan())
+
         if self.connection_mode == MODE_CLOUD:
-            return await self._update_cloud()
-        if self._lan_active and self._lan_state:
-            return await self._update_lan()
-        if self.connection_mode == MODE_LAN:
+            data = await self._update_cloud()
+        elif self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
+            data = await self._update_lan()
+        elif self.connection_mode == MODE_LAN:
             # If LAN session is initializing in the background during setup, wait briefly
             for _ in range(60):
-                if self._lan_active and self._lan_state:
-                    return await self._update_lan()
+                if self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
+                    data = await self._update_lan()
+                    break
                 await asyncio.sleep(0.1)
-            if self._lan_active and self._lan_state:
-                return await self._update_lan()
-            raise UpdateFailed(
-                f"LAN session not active for host '{self.lan_host or 'auto'}'. Cloud fallback is disabled in Solo LAN mode."
-            )
-        return await self._update_cloud()
+            else:
+                if self._lan_active and self._lan_state:
+                    data = await self._update_lan()
+                else:
+                    raise UpdateFailed(
+                        f"LAN session not active for host '{self.lan_host or 'auto'}'. Cloud fallback is disabled in Solo LAN mode."
+                    )
+        else:
+            data = await self._update_cloud()
+
+        if hasattr(self, "predictive_tracker") and self.predictive_tracker is not None:
+            self.predictive_tracker.update(data)
+
+        return data
 
     async def _update_lan(self) -> dict:
         if self._paused:
