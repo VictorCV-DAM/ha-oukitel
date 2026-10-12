@@ -427,16 +427,16 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
 
         # 4. AC Output Voltage: 230V (or configured ACvoltage_Switchover) when AC output/switch active, 0V when off
         if self._key == "ac_output_voltage":
+            ac_p = float(self.coordinator.data.get("ac_output_power") or 0)
+            ac_sw = bool(self.coordinator.data.get("ac_switch", False))
+            if not (ac_sw or ac_p > 0):
+                return 0
             val = self.coordinator.data.get("ac_output_voltage")
             if val is not None and val > 0:
                 return val
-            ac_p = float(self.coordinator.data.get("ac_output_power") or 0)
-            ac_sw = bool(self.coordinator.data.get("ac_switch", False))
-            if ac_p > 0 or ac_sw:
-                v_enum = self.coordinator.data.get("ACvoltage_Switchover")
-                enum_map = {0: 100, 1: 110, 2: 120, 3: 220, 4: 230}
-                return enum_map.get(v_enum, 230)
-            return 0
+            v_enum = self.coordinator.data.get("ACvoltage_Switchover")
+            enum_map = {0: 100, 1: 110, 2: 120, 3: 220, 4: 230}
+            return enum_map.get(v_enum, 230)
 
         # 5. DC Car Output Voltage & Current: 12V when active, otherwise 0
         if self._key == "dc_output_voltage":

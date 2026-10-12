@@ -444,64 +444,75 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         """Send switch command adaptively via LAN if active, and synchronize with Cloud."""
         is_struct = self._detect_switch_protocol()
 
-        # 1. LAN write dispatch
-        lan_ok = False
-        if self._lan_active and self._lan_session:
-            try:
-                if is_struct:
-                    struct_map = {
-                        "ac_switch": (6, 1),
-                        "usb_switch": (7, 1),
-                        "dc_switch": (9, 1),
-                    }
-                    if key in struct_map:
-                        tag, subtag = struct_map[key]
-                        await self._lan_session.send_write(tag, "struct", [(subtag, "bool", value)])
-                        lan_ok = True
-                        _LOGGER.debug(
-                            "oukitel: Instant LAN struct switch write: tag %s subtag %s = %s",
-                            tag, subtag, value,
-                        )
-                else:
-                    tag_map = {
-                        "ac_switch": 43,
-                        "usb_switch": 44,
-                        "dc_switch": 46,
-                    }
-                    tag = tag_map.get(key)
-                    if tag is not None:
-                        await self._lan_session.send_write(tag, "bool", value)
-                        lan_ok = True
-                        _LOGGER.debug("oukitel: Instant LAN flat switch write: tag %s = %s", tag, value)
-            except Exception as exc:
-                _LOGGER.warning("oukitel: LAN write failed: %s", exc)
+        for attempt in range(2):
+            # 1. LAN write dispatch
+            lan_ok = False
+            if self._lan_active and self._lan_session:
+                try:
+                    if is_struct:
+                        struct_map = {
+                            "ac_switch": (6, 1),
+                            "usb_switch": (7, 1),
+                            "dc_switch": (9, 1),
+                        }
+                        if key in struct_map:
+                            tag, subtag = struct_map[key]
+                            await self._lan_session.send_write(tag, "struct", [(subtag, "bool", value)])
+                            lan_ok = True
+                            _LOGGER.debug(
+                                "oukitel: Instant LAN struct switch write: tag %s subtag %s = %s",
+                                tag, subtag, value,
+                            )
+                    else:
+                        tag_map = {
+                            "ac_switch": 43,
+                            "usb_switch": 44,
+                            "dc_switch": 46,
+                        }
+                        tag = tag_map.get(key)
+                        if tag is not None:
+                            await self._lan_session.send_write(tag, "bool", value)
+                            lan_ok = True
+                            _LOGGER.debug("oukitel: Instant LAN flat switch write: tag %s = %s", tag, value)
+                except Exception as exc:
+                    _LOGGER.warning("oukitel: LAN write failed: %s", exc)
 
-        # 2. Cloud shadow synchronization (always sync unless in Solo LAN mode)
-        cloud_ok = False
-        if self.connection_mode != MODE_LAN:
-            try:
-                if is_struct:
-                    cloud_struct_map = {
-                        "ac_switch": "ac_data",
-                        "usb_switch": "usb_data",
-                        "dc_switch": "dc_data",
-                    }
-                    prop = cloud_struct_map.get(key)
-                    if prop:
-                        cloud_payload = [{prop: {key: value}}]
+            # 2. Cloud shadow synchronization (always sync unless in Solo LAN mode)
+            cloud_ok = False
+            if self.connection_mode != MODE_LAN:
+                try:
+                    if is_struct:
+                        cloud_struct_map = {
+                            "ac_switch": "ac_data",
+                            "usb_switch": "usb_data",
+                            "dc_switch": "dc_data",
+                        }
+                        prop = cloud_struct_map.get(key)
+                        if prop:
+                            cloud_payload = [{prop: {key: value}}]
+                        else:
+                            cloud_payload = [{key: value}]
                     else:
                         cloud_payload = [{key: value}]
-                else:
-                    cloud_payload = [{key: value}]
 
-                cloud_ok = await self.hass.async_add_executor_job(
-                    self.client.control_device,
-                    cloud_payload,
+                    cloud_ok = await self.hass.async_add_executor_job(
+                        self.client.control_device,
+                        cloud_payload,
+                    )
+                except Exception as exc:
+                    _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
+
+            if lan_ok or cloud_ok:
+                return True
+
+            if attempt == 0:
+                _LOGGER.debug(
+                    "oukitel: Switch command %s=%s failed on first attempt; retrying in 1.5s...",
+                    key, value,
                 )
-            except Exception as exc:
-                _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
+                await asyncio.sleep(1.5)
 
-        return lan_ok or cloud_ok
+        return False
 
     def _apply_user_overrides(self, target: dict[str, Any]) -> None:
         """Apply active user overrides to incoming telemetry dictionary."""

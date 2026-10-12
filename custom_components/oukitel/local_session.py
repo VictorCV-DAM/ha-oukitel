@@ -223,7 +223,7 @@ class LocalSession:
         hb_cipher = aes_encrypt(self._key, self._iv, hb_body)
         self._writer.write(build_frame(self._next_pid(), _CMD_KEEPALIVE, hb_cipher))
         await self._writer.drain()
-        _LOGGER.info("oukitel: LAN subscription and heartbeat armed")
+        _LOGGER.debug("oukitel: LAN subscription and heartbeat armed")
 
     async def resubscribe(self) -> None:
         """Re-arm high-frequency reporting on an existing socket."""
