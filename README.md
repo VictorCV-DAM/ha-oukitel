@@ -324,7 +324,7 @@ Unlike native station firmware which can confuse charging and discharging when s
 - `sensor.oukitel_inverter_loss_power`: Real-time internal thermal dissipation and conversion losses in Watts (W).
 
 ### 🩺 Battery Health & Degradation Tracker
-- `sensor.oukitel_battery_cycles_count`: Cumulative full equivalent charge/discharge cycles (IEC 62620 standard) calculated by tracking total energy throughput against rated capacity (e.g. 2,048 Wh for P2001 Plus).
+- `sensor.oukitel_battery_cycles_count`: Cumulative full equivalent charge/discharge cycles (IEC 62620 standard) calculated by tracking total energy throughput against rated capacity (e.g. 2,048 Wh for P2001 Plus, 5,120 Wh for P5000).
 - `sensor.oukitel_battery_state_of_health_estimated`: Estimated State of Health (SoH %) based on the LiFePO4 cell degradation curve (3,500 cycles to 80% capacity).
 - `sensor.oukitel_days_since_last_full_charge`: Elapsed days since the last 100% charge. Alerts when top-balancing calibration is recommended (>30 days).
 
@@ -438,7 +438,7 @@ How was this information discovered and implemented?
    Official station firmware has known display quirks:
    - When solar input is present (e.g. 337W) but household AC draw is larger (e.g. 342W), the firmware's internal flag often incorrectly treats the battery as charging. We solved this with a pure physics engine:
      $$\text{NetPower} = \max(\text{Total}_{\text{in}}, \text{AC}_{\text{in}} + \text{DC}_{\text{in}}) - \max(\text{Total}_{\text{out}}, \text{AC}_{\text{out}} + \text{DC}_{\text{out}})$$
-   - When charging at low net wattage, the firmware's internal integer overflows its 99-hour display limit, getting stuck at 5,940 minutes (99 hours). We dynamically calculate real remaining time based on the 2,048 Wh LiFePO4 battery capacity.
+   - When charging at low net wattage, the firmware's internal integer overflows its 99-hour display limit, getting stuck at 5,940 minutes (99 hours). We dynamically calculate real remaining time based on each model's nominal battery capacity (e.g. 5,120 Wh for P5000, 3,072 Wh for BP3000, 2,048 Wh for P2001/BP2000, 1,024 Wh for P1000).
 
 4. **Home Assistant Native Standards:**
    Rather than treating fault alarms as arbitrary text, we mapped all physical and firmware thresholds to standard Home Assistant `SensorDeviceClass.ENUM` contracts so the HA UI natively presents all actionable choices directly to the user.
