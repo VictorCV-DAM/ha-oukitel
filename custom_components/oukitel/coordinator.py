@@ -557,10 +557,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             )
             if self.connection_mode != MODE_CLOUD:
                 self.hass.async_create_task(self.async_setup_lan())
-            if self.connection_mode != MODE_LAN:
-                self.hass.async_create_task(
-                    self.hass.async_add_executor_job(self.client.wake_device)
-                )
             await self.async_request_refresh()
 
     # ------------------------------------------------------------------
@@ -985,47 +981,31 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             self._last_device_list_check = now
             await self.hass.async_add_executor_job(self.client.fetch_device_info)
 
-        can_wake = (now - self.last_user_command_time) >= 15.0
+        # If device is reported offline in userDeviceList, do not send keep-alive or expect live telemetry
+        if not getattr(self.client, "is_online", True):
+            _LOGGER.debug("oukitel: Device is offline on Cloud gateway")
+            offline_data = _build_paused_data(self.data)
+            offline_data["online"] = False
+            return offline_data
 
-        # Fetch cloud shadow telemetry
         data = await self.hass.async_add_executor_job(self.client.get_telemetry)
+        if not data:
+            # Device might have just gone offline, verify immediately via userDeviceList
+            await self.hass.async_add_executor_job(self.client.fetch_device_info)
+            if not getattr(self.client, "is_online", True):
+                _LOGGER.info("oukitel: Device confirmed offline via userDeviceList")
+                offline_data = _build_paused_data(self.data)
+                offline_data["online"] = False
+                return offline_data
 
-        # If telemetry returned valid station metrics, device is alive in cloud shadow
-        has_metrics = bool(data and (data.get("battery_percentage") is not None or data.get("total_output_power") is not None))
-
-        if has_metrics:
-            # If station is in standby (high_frequency_reporting is 0 or gateway reports offline), wake it up
-            if data.get("high_frequency_reporting") in ("0", 0, None) or not getattr(self.client, "is_online", True):
-                if can_wake and (now - self.last_wake_time >= DEFAULT_WAKE_INTERVAL):
-                    _LOGGER.debug("oukitel: Station in low-frequency standby — sending cloud wake pulse")
-                    try:
-                        await self.hass.async_add_executor_job(self.client.wake_device)
-                        self.last_wake_time = now
-                    except Exception as exc:
-                        _LOGGER.debug("oukitel: Wake pulse notice: %s", exc)
-            data["online"] = True
-        else:
-            # Telemetry empty: try waking up the device
+            can_wake = (now - self.last_user_command_time) >= 15.0
             if can_wake and (now - self.last_wake_time >= DEFAULT_WAKE_INTERVAL):
-                try:
-                    await self.hass.async_add_executor_job(self.client.wake_device)
-                    self.last_wake_time = now
-                    data = await self.hass.async_add_executor_job(self.client.get_telemetry)
-                    has_metrics = bool(data and (data.get("battery_percentage") is not None or data.get("total_output_power") is not None))
-                    if has_metrics:
-                        data["online"] = True
-                except Exception as exc:
-                    _LOGGER.debug("oukitel: Wake attempt notice: %s", exc)
+                await self.hass.async_add_executor_job(self.client.wake_device)
+                self.last_wake_time = time.time()
+                data = await self.hass.async_add_executor_job(self.client.get_telemetry)
 
-            if not has_metrics:
-                # Still no data: verify online status via device list
-                await self.hass.async_add_executor_job(self.client.fetch_device_info)
-                if not getattr(self.client, "is_online", True):
-                    _LOGGER.debug("oukitel: Device confirmed offline on Cloud gateway")
-                    offline_data = _build_paused_data(self.data)
-                    offline_data["online"] = False
-                    return offline_data
-                raise UpdateFailed("Failed to communicate with Oukitel Cloud")
+        if not data:
+            raise UpdateFailed("Failed to communicate with Oukitel Cloud")
 
         merged = dict(self.data or {})
         merged.update(data)
