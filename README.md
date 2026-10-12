@@ -353,6 +353,17 @@ Every entity created by the integration includes an informative, functional desc
 - `select.oukitel_output_frequency`: Output Frequency setting (`50Hz` / `60Hz`).
 - `select.oukitel_output_voltage`: Output Voltage setting (`200V`, `208V`, `220V`, `230V`, `240V`).
 
+> [!WARNING]
+> ### ⚠️ Hardware Safety Interlock (P2001E Plus): AC Switch Reactivation during Active Charging
+> In the **P2001E Plus** (and related firmware architectures), disconnecting the AC inverter output while the battery is actively receiving power (**Solar Photovoltaic DC** or **Grid AC charging**) engages an internal hardware safety interlock that **blocks the AC output switch from turning back on**.
+> 
+> - **Why?** The station's BMS/inverter hardware is designed for safety and inhibits inverter re-arming while active charging input voltage is detected at its ports.
+> - **Why standard smart plugs fail:** A common single-pole smart plug (*enchufe inteligente unipolar*) is **not** sufficient for grid AC charging. Because unipolar switches only open one line (phase), stray voltage or ground/neutral continuity prevents the station from sensing a full disconnection, keeping the AC switch locked.
+> - **Recommended Solution for Automations:**
+>   1. **DC Solar Input:** Install a dedicated **DC DIN-rail circuit breaker** (*magnetotérmico DC*) to cut photovoltaic input when automation requires resetting the inverter.
+>   2. **Grid AC Input:** Use a **true bipolar disconnect** (*corte bipolar* via 2P DIN-rail breaker or dual-pole smart relay/contactor) on the AC charging line.
+>   3. Once input power is cleanly isolated, the AC output switch re-engages immediately and flawlessly from Home Assistant.
+
 ### ⚡ Calculated Energy & Financial Entities (Device 2: Calculated Sensors)
 All 22 entities in this group belong to the linked child device `[Station Name] Calculated Sensors`:
 - `sensor.oukitel_ac_input_kwh`: AC Grid cumulative charging energy (kWh).
