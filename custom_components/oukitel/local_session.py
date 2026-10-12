@@ -237,7 +237,7 @@ class LocalSession:
                 await self._subscribe()
                 failures = 0
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as exc:
                 failures += 1
                 _LOGGER.info("oukitel: LAN keepalive tick failed (%s/3): %s", failures, exc)

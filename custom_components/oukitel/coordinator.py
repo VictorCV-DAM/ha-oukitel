@@ -37,7 +37,7 @@ _LOGGER = logging.getLogger(__name__)
 _LAN_STALE_TIMEOUT = 150.0
 _LAN_RECONNECT_DELAY = 10.0
 _CLOUD_SNAPSHOT_INTERVAL = 60.0
-_LAN_RETRY_INTERVAL = 60.0
+_LAN_RETRY_INTERVAL = 20.0
 _LAN_SILENCE_TIMEOUT = 45.0
 _LAN_REARM_TIMEOUT = 25.0
 _LAN_REARM_INTERVAL = 5.0
@@ -375,7 +375,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_connected_at: float | None = None
         self._lan_active = False
         self._lan_has_valid_telemetry: bool = False
-        self._last_lan_attempt: float = 0.0
+        self._last_lan_attempt: float = time.monotonic()
+        self._lan_setup_in_flight: bool = False
         self._lan_last_rearm: float = 0.0
         self._cached_auth_key: str | None = None
         self._paused: bool = False
@@ -573,59 +574,69 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info("oukitel: Connection mode set to Cloud Only — skipping LAN setup")
             return
 
-        if not self.client.device_key:
-            await self.hass.async_add_executor_job(self.client.fetch_device_info)
-
-        host = self.lan_host
-        if host:
-            _LOGGER.info("oukitel: Using configured static host %s for LAN connection", host)
-        else:
-            _LOGGER.info("oukitel: Scanning LAN for device %s …", self.client.device_key)
-            host = await find_device_on_lan(self.client.device_key or "")
-            if not host:
-                _LOGGER.info("oukitel: Device not found on LAN — running in cloud mode")
-                return
-            self.lan_host = host
-
-        auth_key = await self.hass.async_add_executor_job(self.client.fetch_auth_key)
-        if not auth_key:
-            auth_key = self._cached_auth_key
-        if not auth_key:
-            _LOGGER.info("oukitel: authKey unavailable — running in cloud mode")
+        if self._lan_setup_in_flight:
+            _LOGGER.debug("oukitel: LAN setup already in flight — skipping concurrent attempt")
             return
-        self._cached_auth_key = auth_key
 
-        # Seed initial state and static diagnostics (temp, BMS_Version, AC_Version, etc.) from Cloud shadow
+        self._lan_setup_in_flight = True
         try:
-            cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
-            if cloud_snapshot:
-                for k, val in cloud_snapshot.items():
-                    if val is not None:
-                        self._lan_state[k] = val
-                for k in STATIC_METADATA_KEYS:
-                    val = cloud_snapshot.get(k)
-                    if val is not None:
-                        self._static_metadata[k] = val
-                        self._lan_state[k] = val
-                if "temp" in cloud_snapshot and "inverter_temp" not in self._static_metadata:
-                    self._static_metadata["inverter_temp"] = cloud_snapshot["temp"]
-                    self._lan_state["inverter_temp"] = cloud_snapshot["temp"]
-                _unpack_port_data(self._lan_state)
-                self._last_cloud_snapshot = time.monotonic()
-        except Exception as exc:
-            _LOGGER.debug("oukitel: Could not seed initial telemetry from cloud: %s", exc)
 
-        _LOGGER.info("oukitel: Device found at %s — starting LAN session", host)
-        await self._start_lan_session(host, auth_key)
+            if not self.client.device_key:
+                await self.hass.async_add_executor_job(self.client.fetch_device_info)
+
+            host = self.lan_host
+            if host:
+                _LOGGER.info("oukitel: Using configured static host %s for LAN connection", host)
+            else:
+                _LOGGER.info("oukitel: Scanning LAN for device %s …", self.client.device_key)
+                host = await find_device_on_lan(self.client.device_key or "")
+                if not host:
+                    _LOGGER.info("oukitel: Device not found on LAN — running in cloud mode")
+                    return
+                self.lan_host = host
+
+            auth_key = await self.hass.async_add_executor_job(self.client.fetch_auth_key)
+            if not auth_key:
+                auth_key = self._cached_auth_key
+            if not auth_key:
+                _LOGGER.info("oukitel: authKey unavailable — running in cloud mode")
+                return
+            self._cached_auth_key = auth_key
+
+            # Seed initial state and static diagnostics (temp, BMS_Version, AC_Version, etc.) from Cloud shadow
+            try:
+                cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
+                if cloud_snapshot:
+                    for k, val in cloud_snapshot.items():
+                        if val is not None:
+                            self._lan_state[k] = val
+                    for k in STATIC_METADATA_KEYS:
+                        val = cloud_snapshot.get(k)
+                        if val is not None:
+                            self._static_metadata[k] = val
+                            self._lan_state[k] = val
+                    if "temp" in cloud_snapshot and "inverter_temp" not in self._static_metadata:
+                        self._static_metadata["inverter_temp"] = cloud_snapshot["temp"]
+                        self._lan_state["inverter_temp"] = cloud_snapshot["temp"]
+                    _unpack_port_data(self._lan_state)
+                    self._last_cloud_snapshot = time.monotonic()
+            except Exception as exc:
+                _LOGGER.debug("oukitel: Could not seed initial telemetry from cloud: %s", exc)
+
+            _LOGGER.info("oukitel: Device found at %s — starting LAN session", host)
+            await self._start_lan_session(host, auth_key)
+        finally:
+            self._lan_setup_in_flight = False
 
     async def _start_lan_session(self, host: str, auth_key: str) -> None:
-        self._lan_session = LocalSession(
+        session = LocalSession(
             host=host,
             auth_key_b64=auth_key,
             on_telemetry=self._on_lan_telemetry,
         )
+        self._lan_session = session
         try:
-            await self._lan_session.connect()
+            await session.connect()
         except (LocalSessionError, LocalAuthError) as exc:
             if self.connection_mode == MODE_LAN:
                 _LOGGER.error(
@@ -634,7 +645,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 )
             else:
                 _LOGGER.warning("oukitel: LAN session failed to start: %s — using cloud", exc)
-            self._lan_session = None
+            if self._lan_session is session:
+                self._lan_session = None
             return
 
         self._lan_active = True
