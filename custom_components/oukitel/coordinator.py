@@ -38,6 +38,9 @@ _LAN_STALE_TIMEOUT = 150.0
 _LAN_RECONNECT_DELAY = 10.0
 _CLOUD_SNAPSHOT_INTERVAL = 60.0
 _LAN_RETRY_INTERVAL = 60.0
+_LAN_SILENCE_TIMEOUT = 45.0
+_LAN_REARM_TIMEOUT = 25.0
+_LAN_REARM_INTERVAL = 5.0
 
 STATIC_METADATA_KEYS = (
     "temp",
@@ -373,6 +376,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_active = False
         self._lan_has_valid_telemetry: bool = False
         self._last_lan_attempt: float = 0.0
+        self._lan_last_rearm: float = 0.0
         self._cached_auth_key: str | None = None
         self._paused: bool = False
         self._user_overrides: dict[str, tuple] = {}
@@ -786,6 +790,40 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             self._lan_session = None
         self._lan_active = False
         self._lan_has_valid_telemetry = False
+        self._lan_last_rearm = 0.0
+
+    async def _async_rearm_lan(self) -> bool:
+        """Re-arm high-frequency telemetry subscription on an existing silent socket."""
+        session = self._lan_session
+        if session is None:
+            return False
+        self._lan_last_rearm = time.monotonic()
+        _LOGGER.debug(
+            "oukitel: LAN telemetry silent > %.1fs — re-arming subscription on existing socket",
+            _LAN_REARM_TIMEOUT,
+        )
+        try:
+            await session.resubscribe()
+        except Exception as exc:
+            _LOGGER.debug("oukitel: LAN re-arm failed: %s", exc)
+            return False
+        return True
+
+    async def _force_lan_reconnect(self) -> None:
+        """Drop a silent session so the background read loop cleanly reconnects."""
+        _LOGGER.info(
+            "oukitel: LAN session silent for > %.1fs (no telemetry) — dropping socket to force clean reconnect",
+            _LAN_SILENCE_TIMEOUT,
+        )
+        self._lan_last_report = None
+        self._lan_active = False
+        self._lan_has_valid_telemetry = False
+        self._lan_last_rearm = 0.0
+        if self._lan_session is not None:
+            try:
+                await self._lan_session.close()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # DataUpdateCoordinator
@@ -806,6 +844,19 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         ):
             self._last_lan_attempt = now
             self.hass.async_create_task(self.async_setup_lan())
+
+        # Check if active LAN session has gone silent (station answering ACKs but suspended telemetry streaming)
+        if self._lan_active and self.connection_mode != MODE_CLOUD:
+            reference = self._lan_last_report or self._lan_connected_at
+            silent_for = None if reference is None else (now - reference)
+            if silent_for is not None and silent_for > _LAN_SILENCE_TIMEOUT:
+                await self._force_lan_reconnect()
+            elif (
+                silent_for is not None
+                and silent_for > _LAN_REARM_TIMEOUT
+                and (now - self._lan_last_rearm) >= _LAN_REARM_INTERVAL
+            ):
+                await self._async_rearm_lan()
 
         if self.connection_mode == MODE_CLOUD:
             data = await self._update_cloud()

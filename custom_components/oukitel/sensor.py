@@ -569,13 +569,15 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
     def native_value(self) -> str:
         if self.coordinator.is_paused:
             return "Paused"
-        return "LAN" if self.coordinator._lan_active else "Cloud"
+        is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
+        return "LAN" if is_lan else "Cloud"
 
     @property
     def icon(self) -> str:
         if self.coordinator.is_paused:
             return "mdi:pause-circle-outline"
-        return "mdi:lan-connect" if self.coordinator._lan_active else "mdi:cloud-outline"
+        is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
+        return "mdi:lan-connect" if is_lan else "mdi:cloud-outline"
 
     @property
     def extra_state_attributes(self) -> dict:

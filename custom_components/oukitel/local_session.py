@@ -225,13 +225,25 @@ class LocalSession:
         await self._writer.drain()
         _LOGGER.info("oukitel: LAN subscription and heartbeat armed")
 
+    async def resubscribe(self) -> None:
+        """Re-arm high-frequency reporting on an existing socket."""
+        await self._subscribe()
+
     async def _keepalive_loop(self) -> None:
-        try:
-            while True:
+        failures = 0
+        while True:
+            try:
                 await asyncio.sleep(_KEEPALIVE_INTERVAL)
                 await self._subscribe()
-        except (asyncio.CancelledError, Exception) as exc:
-            _LOGGER.info("oukitel: LAN keepalive loop ended: %s", exc)
+                failures = 0
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                failures += 1
+                _LOGGER.info("oukitel: LAN keepalive tick failed (%s/3): %s", failures, exc)
+                if failures >= 3:
+                    _LOGGER.warning("oukitel: LAN keepalive failed 3 consecutive times, aborting keepalive loop")
+                    break
 
     async def _handle(self, cmd: int, payload: bytes) -> None:
         if cmd == _CMD_PING:
