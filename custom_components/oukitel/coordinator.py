@@ -488,7 +488,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     }
                     prop = cloud_struct_map.get(key)
                     if prop:
-                        cloud_payload = [{prop: [{key: "true" if value else "false"}]}]
+                        cloud_payload = [{prop: {key: value}}]
                     else:
                         cloud_payload = [{key: value}]
                 else:
