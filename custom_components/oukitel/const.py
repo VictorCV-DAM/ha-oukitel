@@ -257,6 +257,24 @@ def get_battery_capacity_wh(client) -> float:
     return 2048.0
 
 
+def get_rated_power_w(client) -> float:
+    """Determine continuous rated AC/total output power in Watts from model/product name."""
+    raw = (getattr(client, "product_name", None) or getattr(client, "device_name", "") or "").lower()
+    if "5000" in raw:
+        return 4000.0
+    if "3000" in raw:
+        return 3600.0
+    if "bp2000" in raw or ("2000" in raw and "bp" in raw):
+        return 2200.0
+    if "1000" in raw or "1024" in raw:
+        return 1800.0
+    if "1200" in raw or "960" in raw:
+        return 1200.0
+    if "500" in raw or "505" in raw:
+        return 500.0
+    return 2400.0
+
+
 ENTITY_NAMES_ES = {
     # Core Telemetry & Diagnostics
     "battery_percentage": "Batería",

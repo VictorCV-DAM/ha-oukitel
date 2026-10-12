@@ -38,6 +38,7 @@ from .const import (
     get_battery_capacity_wh,
     get_entity_description,
     get_entity_name,
+    get_rated_power_w,
 )
 from .coordinator import OukitelDataCoordinator
 
@@ -337,8 +338,9 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             if batt is not None and batt <= 10:
                 details.append(f"Battery is low: {batt}%")
 
-            if total_out > 2400.0:
-                details.append(f"Output power ({total_out}W) exceeds rated 2400W")
+            rated_w = get_rated_power_w(self.client)
+            if total_out > rated_w:
+                details.append(f"Output power ({total_out}W) exceeds rated {int(rated_w)}W")
 
             for k, v in self.coordinator.data.items():
                 if isinstance(k, str) and any(x in k.lower() for x in ["fault", "alarm", "error", "protect"]):
@@ -379,10 +381,11 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                 val = 0
             if (val == 0 or val >= 5940) and abs(net_power) > 5.0:
                 batt = self.coordinator.data.get("battery_percentage", 0) or 0
+                cap_wh = get_battery_capacity_wh(self.client)
                 if net_power < -5.0 and batt > 0:
-                    val = int(((batt / 100.0) * 2048.0 / abs(net_power)) * 60)
+                    val = int(((batt / 100.0) * cap_wh / abs(net_power)) * 60)
                 elif net_power > 5.0 and batt < 100:
-                    val = int((((100.0 - batt) / 100.0) * 2048.0 / net_power) * 60)
+                    val = int((((100.0 - batt) / 100.0) * cap_wh / net_power) * 60)
             return val
 
         # 2. Remaining Discharge Time: Autonomy remaining while draining battery
@@ -396,7 +399,8 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             if val == 0 or val >= 5940:
                 batt = self.coordinator.data.get("battery_percentage", 0) or 0
                 if batt > 0 and abs(net_power) > 5.0:
-                    val = int(((batt / 100.0) * 2048.0 / abs(net_power)) * 60)
+                    cap_wh = get_battery_capacity_wh(self.client)
+                    val = int(((batt / 100.0) * cap_wh / abs(net_power)) * 60)
             return val
 
         # 3. Remaining Charge Time: Estimated time to reach 100% full
@@ -416,7 +420,8 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             if val == 0 or val >= 5940:
                 batt_pct = batt or 0
                 if net_power > 5.0:
-                    needed_wh = ((100.0 - batt_pct) / 100.0) * 2048.0
+                    cap_wh = get_battery_capacity_wh(self.client)
+                    needed_wh = ((100.0 - batt_pct) / 100.0) * cap_wh
                     val = int((needed_wh / net_power) * 60)
             return val
 
@@ -523,8 +528,8 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             if batt is not None and batt == 0 and total_out > 0:
                 return "Critical Low Battery"
 
-            # 3. Overload Protection (exceeds rated 2400W)
-            if total_out > 2400.0:
+            # 3. Overload Protection (exceeds rated power)
+            if total_out > get_rated_power_w(self.client):
                 return "Overload Protection"
 
             # 4. Hardware fault codes reported by BMS / Inverter

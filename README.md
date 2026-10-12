@@ -17,6 +17,7 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 100% VERIFIED DEVICES:
 - P2001E PLUS
 - BP3000E
+- BP2000 / BP2000 PRO
 - P1000E PLUS
 
 ---
@@ -231,8 +232,8 @@ Enables tracking of exact economic cost and solar self-consumption savings in re
 #### 3. ⏱️ Predictive Autonomy Engine ("Exact Clock Shutdown & Full Charge Time")
 Solves the issue of erratic remaining-time fluctuations caused by transient high-power appliance surges (e.g. coffee maker or microwave):
 - **15-Minute Moving Average Filter**: Smooths net discharge loads over time while instantly adapting to operational mode transitions (discharging vs charging).
-- **`sensor.oukitel_battery_empty_time`**: Native timestamp entity (`SensorDeviceClass.TIMESTAMP`) showing the exact clock time when the battery will reach 0% (e.g. *"In 5 hours"* or *"Today at 19:42"*). Ideal for automations and mobile push notifications.
-- **`sensor.oukitel_battery_full_charge_time`**: Native timestamp entity predicting the exact clock time the battery will reach 100% full charge.
+- **`sensor.oukitel_predicted_empty_time`** (`empty_timestamp`): Native timestamp entity (`SensorDeviceClass.TIMESTAMP`) showing the exact clock time when the battery will reach 0% (e.g. *"In 5 hours"* or *"Today at 19:42"*). Ideal for automations and mobile push notifications.
+- **`sensor.oukitel_predicted_full_charge_time`** (`full_charge_timestamp`): Native timestamp entity predicting the exact clock time the battery will reach 100% full charge.
 - **`sensor.oukitel_smoothed_discharge_time`**: Autonomy in minutes (`duration`), perfectly suited for steady historical graphs without spike artifacts.
 
 #### 4. 🩺 Battery Health & Degradation Tracker
@@ -367,8 +368,8 @@ All 22 entities in this group belong to the linked child device `[Station Name] 
 - `sensor.oukitel_daily_net_savings`: Daily net financial balance (€ / currency).
 - `sensor.oukitel_lifetime_savings`: Cumulative lifetime solar savings (€ / currency).
 - `sensor.oukitel_lifetime_charging_cost`: Cumulative lifetime charging cost (€ / currency).
-- `sensor.oukitel_battery_empty_time`: Estimated battery 0% shutdown timestamp (`SensorDeviceClass.TIMESTAMP`).
-- `sensor.oukitel_battery_full_charge_time`: Estimated 100% full charge timestamp (`SensorDeviceClass.TIMESTAMP`).
+- `sensor.oukitel_predicted_empty_time`: Estimated battery 0% shutdown timestamp (`SensorDeviceClass.TIMESTAMP`, key: `empty_timestamp`).
+- `sensor.oukitel_predicted_full_charge_time`: Estimated 100% full charge timestamp (`SensorDeviceClass.TIMESTAMP`, key: `full_charge_timestamp`).
 - `sensor.oukitel_smoothed_discharge_time`: 15-minute moving average smoothed autonomy (minutes).
 - `sensor.oukitel_inverter_idle_power`: Standby tare power (18.0 W when on, 0 W off).
 - `sensor.oukitel_inverter_efficiency`: Conversion efficiency (%).
@@ -391,11 +392,11 @@ The `sensor.oukitel_hardware_fault_status` entity is implemented as a native **H
 | **`Under-Temperature`** | Temperature falls below $-10^\circ\text{C}$ (LiFePO4 charge lock). | Inhibit high-current charging until warm. |
 | **`Low Battery Warning`** | Battery $\le 10\%$ while actively discharging. | Send mobile push notification, shed secondary loads. |
 | **`Critical Low Battery`** | Battery reaches $0\%$ under load. | Emergency shutdown to protect battery cells. |
-| **`Overload Protection`** | Total output exceeds rated continuous capacity ($> 2,400\,\text{W}$). | Automatically trip or notify before hardware breaker trips. |
+| **`Overload Protection`** | Total output exceeds rated continuous capacity (e.g. $> 4,000\,\text{W}$ for P5000, $> 3,600\,\text{W}$ for BP3000, $> 2,400\,\text{W}$ for P2001 Plus, $> 2,200\,\text{W}$ for BP2000, $> 1,800\,\text{W}$ for P1000). | Automatically trip or notify before hardware breaker trips. |
 | **`Hardware Fault`** | Critical BMS or inverter hardware error code emitted. | Emit priority siren / emergency notification. |
 
 ### Entity Attributes (`extra_state_attributes`)
-- `fault_details`: Human-readable description of the exact trigger (e.g. *"Output power (2650W) exceeds rated 2400W"* or *"Temperature is critical: 67°C"*).
+- `fault_details`: Human-readable description of the exact trigger (e.g. *"Output power (2650W) exceeds rated 2400W"* dynamically adapting to the station model, or *"Temperature is critical: 67°C"*).
 - `possible_states`: Complete array of all possible enum states.
 
 ### Example Automation: High Temperature Alert
@@ -541,8 +542,10 @@ cards:
     custom_fields:
       ring: |
         [[[
-          const pct = states['sensor.p2001_plus_tt_ab76_p2001_plus_battery'].state;
-          const modo = states['sensor.oukitel_estado_de_autonomia'].attributes.modo;
+          const pct = parseFloat(states['sensor.p2001_plus_tt_ab76_p2001_plus_battery']?.state || 0);
+          const entrada = parseFloat(states['sensor.p2001_plus_tt_ab76_p2001_plus_total_input_power']?.state || 0);
+          const consumo = parseFloat(states['sensor.p2001_plus_tt_ab76_p2001_plus_total_output_power']?.state || 0);
+          const modo = entrada > (consumo + 5) ? 'carga' : (consumo > (entrada + 5) ? 'descarga' : 'reposo');
           const color = modo === 'carga' ? '#00d2ff' : (modo === 'descarga' ? '#f5576c' : '#2ecc71');
           
           /* Ajustes de grosor y radio */
@@ -570,19 +573,29 @@ cards:
                 stroke-dasharray="${divisiones}" transform="rotate(-91.5 50 50)" />
 
               <text x="50" y="48" text-anchor="middle" font-size="6" fill="rgba(255,255,255,0.5)" font-weight="bold">BATERÍA</text>
-              <text x="50" y="62" text-anchor="middle" font-size="14" fill="white" font-weight="bold">${pct}%</text>
+              <text x="50" y="62" text-anchor="middle" font-size="14" fill="white" font-weight="bold">${Math.round(pct)}%</text>
             </svg>
           `;
         ]]]
       tiempo: |
         [[[
-          const tiempo = states['sensor.oukitel_estado_de_autonomia'].attributes.tiempo_formateado;
-          const modo = states['sensor.oukitel_estado_de_autonomia'].attributes.modo;
-          const label = modo === 'carga' ? 'CARGA COMPLETA EN:' : 'AUTONOMÍA';
+          const entrada = parseFloat(states['sensor.p2001_plus_tt_ab76_p2001_plus_total_input_power']?.state || 0);
+          const consumo = parseFloat(states['sensor.p2001_plus_tt_ab76_p2001_plus_total_output_power']?.state || 0);
+          const modo = entrada > (consumo + 5) ? 'carga' : (consumo > (entrada + 5) ? 'descarga' : 'reposo');
+          const label = modo === 'carga' ? 'CARGA COMPLETA EN:' : (modo === 'descarga' ? 'AUTONOMÍA' : 'EN ESPERA');
+          let mins = 0;
+          if (modo === 'carga') {
+            mins = parseInt(states['sensor.p2001_plus_tt_ab76_p2001_plus_remaining_charge_time']?.state || 0);
+          } else if (modo === 'descarga') {
+            mins = parseInt(states['sensor.p2001_plus_tt_ab76_p2001_plus_remaining_discharge_time']?.state || 0);
+          }
+          const h = Math.floor(mins / 60);
+          const m = mins % 60;
+          const formatted = (mins <= 0 || mins >= 5940) ? '--' : `${h}h ${m < 10 ? '0' : ''}${m}m`;
           return `
             <div style="text-align: center;">
               <div style="font-size: 10px; opacity: 0.6; font-weight: bold;">${label}</div>
-              <div style="font-size: 24px; font-weight: 900; color: white; line-height: 1.1;">${tiempo}</div>
+              <div style="font-size: 24px; font-weight: 900; color: white; line-height: 1.1;">${formatted}</div>
             </div>
           `;
         ]]]
@@ -617,6 +630,7 @@ cards:
         watts:
           - margin-top: 5px
 ```
+*(Note: Replace `sensor.p2001_plus_tt_ab76_...` with your device's entity IDs).*
 
 ---
 
