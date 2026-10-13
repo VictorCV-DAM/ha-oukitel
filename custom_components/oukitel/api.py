@@ -198,7 +198,7 @@ class AcceleronixCloudClient:
         }
 
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=10)
+            r = requests.post(url, headers=headers, json=payload, timeout=12)
             res = r.json()
             code = res.get("code")
 
@@ -208,6 +208,12 @@ class AcceleronixCloudClient:
             if code == 5032:
                 self.login()
                 return self.control_device(properties_list)
+            if code == 5340:
+                _LOGGER.warning(
+                    "oukitel: Cloud control transient timeout/batch ACK delay (code 5340): %s — verification needed",
+                    res.get("msg"),
+                )
+                return False
             _LOGGER.error("oukitel: Cloud control error: %s (code %s)", res.get("msg"), code)
             return False
         except Exception as err:

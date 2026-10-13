@@ -505,9 +505,26 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             if lan_ok or cloud_ok:
                 return True
 
+            # State readback verification: if Cloud control returned failure (e.g. timeout / code 5340),
+            # check whether the station physically applied the command before reporting failure
+            if self.connection_mode != MODE_LAN:
+                try:
+                    await asyncio.sleep(1.0)
+                    verification_data = await self.hass.async_add_executor_job(self.client.get_telemetry)
+                    if verification_data and key in verification_data:
+                        actual_val = bool(verification_data[key])
+                        if actual_val == value:
+                            _LOGGER.info(
+                                "oukitel: Switch command %s=%s confirmed via state readback verification",
+                                key, value,
+                            )
+                            return True
+                except Exception as verify_err:
+                    _LOGGER.debug("oukitel: State readback verification error: %s", verify_err)
+
             if attempt == 0:
                 _LOGGER.debug(
-                    "oukitel: Switch command %s=%s failed on first attempt; retrying in 1.5s...",
+                    "oukitel: Switch command %s=%s unconfirmed on attempt 1; retrying in 1.5s...",
                     key, value,
                 )
                 await asyncio.sleep(1.5)
@@ -591,9 +608,15 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         self._lan_setup_in_flight = True
         try:
-
             if not self.client.device_key:
                 await self.hass.async_add_executor_job(self.client.fetch_device_info)
+
+            # In Auto mode, if cloud confirms the station is powered off / offline, defer LAN setup
+            if self.connection_mode != MODE_LAN and not getattr(self.client, "is_online", True):
+                _LOGGER.debug(
+                    "oukitel: Station is confirmed offline via cloud device list — deferring initial LAN dial"
+                )
+                return
 
             host = self.lan_host
             if host:
