@@ -511,14 +511,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 try:
                     await asyncio.sleep(1.0)
                     verification_data = await self.hass.async_add_executor_job(self.client.get_telemetry)
-                    if verification_data and key in verification_data:
-                        actual_val = bool(verification_data[key])
-                        if actual_val == value:
-                            _LOGGER.info(
-                                "oukitel: Switch command %s=%s confirmed via state readback verification",
-                                key, value,
-                            )
-                            return True
+                    if verification_data:
+                        _unpack_port_data(verification_data)
+                        if key in verification_data:
+                            actual_val = bool(verification_data[key])
+                            if actual_val == value:
+                                _LOGGER.info(
+                                    "oukitel: Switch command %s=%s confirmed via state readback verification",
+                                    key, value,
+                                )
+                                return True
                 except Exception as verify_err:
                     _LOGGER.debug("oukitel: State readback verification error: %s", verify_err)
 
