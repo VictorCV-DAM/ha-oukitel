@@ -866,15 +866,21 @@ A heartfelt acknowledgment to the community members whose dedication, hardware d
 
 <table>
   <tr>
-    <td align="center" width="120">
+    <td align="center" width="130">
       <a href="https://github.com/e-potashkin">
         <img src="https://avatars.githubusercontent.com/u/14278977?v=4" width="80" height="80" style="border-radius: 50%;" alt="e-potashkin"/><br/>
         <b>@e-potashkin</b>
       </a>
     </td>
     <td>
-      <b>Core BP2000 Protocol & Resilience Diagnostics</b><br/>
-      Crucial contributions to hardware execution verification: detailed telemetry analysis pinpointing cloud transient <code>code 5340</code> ACK delays, co-design of the <b>State Readback Guard</b>, unpacking composite TSL port structures, and extensive live runtime testing under real-world grid outage conditions.
+      <b>Core BP2000 Architecture, Protocol Diagnostics & Resilience Testing</b><br/>
+      Invaluable, recurring contributions across multiple issues and releases that shaped the stability of the integration:
+      <ul>
+        <li><b>Local LAN Socket Stabilization:</b> In-depth network traces that solved local handshake drops, eliminated spurious <code>Connection closed</code> loops, and identified silent-session recovery requirements.</li>
+        <li><b>Firmware & Inverter Accuracy:</b> Diagnosing phantom AC voltage retention when inverters are powered off, leading to true 0V sensor clearing.</li>
+        <li><b>Cloud Resilience & State Verification:</b> Co-design of the <b>State Readback Guard</b> to absorb cloud <code>code 5340</code> ACK timeouts without UI rollbacks, and pinpointing composite TSL port struct decoding across model families.</li>
+        <li><b>Real-World Validation:</b> Exhaustive telemetry testing and automation stress-testing on physical BP2000 hardware during live power grid outages.</li>
+      </ul>
     </td>
   </tr>
 </table>
