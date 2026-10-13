@@ -28,8 +28,12 @@ VOLTAGE_OPTIONS = ["200V", "208V", "220V", "230V", "240V"]
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up Oukitel select entities based on a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
+    if data.get("is_ep2500"):
+        return
+
     coordinator: OukitelDataCoordinator = data["coordinator"]
     client = data["client"]
+
 
     entities = [
         OukitelFrequencySelect(coordinator, client),

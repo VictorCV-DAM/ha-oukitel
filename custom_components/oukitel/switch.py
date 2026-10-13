@@ -28,8 +28,15 @@ SWITCH_TYPES = [
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up Oukitel switch entities based on a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
+
+    if data.get("is_ep2500"):
+        from .ep2500.entities import create_ep2500_switches
+        async_add_entities(create_ep2500_switches(data["coordinator"]))
+        return
+
     coordinator: OukitelDataCoordinator = data["coordinator"]
     client = data["client"]
+
 
     entities: list[SwitchEntity] = [
         OukitelSwitch(coordinator, client, key, name, icon)

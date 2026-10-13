@@ -2,12 +2,30 @@
   "config": {
     "step": {
       "user": {
-        "title": "Estación de Energía Oukitel",
+        "title": "Seleccionar Familia de Dispositivos",
+        "description": "Selecciona la familia de hardware Oukitel que deseas configurar:",
+        "menu_options": {
+          "portable": "Estaciones de Energía Portátiles (Series P y BP)",
+          "ep2500": "Batería Solar de Balcón (Serie EP2500 - Tuya Local)"
+        }
+      },
+      "portable": {
+        "title": "Estación Portátil Oukitel",
         "description": "Introduce las credenciales de tu cuenta de la app oficial Oukitel / Wonderfree.",
         "data": {
           "region": "Región del Servidor",
           "email": "Correo Electrónico",
           "password": "Contraseña",
+          "poll_interval": "Intervalo de Actualización (segundos)"
+        }
+      },
+      "ep2500": {
+        "title": "Oukitel EP2500 Batería Solar de Balcón",
+        "description": "Configura la conexión local de tu Oukitel EP2500 (Protocolo 3.5 en puerto 6668). Nota: El Device ID y la Local Key se obtienen a través de la plataforma Tuya IoT Developer.",
+        "data": {
+          "ep2500_host": "Dirección IP Local",
+          "ep2500_device_id": "Device ID",
+          "ep2500_local_key": "Local Key",
           "poll_interval": "Intervalo de Actualización (segundos)"
         }
       },

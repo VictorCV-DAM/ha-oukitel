@@ -2,12 +2,30 @@
   "config": {
     "step": {
       "user": {
-        "title": "Oukitel Power Station",
+        "title": "Select Device Family",
+        "description": "Choose which Oukitel hardware family you would like to set up:",
+        "menu_options": {
+          "portable": "Portable Power Stations (P & BP Series)",
+          "ep2500": "Balcony Energy Storage (EP2500 Series - Local Tuya)"
+        }
+      },
+      "portable": {
+        "title": "Oukitel Portable Power Station",
         "description": "Enter your Oukitel / Wonderfree Cloud account credentials.",
         "data": {
           "region": "Server Region",
           "email": "Account Email",
           "password": "Password",
+          "poll_interval": "Update Interval (seconds)"
+        }
+      },
+      "ep2500": {
+        "title": "Oukitel EP2500 Balcony Energy Storage",
+        "description": "Configure your Oukitel EP2500 local connection (Protocol 3.5 on port 6668). Note: Device ID and Local Key can be obtained from the Tuya IoT Developer Platform.",
+        "data": {
+          "ep2500_host": "Local IP Address",
+          "ep2500_device_id": "Device ID",
+          "ep2500_local_key": "Local Key",
           "poll_interval": "Update Interval (seconds)"
         }
       },

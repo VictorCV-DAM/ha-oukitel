@@ -19,10 +19,17 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up Oukitel button entities based on a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
+
+    if data.get("is_ep2500"):
+        from .ep2500.entities import OukitelEP2500ReloadButton
+        async_add_entities([OukitelEP2500ReloadButton(data["coordinator"])])
+        return
+
     coordinator: OukitelDataCoordinator = data["coordinator"]
     client = data["client"]
 
     async_add_entities([OukitelReloadButton(coordinator, client, entry.entry_id)])
+
 
 
 class OukitelReloadButton(CoordinatorEntity, ButtonEntity):

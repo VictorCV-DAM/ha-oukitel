@@ -155,6 +155,19 @@ SENSOR_TYPES = [
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up Oukitel sensor entities based on a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
+
+    if data.get("is_ep2500"):
+        from .ep2500.const import EP2500_SENSORS
+        from .ep2500.entities import OukitelEP2500Sensor
+
+        coordinator = data["coordinator"]
+        ep2500_entities = [
+            OukitelEP2500Sensor(coordinator, desc)
+            for desc in EP2500_SENSORS
+        ]
+        async_add_entities(ep2500_entities)
+        return
+
     coordinator: OukitelDataCoordinator = data["coordinator"]
     client = data["client"]
 
@@ -162,6 +175,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         OukitelSensor(coordinator, client, key, name, unit, dev_class, state_class, icon, category, enabled_default)
         for key, name, unit, dev_class, state_class, icon, category, enabled_default in SENSOR_TYPES
     ]
+
     entities.append(OukitelConnectionModeSensor(coordinator, client))
     entities.append(OukitelInverterIdlePowerSensor(coordinator, client))
     entities.append(OukitelInverterEfficiencySensor(coordinator, client))

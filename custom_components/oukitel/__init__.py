@@ -69,6 +69,60 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except Exception as err:
                 _LOGGER.debug("oukitel: Frontend extra JS notice: %s", err)
 
+    # Check if this entry corresponds to an EP2500 Balcony Energy Storage device
+    device_family = entry.data.get("device_family")
+    if device_family == "ep2500":
+        from .ep2500 import (
+            CONF_EP2500_HOST,
+            CONF_EP2500_ID,
+            CONF_EP2500_KEY,
+            CONF_EP2500_PORT,
+            DEFAULT_EP2500_POLL_INTERVAL,
+            DEFAULT_EP2500_PORT,
+            OukitelEP2500Coordinator,
+            OukitelEP2500LocalClient,
+        )
+        host = entry.data[CONF_EP2500_HOST]
+        device_id = entry.data[CONF_EP2500_ID]
+        local_key = entry.data[CONF_EP2500_KEY]
+        port = entry.data.get(CONF_EP2500_PORT, DEFAULT_EP2500_PORT)
+        poll_interval = entry.options.get(
+            CONF_POLL_INTERVAL,
+            entry.data.get(CONF_POLL_INTERVAL, DEFAULT_EP2500_POLL_INTERVAL),
+        )
+
+        _LOGGER.debug(
+            "oukitel: Setting up EP2500 modular entry for %s at %s:%s",
+            device_id, host, port,
+        )
+        ep2500_client = OukitelEP2500LocalClient(
+            hass,
+            host=host,
+            device_id=device_id,
+            local_key=local_key,
+            port=port,
+        )
+        coordinator = OukitelEP2500Coordinator(
+            hass,
+            ep2500_client,
+            poll_interval=poll_interval,
+        )
+
+        try:
+            await coordinator.async_config_entry_first_refresh()
+        except Exception as err:
+            _LOGGER.warning("oukitel_ep2500: First refresh notice (%s): %s", type(err).__name__, err)
+
+        entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
+        hass.data[DOMAIN][entry.entry_id] = {
+            "coordinator": coordinator,
+            "is_ep2500": True,
+        }
+
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        return True
+
     region = entry.data.get(CONF_REGION, DEFAULT_REGION)
     email = entry.data[CONF_EMAIL]
     password = entry.data[CONF_PASSWORD]
@@ -139,6 +193,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:

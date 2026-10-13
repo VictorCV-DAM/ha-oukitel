@@ -48,12 +48,21 @@ _LOGGER = logging.getLogger(__name__)
 
 REGIONS_OPTIONS = {k: f"{v['name']}" for k, v in REGION_SERVERS.items()}
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
+STEP_PORTABLE_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_REGION, default=DEFAULT_REGION): vol.In(REGIONS_OPTIONS),
         vol.Required(CONF_EMAIL): cv.string,
         vol.Required(CONF_PASSWORD): cv.string,
         vol.Optional(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): vol.All(cv.positive_int, vol.Range(min=3, max=120)),
+    }
+)
+
+STEP_EP2500_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required("ep2500_host"): cv.string,
+        vol.Required("ep2500_device_id"): cv.string,
+        vol.Required("ep2500_local_key"): cv.string,
+        vol.Optional(CONF_POLL_INTERVAL, default=10): vol.All(cv.positive_int, vol.Range(min=3, max=120)),
     }
 )
 
@@ -69,7 +78,14 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._user_credentials: dict = {}
 
     async def async_step_user(self, user_input=None):
-        """Handle the initial step."""
+        """Handle the device family selection menu."""
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=["portable", "ep2500"],
+        )
+
+    async def async_step_portable(self, user_input=None):
+        """Handle setup for portable stations (P & BP series)."""
         errors = {}
 
         if user_input is not None:
@@ -88,7 +104,8 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "no_devices"
                 else:
                     self._discovered_devices = devices
-                    self._user_credentials = user_input
+                    self._user_credentials = dict(user_input)
+                    self._user_credentials["device_family"] = "portable"
 
                     configured_ids = {
                         entry.unique_id for entry in self._async_current_entries()
@@ -107,10 +124,59 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return await self.async_step_device()
 
         return self.async_show_form(
-            step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            step_id="portable",
+            data_schema=STEP_PORTABLE_DATA_SCHEMA,
             errors=errors,
         )
+
+    async def async_step_ep2500(self, user_input=None):
+        """Handle setup for EP2500 Balcony Energy Storage."""
+        errors = {}
+
+        if user_input is not None:
+            host = user_input["ep2500_host"].strip()
+            dev_id = user_input["ep2500_device_id"].strip()
+            local_key = user_input["ep2500_local_key"].strip()
+
+            unique_id = f"oukitel_ep2500_{dev_id}"
+            await self.async_set_unique_id(unique_id)
+            self._abort_if_unique_id_configured()
+
+            from .ep2500.client import OukitelEP2500LocalClient
+            client = OukitelEP2500LocalClient(
+                self.hass,
+                host=host,
+                device_id=dev_id,
+                local_key=local_key,
+            )
+
+            connected = await client.async_connect()
+            if not connected:
+                _LOGGER.warning(
+                    "oukitel_ep2500: Could not verify local connection to %s, proceeding with entry creation.",
+                    host,
+                )
+
+            entry_data = {
+                "device_family": "ep2500",
+                "ep2500_host": host,
+                "ep2500_device_id": dev_id,
+                "ep2500_local_key": local_key,
+                CONF_POLL_INTERVAL: user_input.get(CONF_POLL_INTERVAL, 10),
+            }
+
+            title = f"Oukitel EP2500 ({dev_id[-4:] if len(dev_id) >= 4 else dev_id})"
+            return self.async_create_entry(
+                title=title,
+                data=entry_data,
+            )
+
+        return self.async_show_form(
+            step_id="ep2500",
+            data_schema=STEP_EP2500_DATA_SCHEMA,
+            errors=errors,
+        )
+
 
     async def async_step_device(self, user_input=None):
         """Handle multiple devices selection step."""
