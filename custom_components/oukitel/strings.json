@@ -2,7 +2,22 @@
   "config": {
     "step": {
       "user": {
-        "title": "Oukitel Power Station",
+        "title": "Select Device Family",
+        "description": "Choose which Oukitel hardware family you would like to set up:",
+        "menu_options": {
+          "portable": "Portable Power Stations (P & BP Series)",
+          "ep2500": "Balcony Energy Storage (EP2500 Series - Local Tuya)"
+        }
+      },
+      "device": {
+        "title": "Select Oukitel Device",
+        "description": "Multiple Oukitel power stations were found in your account. Select which one to configure in Home Assistant:",
+        "data": {
+          "device_key": "Oukitel Station"
+        }
+      },
+      "portable": {
+        "title": "Oukitel Portable Power Station",
         "description": "Enter your Oukitel / Wonderfree Cloud account credentials.",
         "data": {
           "region": "Server Region",
@@ -11,11 +26,22 @@
           "poll_interval": "Update Interval (seconds)"
         }
       },
-      "device": {
-        "title": "Select Oukitel Device",
-        "description": "Multiple Oukitel power stations were found in your account. Select which one to configure in Home Assistant:",
+      "ep2500": {
+        "title": "Oukitel EP2500 Balcony Energy Storage",
+        "description": "Configure your Oukitel EP2500 local connection (Tuya 3.5 Protocol).\n\nTo obtain your local credentials, you need a developer account on [Tuya IoT Platform](https://iot.tuya.com) linked to your Tuya Smart / Smart Life app, or you can use the [TinyTuya Wizard](https://github.com/jasonacox/tinytuya#wizard) CLI tool.",
         "data": {
-          "device_key": "Oukitel Station"
+          "ep2500_host": "Local IP Address",
+          "ep2500_device_id": "Device ID",
+          "ep2500_local_key": "Local Key (AES 16-char)",
+          "ep2500_port": "Local Tuya TCP Port",
+          "poll_interval": "Update Interval (seconds)"
+        },
+        "data_description": {
+          "ep2500_host": "Local IP assigned to the unit on your WiFi router (e.g. 192.168.1.150). Setting a DHCP static lease is recommended.",
+          "ep2500_device_id": "Unique device identifier (20-22 characters). Found in Tuya IoT Platform (Cloud -> Development -> Device List) or via TinyTuya Wizard.",
+          "ep2500_local_key": "16-character cryptographic AES key required for local encrypted communication. Extracted via Tuya IoT Platform (Cloud -> API Explorer) or TinyTuya Wizard.",
+          "ep2500_port": "Local TCP Tuya protocol port (defaults to 6668 for this model, typically 6668 or 6667).",
+          "poll_interval": "Frequency in seconds to query EP2500 telemetry (defaults to 10 seconds)."
         }
       }
     },

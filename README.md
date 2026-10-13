@@ -45,6 +45,12 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 > 3. Select the branch **`feature/ep2500-support`** and click **Download**.
 > 4. Restart Home Assistant.
 > 5. Go to **Settings ➔ Devices & Services ➔ Add Integration ➔ Oukitel Power Station** and choose **Balcony Energy Storage (EP2500 Series - Local Tuya)**.
+>
+> <p align="center">
+>   <img src="docs/images/ep2500_config_menu.png" alt="Oukitel Device Family Selection Menu" width="48%" />
+>   &nbsp;
+>   <img src="docs/images/ep2500_config_setup.png" alt="Oukitel EP2500 Configuration Screen with Tuya Links" width="48%" />
+> </p>
 
 ---
 

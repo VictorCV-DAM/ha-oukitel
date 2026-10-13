@@ -62,6 +62,7 @@ STEP_EP2500_DATA_SCHEMA = vol.Schema(
         vol.Required("ep2500_host"): cv.string,
         vol.Required("ep2500_device_id"): cv.string,
         vol.Required("ep2500_local_key"): cv.string,
+        vol.Optional("ep2500_port", default=6668): cv.port,
         vol.Optional(CONF_POLL_INTERVAL, default=10): vol.All(cv.positive_int, vol.Range(min=3, max=120)),
     }
 )
@@ -137,6 +138,7 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             host = user_input["ep2500_host"].strip()
             dev_id = user_input["ep2500_device_id"].strip()
             local_key = user_input["ep2500_local_key"].strip()
+            port = int(user_input.get("ep2500_port", 6668))
 
             unique_id = f"oukitel_ep2500_{dev_id}"
             await self.async_set_unique_id(unique_id)
@@ -148,13 +150,15 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 host=host,
                 device_id=dev_id,
                 local_key=local_key,
+                port=port,
             )
 
             connected = await client.async_connect()
             if not connected:
                 _LOGGER.warning(
-                    "oukitel_ep2500: Could not verify local connection to %s, proceeding with entry creation.",
+                    "oukitel_ep2500: Could not verify local connection to %s:%s, proceeding with entry creation.",
                     host,
+                    port,
                 )
 
             entry_data = {
@@ -162,6 +166,7 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "ep2500_host": host,
                 "ep2500_device_id": dev_id,
                 "ep2500_local_key": local_key,
+                "ep2500_port": port,
                 CONF_POLL_INTERVAL: user_input.get(CONF_POLL_INTERVAL, 10),
             }
 

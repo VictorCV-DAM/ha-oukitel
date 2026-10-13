@@ -9,6 +9,13 @@
           "ep2500": "Batería Solar de Balcón (Serie EP2500 - Tuya Local)"
         }
       },
+      "device": {
+        "title": "Seleccionar Estación Oukitel",
+        "description": "Se han detectado varias estaciones Oukitel en tu cuenta. Selecciona cuál deseas vincular a Home Assistant:",
+        "data": {
+          "device_key": "Estación Oukitel"
+        }
+      },
       "portable": {
         "title": "Estación Portátil Oukitel",
         "description": "Introduce las credenciales de tu cuenta de la app oficial Oukitel / Wonderfree.",
@@ -21,19 +28,20 @@
       },
       "ep2500": {
         "title": "Oukitel EP2500 Batería Solar de Balcón",
-        "description": "Configura la conexión local de tu Oukitel EP2500 (Protocolo 3.5 en puerto 6668). Nota: El Device ID y la Local Key se obtienen a través de la plataforma Tuya IoT Developer.",
+        "description": "Configura la conexión local de tu Oukitel EP2500 (Protocolo Tuya 3.5).\n\nPara obtener tus credenciales locales necesitas una cuenta de desarrollador en [Tuya IoT Platform](https://iot.tuya.com) vinculada con la app Tuya Smart / Smart Life o utilizar la herramienta [TinyTuya Wizard](https://github.com/jasonacox/tinytuya#wizard).",
         "data": {
           "ep2500_host": "Dirección IP Local",
-          "ep2500_device_id": "Device ID",
-          "ep2500_local_key": "Local Key",
+          "ep2500_device_id": "Device ID (ID del Dispositivo)",
+          "ep2500_local_key": "Local Key (Clave Local AES)",
+          "ep2500_port": "Puerto Local Tuya TCP",
           "poll_interval": "Intervalo de Actualización (segundos)"
-        }
-      },
-      "device": {
-        "title": "Seleccionar Estación Oukitel",
-        "description": "Se han detectado varias estaciones Oukitel en tu cuenta. Selecciona cuál deseas vincular a Home Assistant:",
-        "data": {
-          "device_key": "Estación Oukitel"
+        },
+        "data_description": {
+          "ep2500_host": "IP local asignada a la batería en tu router WiFi (ej. 192.168.1.150). Es recomendable fijarla mediante DHCP estático.",
+          "ep2500_device_id": "Identificador único del dispositivo (20-22 caracteres). Se obtiene en Tuya IoT Platform (Cloud -> Development -> Device List) o con TinyTuya Wizard.",
+          "ep2500_local_key": "Clave criptográfica AES de 16 caracteres necesaria para la comunicación local cifrada. Se extrae mediante Tuya IoT Platform (Cloud -> API Explorer) o TinyTuya Wizard.",
+          "ep2500_port": "Puerto de red TCP Tuya local (por defecto 6668 en este modelo, en otros dispositivos Tuya suele ser 6668 o 6667).",
+          "poll_interval": "Frecuencia en segundos para consultar el estado del EP2500 (por defecto 10 segundos)."
         }
       }
     },
