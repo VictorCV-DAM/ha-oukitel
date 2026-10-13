@@ -20,9 +20,10 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 - BP2000 / BP2000 PRO
 - P1000E PLUS
 
+🧪 BETA / COMMUNITY TESTING (Branch [`feature/ep2500-support`](https://github.com/VictorCV-DAM/ha-oukitel/tree/feature/ep2500-support)):
+- **Oukitel EP2500** Balcony Energy Storage (Model WXY001 — Direct Local Tuya 3.5 on port 6668) — *[See details below](#-community-alpha-branch-oukitel-ep2500-balcony-energy-storage)*
 
-
-## 👨‍💻 Author & Intellectual Property
+---
 
 - **Author & Maintainer:** Víctor C. V. ([@VictorCV-DAM](https://github.com/VictorCV-DAM))
 - **Email:** `victorcvtrabajo@gmail.com`
