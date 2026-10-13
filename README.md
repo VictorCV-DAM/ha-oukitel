@@ -814,6 +814,37 @@ If this integration has saved you time, enhanced your home solar automation, or 
   </table>
 </div>
 
+### 📊 Sensor & Control Architecture: Portable Series vs. Balcony Solar Series
+
+Because the **Balcony Energy Storage Series (EP2500 / EP3000)** is designed as a stationary grid-tied solar storage system rather than a portable off-grid power station (P/BP Series), its internal hardware architecture, telemetry registers, and control interfaces are completely specialized:
+
+| Category / Domain | 🏕️ Portable Stations (P2001 Plus, BP2000, P5000) | ☀️ Balcony Storage Series (EP2500, EP3000) |
+|---|---|---|
+| **Primary Protocol & Port** | Acceleronix/Quectel Cloud API + UDP/TCP Port `8088` / `6668` Local Frame | Pure Local Tuya Protocol 3.5 on TCP Port `6668` *(No cloud polling required)* |
+| **Output Ports** | AC Outlets (230V), 12V DC Anderson/Cigarette, USB-A, USB-C QC/PD ports | AC Grid-Tie Inverter (Microinverter bus) + Emergency Off-Grid Outlet |
+| **Solar Input Structure** | Single combined DC Solar Input (`W`, `V`, `A`) | **4 Independent Solar Strings / Dual MPPTs**: string-level `W`, `V`, and `A` tracking |
+| **Battery Diagnostics** | State of Charge (%), Global Temperature, Inverter Temp, Cycle Counter | State of Charge (%), **Max Cell (mV)**, **Min Cell (mV)**, Dual Thermal Probes (`°C`) |
+| **Grid Integration** | AC Wall Input Charging (`W`), Inverter Efficiency, AC Pass-through | **Bidirectional Grid Metering**: Grid Power (`W`), Feed-in Power (`W`), Voltage & Frequency |
+| **Controllable Limits** | AC Charging Wattage Limit (e.g., 300W–1800W), 50/60Hz, 220–240V | **Dynamic Feed-in Export Limit (`W`)**, Battery Charge Power Limit (`W`), Off-Grid Switch |
+| **Zero-Export Automation** | Manual energy shifting through virtual switches & schedule rules | Native compatibility with local Smart Meters (Eco Tracker, Shelly EM, etc.) for zero-export |
+
+#### 📋 Implemented Entities for EP2500 / Balcony Series:
+- **🔋 Battery & Core Storage (7 entities):**
+  - State of Charge (`%`), Battery Active Power (`W`), Battery Pack Voltage (`V`)
+  - Individual Cell Max Voltage (`mV`), Cell Min Voltage (`mV`), Dual Battery Temperatures 1 & 2 (`°C`)
+- **☀️ Multi-String Solar MPPT Telemetry (15 entities):**
+  - Total Combined Solar PV Power (`W`), Daily Solar Production (`Wh`), Lifetime Solar Production (`Wh`)
+  - **Solar String 1:** Power (`W`), Voltage (`V`), Current (`A`)
+  - **Solar String 2:** Power (`W`), Voltage (`V`), Current (`A`)
+  - **Solar String 3:** Power (`W`), Voltage (`V`), Current (`A`)
+  - **Solar String 4:** Power (`W`), Voltage (`V`), Current (`A`)
+- **⚡ Grid-Tie & Inverter Metrics (5 entities):**
+  - AC Inverter Output Power (`W`), Real-time Grid Power (`W`), Grid Voltage (`V`), Grid Current (`A`), Grid Frequency (`Hz`)
+- **🔌 Off-Grid Emergency Socket (3 entities):**
+  - Off-Grid Load Active Power (`W`), Off-Grid Voltage (`V`), Off-Grid Current (`A`)
+- **⚙️ Diagnostic & Operational Status (3 entities):**
+  - Operational Status, Operating Mode, Hardware Fault Code (`Register 149`)
+
 ---
 
 ## ⚖️ Disclaimer
