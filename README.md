@@ -14,19 +14,31 @@
 
 Custom integration for Home Assistant to monitor and control **Oukitel Power Stations** (P2001 Plus, P2001, P5000, BP2000, etc.). Connects via **local LAN** when the device is on the same network, with automatic fallback to Cloud API — no phone, emulator, or ADB required.
 
-100% VERIFIED DEVICES (Official Stable Releases):
-- P2001E PLUS
-- BP3000E
-- BP2000 / BP2000 PRO
-- P1000E PLUS
-
-🧪 BETA / COMMUNITY TESTING (Branch [`feature/ep2500-support`](https://github.com/VictorCV-DAM/ha-oukitel/tree/feature/ep2500-support)):
-- **Oukitel EP2500** Balcony Solar Storage (Model `WXY001` — Direct Local Tuya 3.5 on port 6668)
-- **Oukitel EP2000 / B2000** Modular Expansion Battery Packs (linked via EP2500 bus)
-- **Estimated Compatible Models (Hardware & Protocol Siblings):**
-  - **Oukitel EP3000** All-in-One Solar Inverter & Storage *(architecture sibling sharing Tuya 3.5 / port 6668 protocol)*
-  - **Oukitel B2000 / B3000** Add-on Expansion Units
-  - *[See details & testing guide below](#-community-alpha-branch-oukitel-ep2500-balcony-energy-storage)*
+<table width="100%">
+  <tr>
+    <td valign="top" width="60%">
+      <b>100% VERIFIED DEVICES (Official Stable Releases):</b>
+      <ul>
+        <li><b>P2001E PLUS</b></li>
+        <li><b>BP3000E</b></li>
+        <li><b>BP2000 / BP2000 PRO</b></li>
+        <li><b>P1000E PLUS</b></li>
+      </ul>
+      <b>🧪 BETA / COMMUNITY TESTING (<a href="https://github.com/VictorCV-DAM/ha-oukitel/tree/feature/ep2500-support"><code>feature/ep2500-support</code></a>):</b>
+      <ul>
+        <li><b>Oukitel EP2500</b> Balcony Solar Storage (Model <code>WXY001</code>)</li>
+        <li><b>Oukitel EP2000 / B2000</b> Modular Expansion Packs</li>
+        <li><b>Estimated Siblings:</b> EP3000, B3000 <i>(<a href="#-community-alpha-branch-oukitel-ep2500-balcony-energy-storage">details</a>)</i></li>
+      </ul>
+    </td>
+    <td align="center" valign="middle" width="40%">
+      <a href="#--dashboard-cards--custom-lovelace-examples">
+        <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/07_interactive_station_card.png" width="310" alt="Oukitel Photorealistic Lovelace Card" style="border-radius: 8px;"/><br/>
+        <sub><i>🎨 Photorealistic OLED Lovelace Card (included)</i></sub>
+      </a>
+    </td>
+  </tr>
+</table>
 
 ---
 
