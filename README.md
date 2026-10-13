@@ -75,18 +75,7 @@ Click the badge above or use the direct link to open this repository inside your
 > - **Why?** This ensures that Home Assistant's Entity Registry and Recorder engine cleanly initialize the linked secondary device (*Calculated Sensors*), Riemann trapezoidal energy integrators (kWh), and financial ROI metrics. Without this initial restart, calculated entities may temporarily appear as `Unavailable`.
 > - **Zero subsequent restarts required**: Normal daily operation, live LAN push telemetry, tariff adjustments, and hardware control switches run 100% on-the-fly without needing any further restarts.
 
-### 🧪 Testing Oukitel EP2500 on this Branch (`feature/ep2500-support`)
-For users testing the **Oukitel EP2500 Balcony Energy Storage** system:
-1. In HACS, switch to or download the **`feature/ep2500-support`** branch.
-2. Go to **Settings ➔ Devices & Services ➔ Add Integration** ➔ Search for **Oukitel Power Station**.
-3. In the setup menu, choose **Balcony Energy Storage (EP2500 Series - Local Tuya)**.
-4. Enter your device credentials:
-   - **Local IP Address**: The static or DHCP IP of your EP2500.
-   - **Device ID**: Your Tuya Device ID (20–22 alphanumeric characters).
-   - **Local Key**: Your 16-character local encryption key (obtained via the Tuya IoT Developer Platform).
-5. Home Assistant will connect directly to the EP2500 over TCP port `6668` using Tuya protocol 3.5, creating 30+ native sensors, switches, and charging/export sliders without requiring any external Docker container or MQTT bridge.
 
----
 
 ## 🧩 Compatibility & Certified Home Assistant Versions
 
