@@ -32,7 +32,7 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
       </ul>
     </td>
     <td align="center" valign="middle" width="40%">
-      <a href="#--dashboard-cards--custom-lovelace-examples">
+      <a href="#dashboard-cards--custom-lovelace-examples">
         <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/docs/images/07_interactive_station_card.png" width="310" alt="Oukitel Photorealistic Lovelace Card" style="border-radius: 8px;"/><br/>
         <sub><i>🎨 Photorealistic OLED Lovelace Card (included)</i></sub>
       </a>
@@ -479,6 +479,7 @@ How was this information discovered and implemented?
 
 ---
 
+<a id="dashboard-cards--custom-lovelace-examples"></a>
 ## 🎨 Dashboard Cards & Custom Lovelace Examples
 
 ### 🌟 Official Plug & Play Cards (`custom:oukitel-card` & `custom:oukitel-display-card`)
