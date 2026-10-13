@@ -170,13 +170,17 @@ You can configure the active connection mode at any time directly in Home Assist
 
 ---
 
-## 🚀 What's New in v1.5.6: Hybrid LAN + Cloud Shadow, Bilingual Localization & Connection Reload
+## 🚀 What's New in v1.5.6: Startup LAN Race Elimination, Multi-Protocol Struct Switches & Hardware Resilience
 
-- **⚡ Hybrid LAN + Cloud Shadow Dynamic Sync:** Real-time push for all active power meters (W), switches, and battery SoC via local TCP socket (6607), combined with continuous background shadow synchronization for temperature (`temp`), WiFi signal strength (`wifi_signal`), and firmware versions (`BMS_Version`, `AC_Version`).
-- **🔄 Instant Connection Reload Button:** Added and documented the **Reload Connection** entity (`button.oukitel_reload_connection`), allowing one-click instant session re-establishment and full telemetry synchronization when switching between connection modes.
-- **🌐 100% Bilingual Localization (English & Spanish):** Comprehensive translations across all 58 entities, configuration flows, device descriptions, error messages, and interactive Lovelace cards.
-- **🛡️ Rock-Solid Reconnection & Startup:** Fully resolved race conditions during startup in Cloud, Auto, and Solo LAN modes, ensuring entities never remain unavailable.
-- **🏷️ Restored Entity Names & Hierarchy:** Proper device-relative entity naming (`has_entity_name = True`) with native `via_device` linking for child calculated metrics.
+- **🔒 Startup LAN Race Condition Elimination:** Implemented strict exclusion locks (`_lan_setup_in_flight`), monotonic retry cooldowns, and instance identity checks in `local_session.py` to prevent duplicate concurrent TCP connections on port 6607 during HA startup.
+- **⚡ Multi-Protocol Acceleronix Cloud Struct Switches:** Fixed switch write payload serialization for BP-series hardware (`BP2000`, `BP3000`), formatting parameters as `[{prop: {key: value}}]` instead of flat strings, permanently resolving switch bouncing.
+- **🔌 Standby AC Output Voltage Zeroing:** AC output voltage reading cleanly drops to `0 V` when the AC inverter is switched off and output wattage is `0 W`, preventing phantom voltage readings in Home Assistant dashboards.
+- **🔁 Resilient Switch Retry Mechanism:** Added automatic 1.5s retry in `async_send_switch_command` to transparently absorb socket recycling transitions or cloud 5340 transient dropouts.
+- **🧹 Cleaned Heartbeat Logging:** Demoted routine 12-second LAN keepalive notifications from `INFO` to `DEBUG` to keep Home Assistant production logs clean and concise.
+- **⚡ Hybrid LAN + Cloud Shadow Dynamic Sync:** Real-time push for all active power meters (W), switches, and battery SoC via local TCP socket (6607), combined with continuous background shadow synchronization for temperature, Wi-Fi signal, and firmware metadata.
+- **🔄 Instant Connection Reload Button:** Interactive **Reload Connection** entity (`button.oukitel_reload_connection`) for immediate session re-establishment across connection modes.
+- **🌐 100% Bilingual Localization (English & Spanish):** Full translations across all 58 entities, options flows, device descriptions, and Lovelace visual cards.
+- **🛡️ Documented P2001E Plus Hardware Safety Interlock:** Detailed physical isolation protocols (DC breaker & 2P AC breaker) when reactivating the AC inverter during simultaneous solar/grid charging.
 
 ---
 
