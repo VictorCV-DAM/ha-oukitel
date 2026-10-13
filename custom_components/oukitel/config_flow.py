@@ -53,18 +53,7 @@ STEP_PORTABLE_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_REGION, default=DEFAULT_REGION): vol.In(REGIONS_OPTIONS),
         vol.Required(CONF_EMAIL): cv.string,
         vol.Required(CONF_PASSWORD): cv.string,
-        vol.Optional(
-            CONF_POLL_INTERVAL,
-            default=DEFAULT_POLL_INTERVAL,
-        ): NumberSelector(
-            NumberSelectorConfig(
-                min=3,
-                max=120,
-                step=1,
-                mode=NumberSelectorMode.BOX,
-                unit_of_measurement="s",
-            )
-        ),
+        vol.Optional(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): vol.All(cv.positive_int, vol.Range(min=3, max=120)),
     }
 )
 
@@ -74,18 +63,7 @@ STEP_EP2500_DATA_SCHEMA = vol.Schema(
         vol.Required("ep2500_device_id"): cv.string,
         vol.Required("ep2500_local_key"): cv.string,
         vol.Optional("ep2500_port", default=6668): cv.port,
-        vol.Optional(
-            CONF_POLL_INTERVAL,
-            default=10,
-        ): NumberSelector(
-            NumberSelectorConfig(
-                min=3,
-                max=120,
-                step=1,
-                mode=NumberSelectorMode.BOX,
-                unit_of_measurement="s",
-            )
-        ),
+        vol.Optional(CONF_POLL_INTERVAL, default=10): vol.All(cv.positive_int, vol.Range(min=3, max=120)),
     }
 )
 
