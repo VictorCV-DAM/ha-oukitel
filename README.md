@@ -860,6 +860,27 @@ Because the **Balcony Energy Storage Series (EP2500 / EP3000)** is designed as a
 
 ---
 
+## 🤝 Special Thanks & Community Contributors
+
+A heartfelt acknowledgment to the community members whose dedication, hardware diagnostics, and in-depth telemetry testing elevate this project:
+
+<table>
+  <tr>
+    <td align="center" width="120">
+      <a href="https://github.com/e-potashkin">
+        <img src="https://avatars.githubusercontent.com/u/14278977?v=4" width="80" height="80" style="border-radius: 50%;" alt="e-potashkin"/><br/>
+        <b>@e-potashkin</b>
+      </a>
+    </td>
+    <td>
+      <b>Core BP2000 Protocol & Resilience Diagnostics</b><br/>
+      Crucial contributions to hardware execution verification: detailed telemetry analysis pinpointing cloud transient <code>code 5340</code> ACK delays, co-design of the <b>State Readback Guard</b>, unpacking composite TSL port structures, and extensive live runtime testing under real-world grid outage conditions.
+    </td>
+  </tr>
+</table>
+
+---
+
 ## ⚖️ Disclaimer
 
 This project is an independent community development and is not affiliated with, supported by, or endorsed by Oukitel or Acceleronix/Quectel. All product names, trademarks, and registered trademarks belong to their respective owners.
