@@ -874,12 +874,15 @@ A heartfelt acknowledgment to the community members whose dedication, hardware d
     </td>
     <td>
       <b>Core BP2000 Architecture, Protocol Diagnostics & Resilience Testing</b><br/>
-      Invaluable, recurring contributions across multiple issues and releases that shaped the stability of the integration:
+      Invaluable, recurring contributions across multiple issues and releases (Issues <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/3">#3</a>, <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/4">#4</a>, and PR <a href="https://github.com/VictorCV-DAM/ha-oukitel/pull/5">#5</a>) that fundamentally shaped the stability and accuracy of the integration:
       <ul>
-        <li><b>Local LAN Socket Stabilization:</b> In-depth network traces that solved local handshake drops, eliminated spurious <code>Connection closed</code> loops, and identified silent-session recovery requirements.</li>
-        <li><b>Firmware & Inverter Accuracy:</b> Diagnosing phantom AC voltage retention when inverters are powered off, leading to true 0V sensor clearing.</li>
-        <li><b>Cloud Resilience & State Verification:</b> Co-design of the <b>State Readback Guard</b> to absorb cloud <code>code 5340</code> ACK timeouts without UI rollbacks, and pinpointing composite TSL port struct decoding across model families.</li>
-        <li><b>Real-World Validation:</b> Exhaustive telemetry testing and automation stress-testing on physical BP2000 hardware during live power grid outages.</li>
+        <li><b>Nested Subtag Protocol Discovery:</b> Pioneered empirical testing demonstrating that BP2000 series hardware rejects flat boolean commands, requiring nested subtag packing (Tag 6 / subtag 1) for reliable relay switching.</li>
+        <li><b>Concurrent LAN Startup Race Fix:</b> Discovered and captured the twin simultaneous LAN session initialization at core startup, eliminating the 13ms socket collision and <code>Connection closed</code> loops.</li>
+        <li><b>Socket Lifecycle & Keepalive Hardening:</b> Identified silent LAN session staleness, proper <code>asyncio.CancelledError</code> propagation in keepalive loops, and empirically demonstrated the benefit of 20s recovery intervals.</li>
+        <li><b>Network Diagnostics & Wi-Fi Band Steering:</b> Thoroughly documented how dual-band router steering drops port 6607 sockets, providing invaluable diagnostic knowledge for the entire community.</li>
+        <li><b>Firmware Inverter Accuracy:</b> Isolated phantom 230V AC voltage retention when inverters are powered off, enabling true 0V sensor clearing at zero load.</li>
+        <li><b>Cloud Resilience & State Readback Guard:</b> Co-designed the <b>State Readback Verification</b> mechanism to absorb transient cloud <code>code 5340</code> ACK timeouts without UI rollbacks, and pinpointed the composite TSL struct unpacking required for nested models.</li>
+        <li><b>Real-World Outage Stress-Testing:</b> Conducted exhaustive telemetry verification on physical BP2000 hardware under real-life grid outage automation cycles.</li>
       </ul>
     </td>
   </tr>
