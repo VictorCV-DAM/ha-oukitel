@@ -20,6 +20,9 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 - BP2000 / BP2000 PRO
 - P1000E PLUS
 
+🧪 BETA / COMMUNITY TESTING (Branch `feature/ep2500-support`):
+- **Oukitel EP2500** Balcony Energy Storage (Model WXY001 — Direct Local Tuya 3.5 on port 6668)
+
 ---
 
 ## 🧪 Community Alpha Branch: Oukitel EP2500 Balcony Energy Storage
@@ -42,6 +45,12 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 > 3. Select the branch **`feature/ep2500-support`** and click **Download**.
 > 4. Restart Home Assistant.
 > 5. Go to **Settings ➔ Devices & Services ➔ Add Integration ➔ Oukitel Power Station** and choose **Balcony Energy Storage (EP2500 Series - Local Tuya)**.
+>
+> <p align="center">
+>   <img src="docs/images/ep2500_config_menu.png" alt="Oukitel Device Family Selection Menu" width="48%" />
+>   &nbsp;
+>   <img src="docs/images/ep2500_config_setup.png" alt="Oukitel EP2500 Configuration Screen with Tuya Links" width="48%" />
+> </p>
 
 ---
 
@@ -96,6 +105,17 @@ Click the badge above or use the direct link to open this repository inside your
 > - **Perform a single restart of Home Assistant** (**Settings ➔ System ➔ Restart**).
 > - **Why?** This ensures that Home Assistant's Entity Registry and Recorder engine cleanly initialize the linked secondary device (*Calculated Sensors*), Riemann trapezoidal energy integrators (kWh), and financial ROI metrics. Without this initial restart, calculated entities may temporarily appear as `Unavailable`.
 > - **Zero subsequent restarts required**: Normal daily operation, live LAN push telemetry, tariff adjustments, and hardware control switches run 100% on-the-fly without needing any further restarts.
+
+### 🧪 Testing Oukitel EP2500 on this Branch (`feature/ep2500-support`)
+For users testing the **Oukitel EP2500 Balcony Energy Storage** system:
+1. In HACS, switch to or download the **`feature/ep2500-support`** branch.
+2. Go to **Settings ➔ Devices & Services ➔ Add Integration** ➔ Search for **Oukitel Power Station**.
+3. In the setup menu, choose **Balcony Energy Storage (EP2500 Series - Local Tuya)**.
+4. Enter your device credentials:
+   - **Local IP Address**: The static or DHCP IP of your EP2500.
+   - **Device ID**: Your Tuya Device ID (20–22 alphanumeric characters).
+   - **Local Key**: Your 16-character local encryption key (obtained via the Tuya IoT Developer Platform).
+5. Home Assistant will connect directly to the EP2500 over TCP port `6668` using Tuya protocol 3.5, creating 30+ native sensors, switches, and charging/export sliders without requiring any external Docker container or MQTT bridge.
 
 ---
 
