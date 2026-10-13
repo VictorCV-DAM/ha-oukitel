@@ -53,7 +53,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_REGION, default=DEFAULT_REGION): vol.In(REGIONS_OPTIONS),
         vol.Required(CONF_EMAIL): cv.string,
         vol.Required(CONF_PASSWORD): cv.string,
-        vol.Optional(
+        vol.Required(
             CONF_POLL_INTERVAL,
             default=DEFAULT_POLL_INTERVAL,
         ): NumberSelector(
