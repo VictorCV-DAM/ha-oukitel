@@ -14,11 +14,34 @@
 
 Custom integration for Home Assistant to monitor and control **Oukitel Power Stations** (P2001 Plus, P2001, P5000, BP2000, etc.). Connects via **local LAN** when the device is on the same network, with automatic fallback to Cloud API — no phone, emulator, or ADB required.
 
-100% VERIFIED DEVICES:
+100% VERIFIED DEVICES (Official Stable Releases):
 - P2001E PLUS
 - BP3000E
 - BP2000 / BP2000 PRO
 - P1000E PLUS
+
+---
+
+## 🧪 Community Alpha Branch: Oukitel EP2500 Balcony Energy Storage
+
+> [!WARNING]
+> **Community Alpha Notice (Branch: [`feature/ep2500-support`](https://github.com/VictorCV-DAM/ha-oukitel/tree/feature/ep2500-support))**:
+> Support for the **Oukitel EP2500** Balcony Solar Energy Storage system (Model `WXY001` and modular `EP2000` expansion packs) is currently available exclusively in an isolated **Alpha testing branch**.
+>
+> **⚠️ Hardware Testing Disclosure:**
+> - As the author and maintainer, **I do not physically own an Oukitel EP2500 unit**, which prevents me from conducting direct hardware laboratory testing or bench verification on real hardware.
+> - This implementation is a clean, native Home Assistant modular re-engineering of the local Tuya protocol 3.5 (TCP port 6668), designed to provide plug-and-play local integration and zero-export control **without requiring external Docker containers or MQTT bridges**.
+> - **Policy:** I will **NOT merge this branch into `main` or publish it in an official release** until community owners of the EP2500 thoroughly test it and confirm 100% stable, flawless, and safe operation.
+>
+> **📢 Call for EP2500 Beta Testers:**
+> If you own an Oukitel EP2500 and want native Home Assistant control (30+ sensors, MPPT strings 1–4, cell voltages, grid limits, and off-grid switches), your help is essential! Please test this branch and share your logs and feedback in the [GitHub Issues](https://github.com/VictorCV-DAM/ha-oukitel/issues) or on the [Home Assistant Community Forum](https://community.home-assistant.io/).
+>
+> **How to Test in HACS:**
+> 1. In Home Assistant, open **HACS ➔ Integrations ➔ Oukitel Power Station**.
+> 2. Click the three dots (top right) ➔ **Redownload**.
+> 3. Select the branch **`feature/ep2500-support`** and click **Download**.
+> 4. Restart Home Assistant.
+> 5. Go to **Settings ➔ Devices & Services ➔ Add Integration ➔ Oukitel Power Station** and choose **Balcony Energy Storage (EP2500 Series - Local Tuya)**.
 
 ---
 
