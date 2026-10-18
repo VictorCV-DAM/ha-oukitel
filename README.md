@@ -6,7 +6,7 @@
   [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1.0%20%E2%80%94%202026.9.4%2B-41BDF5.svg?logo=home-assistant)](https://www.home-assistant.io/)
   [![GitHub Release](https://img.shields.io/github/v/release/VictorCV-DAM/ha-oukitel)](https://github.com/VictorCV-DAM/ha-oukitel/releases)
   [![Total Downloads](https://img.shields.io/github/downloads/VictorCV-DAM/ha-oukitel/total.svg?color=brightgreen)](https://github.com/VictorCV-DAM/ha-oukitel/releases)
-  [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
+  [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
   [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-orange?logo=buy-me-a-coffee)](https://buymeacoffee.com/VictorCV)
   [![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?logo=paypal)](https://paypal.me/victorcava)
   [![Ko-fi](https://img.shields.io/badge/Ko--fi-Donate-red?logo=ko-fi)](https://ko-fi.com/victorcv)
@@ -45,10 +45,11 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 - **Author & Maintainer:** Víctor C. V. ([@VictorCV-DAM](https://github.com/VictorCV-DAM))
 - **Email:** `victorcvtrabajo@gmail.com`
 - **Copyright:** © 2024-2026 Víctor C. V. All rights reserved.
-- **License:** [Free for Personal Use — All Rights Reserved](LICENSE).
+- **License:** [GNU General Public License v3.0](LICENSE) (GPL-3.0).
+- **Commercial Licensing:** Inquiries for enterprise or proprietary integration: `victorcvtrabajo@gmail.com`.
 
 > [!NOTE]
-> **Free for Personal Use:** Any user is granted full, free permission to install, run, and use this integration without restrictions in their personal Home Assistant instance. Redistribution, modification, or commercial exploitation is strictly prohibited without prior written consent.
+> **Open Source & Dual Licensing:** This project is free and open-source software licensed under the GNU General Public License v3.0 (GPL-3.0). You are free to inspect, run, modify, and distribute it under the copyleft terms of the GPLv3. If you represent an entity seeking to embed or redistribute this software in closed-source or commercial products, contact the author for commercial licensing.
 
 ---
 
