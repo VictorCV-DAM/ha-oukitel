@@ -403,6 +403,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._static_metadata: dict[str, Any] = {}
         self._last_cloud_snapshot: float = 0.0
         self._use_struct_switch_protocol: bool | None = None
+        self._last_valid_battery: float | None = (
+            config_entry.data.get("last_battery_percentage") if config_entry else None
+        )
 
     def async_set_updated_data(self, data: dict[str, Any]) -> None:
         """Update coordinator data and refresh predictive autonomy tracker."""
@@ -791,6 +794,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 reconnect_delay = _LAN_RECONNECT_DELAY
                 reported_disconnect = False
                 _LOGGER.info("oukitel: LAN session re-established with %s!", target)
+                try:
+                    await self._lan_session.request_read()
+                except Exception:
+                    pass
             except (LocalSessionError, LocalAuthError) as exc:
                 _LOGGER.debug("oukitel: LAN reconnect attempt failed: %s", exc)
                 self._lan_session = None
@@ -831,16 +838,39 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         for tag, val in fields.items():
             if tag in tag_map:
                 key = tag_map[tag]
-                # Filter out transient 0% battery glitch from handshake frames if previous was > 5%
-                # Legitimate slow discharge down to 0% (<= 5.0%) is preserved and accepted
-                if key == "battery_percentage" and val == 0:
-                    prev_batt = current_data.get("battery_percentage")
-                    if prev_batt is not None and prev_batt > 5.0:
-                        _LOGGER.debug(
-                            "oukitel: Ignoring transient 0%% battery frame (previous valid was %s%%)",
-                            prev_batt,
-                        )
-                        continue
+                # Filter out transient 0% battery glitch from handshake frames
+                if key == "battery_percentage":
+                    try:
+                        val_float = float(val) if val is not None else 0.0
+                    except (ValueError, TypeError):
+                        val_float = 0.0
+
+                    if val_float <= 0:
+                        tot_in = float(current_data.get("total_input_power") or 0.0)
+                        ac_out = float(current_data.get("ac_output_power") or 0.0)
+                        if self._last_valid_battery is not None and self._last_valid_battery > 0:
+                            _LOGGER.debug(
+                                "oukitel: Preserving valid battery %s%% against 0%% transient frame",
+                                self._last_valid_battery,
+                            )
+                            val = self._last_valid_battery
+                        elif tot_in > 50.0 or ac_out > 0.0:
+                            _LOGGER.debug(
+                                "oukitel: Station is active (in=%sW, out=%sW) — rejecting 0%% battery frame",
+                                tot_in, ac_out,
+                            )
+                            continue
+                        else:
+                            val = 0.0
+                    else:
+                        self._last_valid_battery = val_float
+                        if (
+                            self.config_entry
+                            and self.config_entry.data.get("last_battery_percentage") != val_float
+                        ):
+                            new_data = dict(self.config_entry.data)
+                            new_data["last_battery_percentage"] = val_float
+                            self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
                 current_data[key] = val
                 if tag == 14:
                     current_data["inverter_temp"] = current_data.get("inverter_temp") or val
@@ -866,6 +896,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         _unpack_port_data(current_data)
         self._apply_user_overrides(current_data)
 
+        # Fall back to last known valid battery if not present in packet
+        if current_data.get("battery_percentage") is None and self._last_valid_battery is not None:
+            current_data["battery_percentage"] = self._last_valid_battery
+
         # Derive missing AC or DC input power if total_input_power is present
         tot_in = current_data.get("total_input_power")
         dc_in = current_data.get("dc_input")
@@ -877,6 +911,24 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 current_data["dc_input"] = max(0, tot_in - ac_in)
             elif ac_in is None and dc_in is None:
                 current_data["ac_input"] = tot_in
+
+        # Derive/calculate total output power if 0 or missing while port outputs are active
+        ac_out = float(current_data.get("ac_output_power") or 0.0)
+        dc_out = float(current_data.get("dc_output_power") or 0.0)
+        usb_out = (
+            float(current_data.get("usb_a_power") or 0.0)
+            + float(current_data.get("usb_c_qc_power") or 0.0)
+            + float(current_data.get("typec1_power") or 0.0)
+            + float(current_data.get("typec2_power") or 0.0)
+            + float(current_data.get("typec3_power") or 0.0)
+            + float(current_data.get("typec4_power") or 0.0)
+        )
+        calculated_out = ac_out + dc_out + usb_out
+        reported_out = float(current_data.get("total_output_power") or 0.0)
+        if reported_out == 0.0 and calculated_out > 0.0:
+            current_data["total_output_power"] = calculated_out
+        elif calculated_out > reported_out:
+            current_data["total_output_power"] = calculated_out
 
         if current_data.get("battery_percentage") is not None:
             self._lan_has_valid_telemetry = True
@@ -978,8 +1030,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 except Exception:
                     pass
 
-            for _ in range(100):
-                if self._lan_active and self._lan_state and self._lan_state.get("battery_percentage") is not None:
+            for _ in range(15):
+                if self._lan_active and self._lan_state:
                     data = await self._update_lan()
                     break
                 await asyncio.sleep(0.1)
@@ -1024,9 +1076,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
 
-        if not self._lan_state or "battery_percentage" not in self._lan_state:
-            for _ in range(50):
-                if self._lan_state and "battery_percentage" in self._lan_state:
+        if not self._lan_state:
+            for _ in range(10):
+                if self._lan_state:
                     break
                 await asyncio.sleep(0.1)
 
@@ -1047,13 +1099,13 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     data[k] = self.data[k]
         self._apply_user_overrides(data)
 
-        # Trigger background cloud shadow refresh in auto mode (only if HA is running and not offline)
+        # Trigger background cloud shadow refresh in auto mode (only if online with authenticated token)
         now = time.monotonic()
-        cloud_interval = _CLOUD_SNAPSHOT_INTERVAL if getattr(self.client, "access_token", None) else 300.0
         if (
             self.connection_mode == MODE_AUTO
             and self.hass.is_running
-            and (now - self._last_cloud_snapshot) >= cloud_interval
+            and getattr(self.client, "access_token", None)
+            and (now - self._last_cloud_snapshot) >= _CLOUD_SNAPSHOT_INTERVAL
         ):
             self.hass.async_create_task(self._async_refresh_cloud_shadow())
 

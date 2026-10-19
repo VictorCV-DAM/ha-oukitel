@@ -104,7 +104,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     cloud_connected = False
     try:
-        success = await hass.async_add_executor_job(client.login)
+        login_timeout = 4.0 if connection_mode != MODE_CLOUD else 10.0
+        success = await hass.async_add_executor_job(client.login, login_timeout)
         if success:
             cloud_connected = True
             await hass.async_add_executor_job(client.fetch_device_info)

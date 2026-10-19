@@ -519,10 +519,10 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             val = self.coordinator.data.get("inverter_temp")
             return val if val is not None else None
 
-        # 9. Battery default to 0 if not received
+        # 9. Battery default to None if not received
         if self._key == "battery_percentage":
             val = self.coordinator.data.get("battery_percentage")
-            return val if val is not None else 0
+            return val if val is not None else None
 
         # 10. WiFi signal default
         if self._key == "wifi_signal":
@@ -585,7 +585,7 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
     _attr_name = None
     _attr_icon = "mdi:lan-connect"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["LAN", "Cloud", "Paused"]
+    _attr_options = ["LAN", "Cloud", "Paused", "Reconnecting LAN", "Offline"]
 
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
@@ -602,14 +602,22 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
         if self.coordinator.is_paused:
             return "Paused"
         is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
-        return "LAN" if is_lan else "Cloud"
+        if is_lan:
+            return "LAN"
+        if getattr(self.coordinator.client, "access_token", None):
+            return "Cloud"
+        return "Reconnecting LAN" if getattr(self.coordinator, "connection_mode", "auto") != MODE_CLOUD else "Offline"
 
     @property
     def icon(self) -> str:
         if self.coordinator.is_paused:
             return "mdi:pause-circle-outline"
-        is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
-        return "mdi:lan-connect" if is_lan else "mdi:cloud-outline"
+        val = self.native_value
+        if val == "LAN":
+            return "mdi:lan-connect"
+        if val == "Cloud":
+            return "mdi:cloud-outline"
+        return "mdi:lan-disconnect"
 
     @property
     def extra_state_attributes(self) -> dict:

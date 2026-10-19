@@ -76,6 +76,7 @@ class LocalSession:
         self._keepalive_task: asyncio.Task | None = None
         self._iv: bytes | None = None
         self._packet_id = 1000
+        self._write_lock = asyncio.Lock()
 
     def _next_pid(self) -> int:
         self._packet_id += 1
@@ -137,15 +138,19 @@ class LocalSession:
         body = ttlv_encode([(tag, kind, value)])
         ciphertext = aes_encrypt(self._key, self._iv, body)
         frame = build_frame(self._next_pid(), _CMD_WRITE, ciphertext)
-        self._writer.write(frame)
-        await self._writer.drain()
+        async with self._write_lock:
+            if self._writer:
+                self._writer.write(frame)
+                await self._writer.drain()
 
     async def request_read(self) -> None:
         body = b"".join(struct.pack(">H", t) for t in self._read_tags)
         ciphertext = aes_encrypt(self._key, self._iv, body)
         frame = build_frame(self._next_pid(), _CMD_READ, ciphertext)
-        self._writer.write(frame)
-        await self._writer.drain()
+        async with self._write_lock:
+            if self._writer:
+                self._writer.write(frame)
+                await self._writer.drain()
 
     # ------------------------------------------------------------------
     # Internal
@@ -153,8 +158,11 @@ class LocalSession:
 
     async def _send_raw(self, cmd: int, payload: bytes = b"") -> None:
         pid = self._next_pid()
-        self._writer.write(build_frame(pid, cmd, payload))
-        await self._writer.drain()
+        frame = build_frame(pid, cmd, payload)
+        async with self._write_lock:
+            if self._writer:
+                self._writer.write(frame)
+                await self._writer.drain()
 
     async def _recv_cmd(self, expected_cmd: int, timeout: float = 10.0) -> bytes:
         deadline = asyncio.get_event_loop().time() + timeout
@@ -212,8 +220,10 @@ class LocalSession:
         # 1. Mode high-frequency LAN (cmd 19)
         body = ttlv_encode([(_TAG_REPORT_MODE, "num", _REPORT_MODE_LAN)])
         ciphertext = aes_encrypt(self._key, self._iv, body)
-        self._writer.write(build_frame(self._next_pid(), _CMD_WRITE, ciphertext))
-        await self._writer.drain()
+        async with self._write_lock:
+            if self._writer:
+                self._writer.write(build_frame(self._next_pid(), _CMD_WRITE, ciphertext))
+                await self._writer.drain()
 
         # 2. Snapshot read all tags (cmd 17)
         await self.request_read()
@@ -221,8 +231,10 @@ class LocalSession:
         # 3. Heartbeat (cmd 28729)
         hb_body = ttlv_encode([(1, "num", 30), (2, "num", 1)])
         hb_cipher = aes_encrypt(self._key, self._iv, hb_body)
-        self._writer.write(build_frame(self._next_pid(), _CMD_KEEPALIVE, hb_cipher))
-        await self._writer.drain()
+        async with self._write_lock:
+            if self._writer:
+                self._writer.write(build_frame(self._next_pid(), _CMD_KEEPALIVE, hb_cipher))
+                await self._writer.drain()
         _LOGGER.debug("oukitel: LAN subscription and heartbeat armed")
 
     async def resubscribe(self) -> None:
@@ -242,15 +254,16 @@ class LocalSession:
                 failures += 1
                 _LOGGER.info("oukitel: LAN keepalive tick failed (%s/3): %s", failures, exc)
                 if failures >= 3:
-                    _LOGGER.warning("oukitel: LAN keepalive failed 3 consecutive times, aborting keepalive loop")
+                    _LOGGER.warning("oukitel: LAN keepalive failed 3 consecutive times, closing dead session")
+                    try:
+                        await self.close()
+                    except Exception:
+                        pass
                     break
 
     async def _handle(self, cmd: int, payload: bytes) -> None:
         if cmd == _CMD_PING:
             await self._send_raw(_CMD_PONG)
-            return
-        if cmd == _CMD_KEEPALIVE:
-            await self._send_raw(_CMD_KEEPALIVE)
             return
         if cmd in (_CMD_TELEMETRY, _CMD_READ, _CMD_WRITE):
             try:

@@ -73,8 +73,8 @@ class AcceleronixCloudClient:
         raw = email + pwd_b64 + random_str + self.user_domain_secret
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-    def login(self) -> bool:
-        """Authenticate with Acceleronix / Quectel Cloud."""
+    def login(self, timeout: float = 10.0) -> bool:
+        """Authenticate with Oukitel / Acceleronix Cloud API and obtain tokens."""
         chars = string.ascii_letters + string.digits
         random_str = "".join(random.choice(chars) for _ in range(16))
 
@@ -98,7 +98,7 @@ class AcceleronixCloudClient:
         }
 
         try:
-            r = requests.post(url, headers=headers, data=payload, timeout=15)
+            r = requests.post(url, headers=headers, data=payload, timeout=timeout)
             res = r.json()
             if res.get("code") == 200:
                 data = res["data"]
