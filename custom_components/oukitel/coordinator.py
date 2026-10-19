@@ -701,28 +701,20 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 new_data[CONF_AUTH_KEY] = auth_key
                 self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
 
-            # Seed initial state and static diagnostics (temp, BMS_Version, AC_Version, etc.) from Cloud shadow
+            # Seed only static metadata (BMS_Version, AC_Version, etc.) from Cloud shadow — never pollute LAN state with stale dynamic metrics
             if getattr(self.client, "access_token", None):
                 try:
                     cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
                     if cloud_snapshot:
-                        for k, val in cloud_snapshot.items():
-                            if val is not None:
-                                self._lan_state[k] = val
                         for k in STATIC_METADATA_KEYS:
                             val = cloud_snapshot.get(k)
                             if val is not None:
                                 self._static_metadata[k] = val
-                                self._lan_state[k] = val
-                        if "temp" in cloud_snapshot and "inverter_temp" not in self._static_metadata:
-                            self._static_metadata["inverter_temp"] = cloud_snapshot["temp"]
-                            self._lan_state["inverter_temp"] = cloud_snapshot["temp"]
-                        _unpack_port_data(self._lan_state)
                         self._last_cloud_snapshot = time.monotonic()
                 except Exception as exc:
-                    _LOGGER.debug("oukitel: Could not seed initial telemetry from cloud: %s", exc)
+                    _LOGGER.debug("oukitel: Could not seed static metadata from cloud: %s", exc)
 
-            _LOGGER.info("oukitel: Device found at %s — starting LAN session", host)
+            _LOGGER.info("oukitel: Target device host %s — initiating LAN session", host)
             await self._start_lan_session(host, auth_key)
         finally:
             self._lan_setup_in_flight = False
@@ -751,15 +743,43 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     await asyncio.sleep(2.0)
 
         if last_exc:
+            # Fallback: if configured host failed, perform UDP broadcast scan to discover IP change
+            discovered = None
+            try:
+                _LOGGER.info("oukitel: Host %s unreachable — scanning LAN via UDP broadcast for %s...", host, self.client.device_key)
+                discovered = await find_device_on_lan(self.client.device_key or "")
+            except Exception as scan_exc:
+                _LOGGER.debug("oukitel: Fallback UDP scan failed: %s", scan_exc)
+
+            if discovered and discovered != host:
+                _LOGGER.info("oukitel: Device discovered at new IP %s (was %s) — connecting...", discovered, host)
+                host = discovered
+                self.lan_host = discovered
+                session = LocalSession(
+                    host=host,
+                    auth_key_b64=auth_key,
+                    on_telemetry=self._on_lan_telemetry,
+                )
+                self._lan_session = session
+                try:
+                    await session.connect()
+                    last_exc = None
+                except (LocalSessionError, LocalAuthError) as exc:
+                    last_exc = exc
+
+        if last_exc:
             if self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
                 _LOGGER.error(
-                    "oukitel: LAN session failed to connect to %s: %s (Offline/LAN mode — scheduling reconnect)",
+                    "oukitel: LAN session failed to connect to %s: %s (Offline/LAN mode — scheduling persistent reconnect)",
                     host, last_exc,
                 )
             else:
-                _LOGGER.warning("oukitel: LAN session failed to start: %s — using cloud", last_exc)
+                _LOGGER.warning("oukitel: LAN session failed to start on %s: %s — scheduling persistent reconnect and using cloud", host, last_exc)
             if self._lan_session is session:
                 self._lan_session = None
+            # Launch background reconnect loop so it recovers automatically as soon as the station is ready
+            if self._lan_listen_task is None or self._lan_listen_task.done():
+                self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
             return
 
         self._lan_active = True
@@ -777,20 +797,22 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
     async def _lan_read_loop(self, host: str, auth_key: str) -> None:
         reconnect_delay = _LAN_RECONNECT_DELAY
         reported_disconnect = False
+        target = host
         while True:
             if self._paused:
                 _LOGGER.debug("oukitel: LAN read loop stopped because integration is paused")
                 break
-            try:
-                await self._lan_session.read_loop()
-            except Exception as exc:
-                _LOGGER.debug("oukitel: LAN read loop ended: %s", exc)
+            if self._lan_session and self._lan_active:
+                try:
+                    await self._lan_session.read_loop()
+                except Exception as exc:
+                    _LOGGER.debug("oukitel: LAN read loop ended: %s", exc)
 
-            if self._lan_session:
-                await self._lan_session.close()
-                self._lan_session = None
+                if self._lan_session:
+                    await self._lan_session.close()
+                    self._lan_session = None
 
-            self._lan_active = False
+                self._lan_active = False
 
             if self._paused:
                 break
@@ -809,32 +831,37 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             if self._paused:
                 break
 
-            # Re-scan or retry static host
-            if self.lan_host:
-                target = self.lan_host
-            else:
-                host_new = await find_device_on_lan(self.client.device_key or "")
-                target = host_new or host
-            self._lan_session = LocalSession(
+            # Try connecting to current target host
+            session = LocalSession(
                 host=target,
                 auth_key_b64=auth_key,
                 on_telemetry=self._on_lan_telemetry,
             )
+            self._lan_session = session
             try:
-                await self._lan_session.connect()
+                await session.connect()
                 self._lan_active = True
                 self._lan_connected_at = time.monotonic()
                 reconnect_delay = _LAN_RECONNECT_DELAY
                 reported_disconnect = False
                 _LOGGER.info("oukitel: LAN session re-established with %s!", target)
                 try:
-                    await self._lan_session.request_read()
+                    await session.request_read()
                 except Exception:
                     pass
             except (LocalSessionError, LocalAuthError) as exc:
-                _LOGGER.debug("oukitel: LAN reconnect attempt failed: %s", exc)
+                _LOGGER.debug("oukitel: LAN reconnect to %s failed: %s", target, exc)
                 self._lan_session = None
                 self._lan_active = False
+                # If target failed, scan LAN via UDP to see if IP changed on router
+                try:
+                    discovered = await find_device_on_lan(self.client.device_key or "")
+                    if discovered and discovered != target:
+                        _LOGGER.info("oukitel: Discovered station at new IP %s — updating target", discovered)
+                        target = discovered
+                        self.lan_host = discovered
+                except Exception:
+                    pass
                 reconnect_delay = min(reconnect_delay * 1.5, 30.0)
                 continue
 
