@@ -98,7 +98,10 @@ def _build_calculated_device_info(coordinator: OukitelDataCoordinator, client) -
     if coordinator.hass:
         try:
             device_registry = dr.async_get(coordinator.hass)
-            parent_device = device_registry.async_get_device(identifiers={(DOMAIN, client.device_key)})
+            if hasattr(device_registry, "async_get_device_by_identifier"):
+                parent_device = device_registry.async_get_device_by_identifier((DOMAIN, client.device_key))
+            else:
+                parent_device = device_registry.async_get_device(identifiers={(DOMAIN, client.device_key)})
             if parent_device:
                 parent_id = parent_device.id
         except Exception:

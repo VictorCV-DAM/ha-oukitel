@@ -1024,9 +1024,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
 
-        if not self._lan_state:
-            for _ in range(40):
-                if self._lan_state:
+        if not self._lan_state or "battery_percentage" not in self._lan_state:
+            for _ in range(50):
+                if self._lan_state and "battery_percentage" in self._lan_state:
                     break
                 await asyncio.sleep(0.1)
 
