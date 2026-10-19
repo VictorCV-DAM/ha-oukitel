@@ -205,6 +205,15 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     coordinator: OukitelDataCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    if coordinator._last_valid_battery is not None:
+        try:
+            batt_int = int(round(coordinator._last_valid_battery))
+            if entry.data.get("last_battery_percentage") != batt_int:
+                new_data = dict(entry.data)
+                new_data["last_battery_percentage"] = batt_int
+                hass.config_entries.async_update_entry(entry, data=new_data)
+        except Exception:
+            pass
     await coordinator.async_shutdown_lan()
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

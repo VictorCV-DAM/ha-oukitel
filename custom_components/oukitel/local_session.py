@@ -242,24 +242,16 @@ class LocalSession:
         await self._subscribe()
 
     async def _keepalive_loop(self) -> None:
-        failures = 0
         while True:
             try:
                 await asyncio.sleep(_KEEPALIVE_INTERVAL)
+                if not self._writer or self._writer.is_closing():
+                    break
                 await self._subscribe()
-                failures = 0
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                failures += 1
-                _LOGGER.info("oukitel: LAN keepalive tick failed (%s/3): %s", failures, exc)
-                if failures >= 3:
-                    _LOGGER.warning("oukitel: LAN keepalive failed 3 consecutive times, closing dead session")
-                    try:
-                        await self.close()
-                    except Exception:
-                        pass
-                    break
+                _LOGGER.debug("oukitel: LAN keepalive tick notice: %s", exc)
 
     async def _handle(self, cmd: int, payload: bytes) -> None:
         if cmd == _CMD_PING:

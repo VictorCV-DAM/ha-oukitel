@@ -413,7 +413,10 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                     val = int(((batt / 100.0) * cap_wh / abs(net_power)) * 60)
                 elif net_power > 5.0 and batt < 100:
                     val = int((((100.0 - batt) / 100.0) * cap_wh / net_power) * 60)
-            return val
+            try:
+                return int(round(float(val)))
+            except (ValueError, TypeError):
+                return val
 
         # 2. Remaining Discharge Time: Autonomy remaining while draining battery
         if self._key == "remain_time":
@@ -428,7 +431,10 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                 if batt > 0 and abs(net_power) > 5.0:
                     cap_wh = get_battery_capacity_wh(self.client)
                     val = int(((batt / 100.0) * cap_wh / abs(net_power)) * 60)
-            return val
+            try:
+                return int(round(float(val)))
+            except (ValueError, TypeError):
+                return val
 
         # 3. Remaining Charge Time: Estimated time to reach 100% full
         if self._key == "remain_charging_time":
@@ -450,7 +456,10 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                     cap_wh = get_battery_capacity_wh(self.client)
                     needed_wh = ((100.0 - batt_pct) / 100.0) * cap_wh
                     val = int((needed_wh / net_power) * 60)
-            return val
+            try:
+                return int(round(float(val)))
+            except (ValueError, TypeError):
+                return val
 
         # 4. AC Output Voltage: 230V (or configured ACvoltage_Switchover) when AC output/switch active, 0V when off
         if self._key == "ac_output_voltage":
@@ -460,7 +469,10 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                 return 0
             val = self.coordinator.data.get("ac_output_voltage")
             if val is not None and val > 0:
-                return val
+                try:
+                    return int(round(float(val)))
+                except (ValueError, TypeError):
+                    return val
             v_enum = self.coordinator.data.get("ACvoltage_Switchover")
             enum_map = {0: 100, 1: 110, 2: 120, 3: 220, 4: 230}
             return enum_map.get(v_enum, 230)
@@ -469,17 +481,20 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         if self._key == "dc_output_voltage":
             val = self.coordinator.data.get("dc_output_voltage")
             if val is not None and val > 0:
-                return val
+                try:
+                    return int(round(float(val)))
+                except (ValueError, TypeError):
+                    return val
             dc_p = float(self.coordinator.data.get("dc_output_power") or 0)
             dc_sw = bool(self.coordinator.data.get("dc_switch", False))
             if dc_p > 0 or dc_sw:
-                return 12.0
-            return 0.0
+                return 12
+            return 0
 
         if self._key == "dc_output_current":
             val = self.coordinator.data.get("dc_output_current")
             if val is not None and val > 0:
-                return val
+                return round(float(val), 2)
             dc_p = float(self.coordinator.data.get("dc_output_power") or 0)
             if dc_p > 0:
                 return round(dc_p / 12.0, 2)
@@ -488,10 +503,14 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         # 6. Inverter Temperature: fallback to unit temperature (temp) if tag 33 is absent
         if self._key == "inverter_temp":
             val = self.coordinator.data.get("inverter_temp")
-            if val is not None and val > 0:
-                return val
-            val = self.coordinator.data.get("temp")
-            return val if val is not None else None
+            if val is None or val <= 0:
+                val = self.coordinator.data.get("temp")
+            if val is not None:
+                try:
+                    return int(round(float(val)))
+                except (ValueError, TypeError):
+                    return val
+            return None
 
         # 7. Individual port outputs and power metrics default to 0 if None/inactive (prevents "Unknown" states)
         if self._key in (
@@ -509,25 +528,44 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             "dc_input",
         ):
             val = self.coordinator.data.get(self._key)
-            return val if val is not None else 0
+            if val is not None:
+                try:
+                    return int(round(float(val)))
+                except (ValueError, TypeError):
+                    return val
+            return 0
 
         # 8. Temperature: return unit temperature, fallback to inverter_temp
         if self._key == "temp":
             val = self.coordinator.data.get("temp")
+            if val is None:
+                val = self.coordinator.data.get("inverter_temp")
             if val is not None:
-                return val
-            val = self.coordinator.data.get("inverter_temp")
-            return val if val is not None else None
+                try:
+                    return int(round(float(val)))
+                except (ValueError, TypeError):
+                    return val
+            return None
 
         # 9. Battery default to None if not received
         if self._key == "battery_percentage":
             val = self.coordinator.data.get("battery_percentage")
-            return val if val is not None else None
+            if val is not None:
+                try:
+                    return int(round(float(val)))
+                except (ValueError, TypeError):
+                    return val
+            return None
 
         # 10. WiFi signal default
         if self._key == "wifi_signal":
             val = self.coordinator.data.get("wifi_signal")
-            return val
+            if val is not None:
+                try:
+                    return int(round(float(val)))
+                except (ValueError, TypeError):
+                    return val
+            return None
 
         # 11. Version string formatting (e.g. 215, 106)
         if self._key in ("BMS_Version", "AC_Version"):

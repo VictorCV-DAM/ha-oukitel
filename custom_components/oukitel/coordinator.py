@@ -85,9 +85,15 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
                 p = 0
         v = ac_val.get(3) if 3 in ac_val else ac_val.get("3")
         if p is not None:
-            target["ac_output_power"] = p
+            try:
+                target["ac_output_power"] = int(round(float(p)))
+            except (ValueError, TypeError):
+                target["ac_output_power"] = p
         if v is not None:
-            target["ac_output_voltage"] = v
+            try:
+                target["ac_output_voltage"] = int(round(float(v)))
+            except (ValueError, TypeError):
+                target["ac_output_voltage"] = v
 
     # 2. USB Info: 1=usb_switch, 2=USB-A power (W), 3=USB-C QC power (W)
     usb_val = _parse_dict(target.get(7) or target.get("7") or target.get("USB_Info") or target.get("usb_data"))
@@ -108,9 +114,15 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
             except (ValueError, TypeError):
                 pass
         if usb_a is not None:
-            target["usb_a_power"] = usb_a
+            try:
+                target["usb_a_power"] = int(round(float(usb_a)))
+            except (ValueError, TypeError):
+                target["usb_a_power"] = usb_a
         if usb_c is not None:
-            target["usb_c_qc_power"] = usb_c
+            try:
+                target["usb_c_qc_power"] = int(round(float(usb_c)))
+            except (ValueError, TypeError):
+                target["usb_c_qc_power"] = usb_c
 
     # 3. Type-C Info: 2=Type-C 1 (W), 5=Type-C 2 (W), 6=Type-C 3 (W), 7=Type-C 4 (W)
     typec_val = _parse_dict(target.get(8) or target.get("8") or target.get("TypeC_Info") or target.get("typec_data"))
@@ -139,14 +151,12 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
                 c4 = float(typec_val["Typec4_output"])
             except (ValueError, TypeError):
                 pass
-        if c1 is not None:
-            target["typec1_power"] = c1
-        if c2 is not None:
-            target["typec2_power"] = c2
-        if c3 is not None:
-            target["typec3_power"] = c3
-        if c4 is not None:
-            target["typec4_power"] = c4
+        for c_idx, c_val in ((1, c1), (2, c2), (3, c3), (4, c4)):
+            if c_val is not None:
+                try:
+                    target[f"typec{c_idx}_power"] = int(round(float(c_val)))
+                except (ValueError, TypeError):
+                    target[f"typec{c_idx}_power"] = c_val
 
     # 4. DC Info: 1=dc_switch, 2=DC Car output power (W), 3=voltage (V), 4=current (A)
     dc_val = _parse_dict(target.get(9) or target.get("9") or target.get("DC_Info") or target.get("dc_data"))
@@ -163,11 +173,20 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
         dc_v = dc_val.get(3) if 3 in dc_val else dc_val.get("3")
         dc_a = dc_val.get(4) if 4 in dc_val else dc_val.get("4")
         if dc_p is not None:
-            target["dc_output_power"] = dc_p
+            try:
+                target["dc_output_power"] = int(round(float(dc_p)))
+            except (ValueError, TypeError):
+                target["dc_output_power"] = dc_p
         if dc_v is not None:
-            target["dc_output_voltage"] = dc_v
+            try:
+                target["dc_output_voltage"] = int(round(float(dc_v)))
+            except (ValueError, TypeError):
+                target["dc_output_voltage"] = dc_v
         if dc_a is not None:
-            target["dc_output_current"] = dc_a
+            try:
+                target["dc_output_current"] = round(float(dc_a), 2)
+            except (ValueError, TypeError):
+                target["dc_output_current"] = dc_a
 
     # 5. Direct switch tags (LAN TTLV 43=ac_switch, 44=usb_switch, 46=dc_switch)
     for sw_k, sw_tag in (("ac_switch", 43), ("usb_switch", 44), ("dc_switch", 46)):
@@ -853,7 +872,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                                 "oukitel: Preserving valid battery %s%% against 0%% transient frame",
                                 self._last_valid_battery,
                             )
-                            val = self._last_valid_battery
+                            val = int(round(self._last_valid_battery))
                         elif tot_in > 50.0 or ac_out > 0.0:
                             _LOGGER.debug(
                                 "oukitel: Station is active (in=%sW, out=%sW) — rejecting 0%% battery frame",
@@ -861,16 +880,29 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         else:
-                            val = 0.0
+                            val = 0
                     else:
-                        self._last_valid_battery = val_float
-                        if (
-                            self.config_entry
-                            and self.config_entry.data.get("last_battery_percentage") != val_float
-                        ):
-                            new_data = dict(self.config_entry.data)
-                            new_data["last_battery_percentage"] = val_float
-                            self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+                        batt_int = int(round(val_float))
+                        self._last_valid_battery = batt_int
+                        val = batt_int
+
+                # Convert integer sensor values cleanly
+                elif key in (
+                    "total_input_power",
+                    "total_output_power",
+                    "ac_input",
+                    "dc_input",
+                    "ac_charging_limit",
+                    "remain_time",
+                    "remain_charging_time",
+                    "temp",
+                    "inverter_temp",
+                ):
+                    try:
+                        val = int(round(float(val)))
+                    except (ValueError, TypeError):
+                        pass
+
                 current_data[key] = val
                 if tag == 14:
                     current_data["inverter_temp"] = current_data.get("inverter_temp") or val
@@ -883,7 +915,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 elif key in STATIC_METADATA_KEYS:
                     self._static_metadata[key] = val
             if tag == 2:
-                current_data["remaining_time"] = val
+                try:
+                    current_data["remaining_time"] = int(round(float(val)))
+                except (ValueError, TypeError):
+                    current_data["remaining_time"] = val
             current_data[str(tag)] = val
             if tag in (6, 7, 8, 9, 43, 44, 46):
                 current_data[tag] = val
@@ -898,37 +933,61 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         # Fall back to last known valid battery if not present in packet
         if current_data.get("battery_percentage") is None and self._last_valid_battery is not None:
-            current_data["battery_percentage"] = self._last_valid_battery
+            current_data["battery_percentage"] = int(round(self._last_valid_battery))
 
         # Derive missing AC or DC input power if total_input_power is present
         tot_in = current_data.get("total_input_power")
         dc_in = current_data.get("dc_input")
         ac_in = current_data.get("ac_input")
         if tot_in is not None:
+            tot_in_int = int(round(float(tot_in)))
+            current_data["total_input_power"] = tot_in_int
             if ac_in is None and dc_in is not None:
-                current_data["ac_input"] = max(0, tot_in - dc_in)
+                current_data["ac_input"] = max(0, tot_in_int - int(round(float(dc_in))))
             elif dc_in is None and ac_in is not None:
-                current_data["dc_input"] = max(0, tot_in - ac_in)
+                current_data["dc_input"] = max(0, tot_in_int - int(round(float(ac_in))))
             elif ac_in is None and dc_in is None:
-                current_data["ac_input"] = tot_in
+                current_data["ac_input"] = tot_in_int
+            if current_data.get("ac_input") is not None:
+                current_data["ac_input"] = int(round(float(current_data["ac_input"])))
+            if current_data.get("dc_input") is not None:
+                current_data["dc_input"] = int(round(float(current_data["dc_input"])))
 
-        # Derive/calculate total output power if 0 or missing while port outputs are active
-        ac_out = float(current_data.get("ac_output_power") or 0.0)
-        dc_out = float(current_data.get("dc_output_power") or 0.0)
+        # Zero out individual port outputs if corresponding switch is OFF
+        if not current_data.get("ac_switch", True):
+            current_data["ac_output_power"] = 0
+            current_data["ac_output_voltage"] = 0
+        if not current_data.get("dc_switch", True):
+            current_data["dc_output_power"] = 0
+            current_data["dc_output_current"] = 0.0
+            current_data["dc_output_voltage"] = 0
+        if not current_data.get("usb_switch", True):
+            current_data["usb_a_power"] = 0
+            current_data["usb_c_qc_power"] = 0
+            current_data["typec1_power"] = 0
+            current_data["typec2_power"] = 0
+            current_data["typec3_power"] = 0
+            current_data["typec4_power"] = 0
+
+        # Calculate total output power from port outputs if tag 5 is missing/0 but ports are active
+        ac_out = int(round(float(current_data.get("ac_output_power") or 0)))
+        dc_out = int(round(float(current_data.get("dc_output_power") or 0)))
         usb_out = (
-            float(current_data.get("usb_a_power") or 0.0)
-            + float(current_data.get("usb_c_qc_power") or 0.0)
-            + float(current_data.get("typec1_power") or 0.0)
-            + float(current_data.get("typec2_power") or 0.0)
-            + float(current_data.get("typec3_power") or 0.0)
-            + float(current_data.get("typec4_power") or 0.0)
+            int(round(float(current_data.get("usb_a_power") or 0)))
+            + int(round(float(current_data.get("usb_c_qc_power") or 0)))
+            + int(round(float(current_data.get("typec1_power") or 0)))
+            + int(round(float(current_data.get("typec2_power") or 0)))
+            + int(round(float(current_data.get("typec3_power") or 0)))
+            + int(round(float(current_data.get("typec4_power") or 0)))
         )
         calculated_out = ac_out + dc_out + usb_out
-        reported_out = float(current_data.get("total_output_power") or 0.0)
-        if reported_out == 0.0 and calculated_out > 0.0:
+        reported_out = int(round(float(current_data.get("total_output_power") or 0)))
+
+        # Only use calculated_out if reported_out is 0 and calculated_out > 0 (prevents stale sticky lock)
+        if reported_out == 0 and calculated_out > 0:
             current_data["total_output_power"] = calculated_out
-        elif calculated_out > reported_out:
-            current_data["total_output_power"] = calculated_out
+        else:
+            current_data["total_output_power"] = reported_out
 
         if current_data.get("battery_percentage") is not None:
             self._lan_has_valid_telemetry = True
@@ -1048,7 +1107,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         "connection_mode": "LAN",
                     }
                     if self._last_valid_battery is not None:
-                        init_data["battery_percentage"] = self._last_valid_battery
+                        init_data["battery_percentage"] = int(round(self._last_valid_battery))
                     for k, v in self._static_metadata.items():
                         init_data[k] = v
                     data = init_data
@@ -1079,7 +1138,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         if self._lan_session:
             try:
+                prev_report = self._lan_last_report
                 await self._lan_session.request_read()
+                for _ in range(8):
+                    await asyncio.sleep(0.05)
+                    if self._lan_last_report != prev_report:
+                        break
             except Exception:
                 pass
 
@@ -1099,7 +1163,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 "connection_mode": "LAN",
             }
             if self._last_valid_battery is not None:
-                init_data["battery_percentage"] = self._last_valid_battery
+                init_data["battery_percentage"] = int(round(self._last_valid_battery))
             for k, v in self._static_metadata.items():
                 init_data[k] = v
             return init_data
