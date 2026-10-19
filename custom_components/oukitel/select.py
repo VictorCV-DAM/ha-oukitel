@@ -119,9 +119,9 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
                 except Exception as exc:
                     _LOGGER.warning("oukitel: LAN frequency write failed: %s", exc)
 
-            # 3. Send command to cloud formatted as TSL string only if not LAN-only
+            # 3. Send command to cloud formatted as TSL string only if not LAN-only and authenticated
             cloud_ok = False
-            if self.coordinator.connection_mode != MODE_LAN:
+            if self.coordinator.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
                 cloud_ok = await self.hass.async_add_executor_job(
                     self.client.control_device, [{self._key: str(cloud_val)}]
                 )
@@ -221,9 +221,9 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
                 except Exception as exc:
                     _LOGGER.warning("oukitel: LAN voltage write failed: %s", exc)
 
-            # 3. Send command to cloud formatted as TSL string only if not LAN-only
+            # 3. Send command to cloud formatted as TSL string only if not LAN-only and authenticated
             cloud_ok = False
-            if self.coordinator.connection_mode != MODE_LAN:
+            if self.coordinator.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
                 cloud_ok = await self.hass.async_add_executor_job(
                     self.client.control_device, [{self._key: str(clean_num)}]
                 )

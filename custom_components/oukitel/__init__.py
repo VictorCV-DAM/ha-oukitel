@@ -6,9 +6,11 @@ import os
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 
 from .api import AcceleronixCloudClient
 from .const import (
+    CONF_AUTH_KEY,
     CONF_CONNECTION_MODE,
     CONF_EMAIL,
     CONF_HOST,
@@ -99,16 +101,60 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         region=region,
         device_key=device_key,
     )
-    success = await hass.async_add_executor_job(client.login)
-    if not success:
-        _LOGGER.error("oukitel: Failed to login to Oukitel cloud")
-        return False
 
-    await hass.async_add_executor_job(client.fetch_device_info)
-    _LOGGER.debug(
-        "oukitel: Fetched device info for %s (%s). authKey present: %s",
-        client.device_name, client.device_key, bool(client.auth_key),
-    )
+    cloud_connected = False
+    try:
+        success = await hass.async_add_executor_job(client.login)
+        if success:
+            cloud_connected = True
+            await hass.async_add_executor_job(client.fetch_device_info)
+            _LOGGER.debug(
+                "oukitel: Fetched device info for %s (%s). authKey present: %s",
+                client.device_name, client.device_key, bool(client.auth_key),
+            )
+
+            # Persist credentials and metadata to config entry data for offline restarts
+            new_data = dict(entry.data)
+            updated = False
+            for k, val in (
+                (CONF_AUTH_KEY, client.auth_key),
+                ("product_key", client.product_key),
+                ("device_name", client.device_name),
+                ("product_name", client.product_name),
+                ("device_key", client.device_key),
+            ):
+                if val and new_data.get(k) != val:
+                    new_data[k] = val
+                    updated = True
+            if updated:
+                hass.config_entries.async_update_entry(entry, data=new_data)
+                _LOGGER.debug("oukitel: Persisted device credentials to config entry data")
+        else:
+            _LOGGER.warning("oukitel: Failed to login to Oukitel cloud (unsuccessful credentials or response)")
+    except Exception as exc:
+        _LOGGER.warning("oukitel: Exception connecting to Oukitel cloud (network/DNS/timeout): %s", exc)
+
+    if not cloud_connected:
+        cached_auth_key = entry.options.get(CONF_AUTH_KEY) or entry.data.get(CONF_AUTH_KEY)
+        if connection_mode == MODE_CLOUD:
+            raise ConfigEntryNotReady(
+                "Oukitel cloud unreachable and integration is configured for Cloud Only mode. Retrying automatically..."
+            )
+        if not cached_auth_key:
+            raise ConfigEntryNotReady(
+                "Oukitel cloud unreachable and no cached LAN authKey found in configuration. Retrying automatically..."
+            )
+
+        _LOGGER.info(
+            "oukitel: Cloud unreachable during startup — starting in offline LAN mode using persisted credentials for %s",
+            entry.data.get("device_name", "Oukitel Station"),
+        )
+        client.auth_key = cached_auth_key
+        client.product_key = entry.data.get("product_key")
+        client.device_name = entry.data.get("device_name", "Oukitel Power Station")
+        client.product_name = entry.data.get("product_name", entry.data.get("device_name", "Oukitel Power Station"))
+        client.device_key = entry.data.get("device_key") or device_key
+        client.is_online = True
 
     coordinator = OukitelDataCoordinator(
         hass,
@@ -116,19 +162,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         poll_interval=poll_interval,
         connection_mode=connection_mode,
         host=host,
+        config_entry=entry,
     )
     
-    # Attempt LAN mode in the background immediately if not forced to Cloud
+    # Setup LAN mode if not forced to Cloud
     if connection_mode != MODE_CLOUD:
-        _LOGGER.debug("oukitel: Creating background task for LAN setup")
-        hass.async_create_task(coordinator.async_setup_lan())
+        if not cloud_connected:
+            _LOGGER.info("oukitel: Offline boot — establishing LAN session before first coordinator refresh...")
+            await coordinator.async_setup_lan()
+            if not coordinator._lan_active:
+                raise ConfigEntryNotReady(
+                    f"Oukitel station '{host or 'auto-discovery'}' unreachable on LAN and cloud is offline. Retrying automatically..."
+                )
+        else:
+            _LOGGER.debug("oukitel: Creating background task for LAN setup")
+            hass.async_create_task(coordinator.async_setup_lan())
 
-    _LOGGER.debug("oukitel: Awaiting first cloud refresh")
+    _LOGGER.debug("oukitel: Awaiting initial coordinator refresh")
     try:
         await coordinator.async_config_entry_first_refresh()
     except Exception as err:
         _LOGGER.error("oukitel: First refresh failed (%s): %s", type(err).__name__, err)
-        raise
+        raise ConfigEntryNotReady(f"Initial coordinator refresh failed ({type(err).__name__}): {err}") from err
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 

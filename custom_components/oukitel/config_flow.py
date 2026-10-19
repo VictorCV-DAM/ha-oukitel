@@ -21,6 +21,7 @@ from homeassistant.helpers.selector import (
 
 from .api import AcceleronixCloudClient
 from .const import (
+    CONF_AUTH_KEY,
     CONF_CONNECTION_MODE,
     CONF_CURRENCY,
     CONF_EMAIL,
@@ -164,6 +165,10 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         entry_data["device_key"] = dev["deviceKey"]
         entry_data["product_key"] = dev.get("productKey")
         entry_data["device_name"] = dev.get("deviceName", "Oukitel P2001")
+        if dev.get("productName"):
+            entry_data["product_name"] = dev["productName"]
+        if dev.get("authKey"):
+            entry_data[CONF_AUTH_KEY] = dev["authKey"]
 
         title = f"{dev.get('deviceName', 'Oukitel')} ({dev['deviceKey'][-4:]})"
         return self.async_create_entry(
@@ -197,6 +202,10 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
         current_host = self._config_entry.options.get(
             CONF_HOST,
             self._config_entry.data.get(CONF_HOST, "")
+        )
+        current_auth_key = self._config_entry.options.get(
+            CONF_AUTH_KEY,
+            self._config_entry.data.get(CONF_AUTH_KEY, "")
         )
         current_interval = self._config_entry.options.get(
             CONF_POLL_INTERVAL,
@@ -249,6 +258,11 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                 ): TextSelector(
                     TextSelectorConfig(type=TextSelectorType.TEXT)
                 ),
+                vol.Optional(
+                    CONF_AUTH_KEY,
+                ): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
                 vol.Required(
                     CONF_POLL_INTERVAL,
                     default=current_interval,
@@ -286,6 +300,8 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
         suggested_values = {}
         if current_host:
             suggested_values[CONF_HOST] = current_host
+        if current_auth_key:
+            suggested_values[CONF_AUTH_KEY] = current_auth_key
         if current_price_sensor:
             suggested_values[CONF_PRICE_SENSOR] = current_price_sensor
 

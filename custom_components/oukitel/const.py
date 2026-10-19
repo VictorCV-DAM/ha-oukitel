@@ -9,6 +9,7 @@ CONF_PASSWORD = "password"
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_CONNECTION_MODE = "connection_mode"
 CONF_HOST = "host"
+CONF_AUTH_KEY = "auth_key"
 CONF_PRICE_SENSOR = "price_sensor"
 CONF_FIXED_PRICE = "fixed_price"
 DEFAULT_FIXED_PRICE = 0.15

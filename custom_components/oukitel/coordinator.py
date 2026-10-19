@@ -14,12 +14,15 @@ import time
 import asyncio
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api import AcceleronixCloudClient
 from .const import (
+    CONF_AUTH_KEY,
+    CONF_HOST,
     DEFAULT_CONNECTION_MODE,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_WAKE_INTERVAL,
@@ -355,6 +358,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         poll_interval: int = DEFAULT_POLL_INTERVAL,
         connection_mode: str = DEFAULT_CONNECTION_MODE,
         host: str | None = None,
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -362,10 +366,19 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(seconds=poll_interval),
         )
+        self.config_entry = config_entry
         self.client = client
         self.connection_mode = connection_mode
         self.last_wake_time: float = 0.0
-        self.lan_host: str | None = host.strip() if (host and isinstance(host, str) and host.strip()) else None
+
+        resolved_host = host
+        if not resolved_host and config_entry:
+            resolved_host = config_entry.options.get(CONF_HOST) or config_entry.data.get(CONF_HOST)
+        self.lan_host: str | None = (
+            resolved_host.strip()
+            if (resolved_host and isinstance(resolved_host, str) and resolved_host.strip())
+            else None
+        )
         self.predictive_tracker = OukitelPredictiveTracker(client)
 
         self._lan_session: LocalSession | None = None
@@ -378,7 +391,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._last_lan_attempt: float = time.monotonic()
         self._lan_setup_in_flight: bool = False
         self._lan_last_rearm: float = 0.0
-        self._cached_auth_key: str | None = None
+        self._cached_auth_key: str | None = (
+            getattr(client, "auth_key", None)
+            or (config_entry.options.get(CONF_AUTH_KEY) if config_entry else None)
+            or (config_entry.data.get(CONF_AUTH_KEY) if config_entry else None)
+        )
         self._paused: bool = False
         self._user_overrides: dict[str, tuple] = {}
         self._last_device_list_check: float = 0.0
@@ -477,9 +494,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 except Exception as exc:
                     _LOGGER.warning("oukitel: LAN write failed: %s", exc)
 
-            # 2. Cloud shadow synchronization (always sync unless in Solo LAN mode)
+            # 2. Cloud shadow synchronization (always sync unless in Solo LAN mode or offline)
             cloud_ok = False
-            if self.connection_mode != MODE_LAN:
+            if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
                 try:
                     if is_struct:
                         cloud_struct_map = {
@@ -507,7 +524,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
             # State readback verification: if Cloud control returned failure (e.g. timeout / code 5340),
             # check whether the station physically applied the command before reporting failure
-            if self.connection_mode != MODE_LAN:
+            if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
                 try:
                     await asyncio.sleep(1.0)
                     verification_data = await self.hass.async_add_executor_job(self.client.get_telemetry)
@@ -610,11 +627,15 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         self._lan_setup_in_flight = True
         try:
-            if not self.client.device_key:
+            if not self.client.device_key and getattr(self.client, "access_token", None):
                 await self.hass.async_add_executor_job(self.client.fetch_device_info)
 
             # In Auto mode, if cloud confirms the station is powered off / offline, defer LAN setup
-            if self.connection_mode != MODE_LAN and not getattr(self.client, "is_online", True):
+            if (
+                self.connection_mode != MODE_LAN
+                and getattr(self.client, "access_token", None)
+                and not getattr(self.client, "is_online", True)
+            ):
                 _LOGGER.debug(
                     "oukitel: Station is confirmed offline via cloud device list — deferring initial LAN dial"
                 )
@@ -630,8 +651,18 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     _LOGGER.info("oukitel: Device not found on LAN — running in cloud mode")
                     return
                 self.lan_host = host
+                if (
+                    self.config_entry
+                    and not self.config_entry.options.get(CONF_HOST)
+                    and self.config_entry.data.get(CONF_HOST) != host
+                ):
+                    new_data = dict(self.config_entry.data)
+                    new_data[CONF_HOST] = host
+                    self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
 
-            auth_key = await self.hass.async_add_executor_job(self.client.fetch_auth_key)
+            auth_key = getattr(self.client, "auth_key", None) or self._cached_auth_key
+            if not auth_key and getattr(self.client, "access_token", None):
+                auth_key = await self.hass.async_add_executor_job(self.client.fetch_auth_key)
             if not auth_key:
                 auth_key = self._cached_auth_key
             if not auth_key:
@@ -639,25 +670,35 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 return
             self._cached_auth_key = auth_key
 
+            if (
+                self.config_entry
+                and auth_key
+                and self.config_entry.data.get(CONF_AUTH_KEY) != auth_key
+            ):
+                new_data = dict(self.config_entry.data)
+                new_data[CONF_AUTH_KEY] = auth_key
+                self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+
             # Seed initial state and static diagnostics (temp, BMS_Version, AC_Version, etc.) from Cloud shadow
-            try:
-                cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
-                if cloud_snapshot:
-                    for k, val in cloud_snapshot.items():
-                        if val is not None:
-                            self._lan_state[k] = val
-                    for k in STATIC_METADATA_KEYS:
-                        val = cloud_snapshot.get(k)
-                        if val is not None:
-                            self._static_metadata[k] = val
-                            self._lan_state[k] = val
-                    if "temp" in cloud_snapshot and "inverter_temp" not in self._static_metadata:
-                        self._static_metadata["inverter_temp"] = cloud_snapshot["temp"]
-                        self._lan_state["inverter_temp"] = cloud_snapshot["temp"]
-                    _unpack_port_data(self._lan_state)
-                    self._last_cloud_snapshot = time.monotonic()
-            except Exception as exc:
-                _LOGGER.debug("oukitel: Could not seed initial telemetry from cloud: %s", exc)
+            if getattr(self.client, "access_token", None):
+                try:
+                    cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
+                    if cloud_snapshot:
+                        for k, val in cloud_snapshot.items():
+                            if val is not None:
+                                self._lan_state[k] = val
+                        for k in STATIC_METADATA_KEYS:
+                            val = cloud_snapshot.get(k)
+                            if val is not None:
+                                self._static_metadata[k] = val
+                                self._lan_state[k] = val
+                        if "temp" in cloud_snapshot and "inverter_temp" not in self._static_metadata:
+                            self._static_metadata["inverter_temp"] = cloud_snapshot["temp"]
+                            self._lan_state["inverter_temp"] = cloud_snapshot["temp"]
+                        _unpack_port_data(self._lan_state)
+                        self._last_cloud_snapshot = time.monotonic()
+                except Exception as exc:
+                    _LOGGER.debug("oukitel: Could not seed initial telemetry from cloud: %s", exc)
 
             _LOGGER.info("oukitel: Device found at %s — starting LAN session", host)
             await self._start_lan_session(host, auth_key)
@@ -910,8 +951,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             data = await self._update_cloud()
         elif self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
             data = await self._update_lan()
-        elif self.connection_mode == MODE_LAN:
-            # If LAN session is initializing in the background during setup, wait briefly
+        elif self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
+            # If LAN session is initializing in the background during setup or running offline, wait briefly
             for _ in range(60):
                 if self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
                     data = await self._update_lan()
@@ -922,7 +963,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     data = await self._update_lan()
                 else:
                     raise UpdateFailed(
-                        f"LAN session not active for host '{self.lan_host or 'auto'}'. Cloud fallback is disabled in Solo LAN mode."
+                        f"LAN session not active for host '{self.lan_host or 'auto'}'. Cloud fallback is disabled or offline."
                     )
         else:
             data = await self._update_cloud()
@@ -942,8 +983,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             and (now - self._lan_last_report) > _LAN_STALE_TIMEOUT
         )
         if stale:
-            if self.connection_mode == MODE_LAN:
-                _LOGGER.debug("oukitel: LAN telemetry stale (LAN Only mode — keeping state)")
+            if self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
+                _LOGGER.debug("oukitel: LAN telemetry stale (Cloud fallback unavailable — keeping state)")
             else:
                 _LOGGER.info("oukitel: LAN telemetry stale — falling back to cloud")
                 self._lan_active = False
@@ -990,8 +1031,29 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def _async_refresh_cloud_shadow(self) -> None:
         """Periodic background refresh of cloud-only metrics (temp, wifi_signal, versions) while LAN runs."""
-        if self._paused or not getattr(self.client, "access_token", None):
+        if self._paused:
             return
+
+        # If started offline, attempt to reconnect to cloud opportunistically
+        if not getattr(self.client, "access_token", None):
+            try:
+                logged_in = await self.hass.async_add_executor_job(self.client.login)
+                if not logged_in:
+                    return
+                await self.hass.async_add_executor_job(self.client.fetch_device_info)
+                _LOGGER.info("oukitel: Successfully reconnected to Oukitel cloud after offline startup")
+                if (
+                    self.config_entry
+                    and self.client.auth_key
+                    and self.config_entry.data.get(CONF_AUTH_KEY) != self.client.auth_key
+                ):
+                    new_data = dict(self.config_entry.data)
+                    new_data[CONF_AUTH_KEY] = self.client.auth_key
+                    self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+            except Exception as exc:
+                _LOGGER.debug("oukitel: Opportunistic cloud reconnect notice: %s", exc)
+                return
+
         self._last_cloud_snapshot = time.monotonic()
         try:
             cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
