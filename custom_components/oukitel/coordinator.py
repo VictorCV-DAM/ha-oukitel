@@ -41,7 +41,7 @@ _LAN_STALE_TIMEOUT = 150.0
 _LAN_RECONNECT_DELAY = 10.0
 _CLOUD_SNAPSHOT_INTERVAL = 60.0
 _LAN_RETRY_INTERVAL = 20.0
-_LAN_SILENCE_TIMEOUT = 45.0
+_LAN_SILENCE_TIMEOUT = 120.0
 _LAN_REARM_TIMEOUT = 25.0
 _LAN_REARM_INTERVAL = 5.0
 
@@ -964,7 +964,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 except Exception:
                     pass
 
-            for _ in range(60):
+            for _ in range(100):
                 if self._lan_active and self._lan_state:
                     data = await self._update_lan()
                     break
@@ -972,6 +972,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             else:
                 if self._lan_active and self._lan_state:
                     data = await self._update_lan()
+                elif self.data:
+                    _LOGGER.debug("oukitel: Preserving previous telemetry snapshot while LAN reconnects")
+                    data = dict(self.data)
                 else:
                     raise UpdateFailed(
                         f"LAN session not active for host '{self.lan_host or 'auto'}'. Cloud fallback is disabled or offline."
@@ -1045,6 +1048,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if self._paused:
             return
 
+        self._last_cloud_snapshot = time.monotonic()
+
         # If started offline, attempt to reconnect to cloud opportunistically
         if not getattr(self.client, "access_token", None):
             try:
@@ -1065,7 +1070,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("oukitel: Opportunistic cloud reconnect notice: %s", exc)
                 return
 
-        self._last_cloud_snapshot = time.monotonic()
         try:
             cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
             if cloud_snapshot:

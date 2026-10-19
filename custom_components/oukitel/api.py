@@ -110,7 +110,7 @@ class AcceleronixCloudClient:
             _LOGGER.error("oukitel: Login failed: %s (code %s)", res.get("msg"), res.get("code"))
             return False
         except Exception as err:
-            _LOGGER.error("oukitel: Exception during login: %s", err)
+            _LOGGER.debug("oukitel: Exception during login: %s", err)
             return False
 
     def ensure_authenticated(self):
