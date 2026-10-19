@@ -1047,11 +1047,13 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     data[k] = self.data[k]
         self._apply_user_overrides(data)
 
-        # Trigger background cloud shadow refresh every 60s in auto/cloud mode
+        # Trigger background cloud shadow refresh in auto mode (only if HA is running and not offline)
         now = time.monotonic()
+        cloud_interval = _CLOUD_SNAPSHOT_INTERVAL if getattr(self.client, "access_token", None) else 300.0
         if (
-            self.connection_mode != MODE_LAN
-            and (now - self._last_cloud_snapshot) >= _CLOUD_SNAPSHOT_INTERVAL
+            self.connection_mode == MODE_AUTO
+            and self.hass.is_running
+            and (now - self._last_cloud_snapshot) >= cloud_interval
         ):
             self.hass.async_create_task(self._async_refresh_cloud_shadow())
 
@@ -1059,18 +1061,24 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def _async_refresh_cloud_shadow(self) -> None:
         """Periodic background refresh of cloud-only metrics (temp, wifi_signal, versions) while LAN runs."""
-        if self._paused:
+        if self._paused or not self.hass.is_running:
             return
 
         self._last_cloud_snapshot = time.monotonic()
 
-        # If started offline, attempt to reconnect to cloud opportunistically
+        # If started offline, attempt to reconnect to cloud opportunistically with strict timeout
         if not getattr(self.client, "access_token", None):
             try:
-                logged_in = await self.hass.async_add_executor_job(self.client.login)
+                logged_in = await asyncio.wait_for(
+                    self.hass.async_add_executor_job(self.client.login),
+                    timeout=3.0,
+                )
                 if not logged_in:
                     return
-                await self.hass.async_add_executor_job(self.client.fetch_device_info)
+                await asyncio.wait_for(
+                    self.hass.async_add_executor_job(self.client.fetch_device_info),
+                    timeout=3.0,
+                )
                 _LOGGER.info("oukitel: Successfully reconnected to Oukitel cloud after offline startup")
                 if (
                     self.config_entry
@@ -1085,7 +1093,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 return
 
         try:
-            cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
+            cloud_snapshot = await asyncio.wait_for(
+                self.hass.async_add_executor_job(self.client.get_telemetry),
+                timeout=4.0,
+            )
             if cloud_snapshot:
                 updated = False
                 for k in STATIC_METADATA_KEYS:

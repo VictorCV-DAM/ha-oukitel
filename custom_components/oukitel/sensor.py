@@ -116,8 +116,17 @@ def _build_calculated_device_info(coordinator: OukitelDataCoordinator, client) -
     }
     if parent_id:
         info_kwargs["via_device_id"] = parent_id
-    else:
-        info_kwargs["via_device"] = (DOMAIN, client.device_key)
+    elif coordinator.hass:
+        try:
+            device_registry = dr.async_get(coordinator.hass)
+            parent_device = device_registry.async_get_or_create(
+                config_entry_id=coordinator.config_entry.entry_id if coordinator.config_entry else None,
+                identifiers={(DOMAIN, client.device_key)},
+            )
+            if parent_device:
+                info_kwargs["via_device_id"] = parent_device.id
+        except Exception:
+            pass
 
     return DeviceInfo(**info_kwargs)
 
