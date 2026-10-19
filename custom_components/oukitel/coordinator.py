@@ -730,6 +730,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_connected_at = time.monotonic()
         _LOGGER.info("oukitel: LAN session established and active with %s!", host)
         self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
+        try:
+            await session.request_read()
+            _LOGGER.debug("oukitel: Initial LAN telemetry read requested")
+        except Exception as read_exc:
+            _LOGGER.debug("oukitel: Initial request_read notice: %s", read_exc)
 
     async def _lan_read_loop(self, host: str, auth_key: str) -> None:
         reconnect_delay = _LAN_RECONNECT_DELAY
@@ -952,9 +957,15 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         elif self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
             data = await self._update_lan()
         elif self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
-            # If LAN session is initializing in the background during setup or running offline, wait briefly
+            # If LAN session is initializing in the background during setup or running offline, request read and wait
+            if self._lan_session and not self._lan_state:
+                try:
+                    await self._lan_session.request_read()
+                except Exception:
+                    pass
+
             for _ in range(60):
-                if self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
+                if self._lan_active and self._lan_state:
                     data = await self._update_lan()
                     break
                 await asyncio.sleep(0.1)
