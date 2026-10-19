@@ -1030,7 +1030,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 except Exception:
                     pass
 
-            for _ in range(15):
+            for _ in range(35 if not self.data else 15):
                 if self._lan_active and self._lan_state:
                     data = await self._update_lan()
                     break
@@ -1042,9 +1042,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug("oukitel: Preserving previous telemetry snapshot while LAN reconnects")
                     data = dict(self.data)
                 else:
-                    raise UpdateFailed(
-                        f"LAN session not active for host '{self.lan_host or 'auto'}'. Cloud fallback is disabled or offline."
-                    )
+                    _LOGGER.info("oukitel: LAN session active but first frame pending — bootstrapping with baseline telemetry")
+                    init_data: dict[str, Any] = {
+                        "online": True,
+                        "connection_mode": "LAN",
+                    }
+                    if self._last_valid_battery is not None:
+                        init_data["battery_percentage"] = self._last_valid_battery
+                    for k, v in self._static_metadata.items():
+                        init_data[k] = v
+                    data = init_data
         else:
             data = await self._update_cloud()
 
@@ -1077,7 +1084,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 pass
 
         if not self._lan_state:
-            for _ in range(10):
+            max_wait = 35 if not self.data else 10
+            for _ in range(max_wait):
                 if self._lan_state:
                     break
                 await asyncio.sleep(0.1)
@@ -1085,7 +1093,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if not self._lan_state:
             if self.data:
                 return dict(self.data)
-            raise UpdateFailed("LAN session connected but no telemetry received yet")
+            _LOGGER.info("oukitel: LAN connected, initial frame pending — returning baseline telemetry to complete setup")
+            init_data = {
+                "online": True,
+                "connection_mode": "LAN",
+            }
+            if self._last_valid_battery is not None:
+                init_data["battery_percentage"] = self._last_valid_battery
+            for k, v in self._static_metadata.items():
+                init_data[k] = v
+            return init_data
 
 
         data = dict(self._lan_state)
