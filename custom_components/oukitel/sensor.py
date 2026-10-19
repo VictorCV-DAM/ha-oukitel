@@ -34,6 +34,9 @@ from .const import (
     DEFAULT_FIXED_PRICE,
     DOMAIN,
     ENTITY_DESCRIPTIONS,
+    MODE_AUTO,
+    MODE_CLOUD,
+    MODE_LAN,
     VERSION,
     get_battery_capacity_wh,
     get_entity_description,
@@ -294,6 +297,15 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             self._attr_entity_category = category
         if key == "device_fault_status":
             self._attr_options = FAULT_STATUS_OPTIONS
+        elif dev_class in (
+            SensorDeviceClass.POWER,
+            SensorDeviceClass.BATTERY,
+            SensorDeviceClass.TEMPERATURE,
+            SensorDeviceClass.DURATION,
+            SensorDeviceClass.VOLTAGE,
+            SensorDeviceClass.SIGNAL_STRENGTH,
+        ):
+            self._attr_suggested_display_precision = 0
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -637,25 +649,32 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
-        if self.coordinator.is_paused:
-            return "Paused"
-        is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
-        if is_lan:
-            return "LAN"
-        if getattr(self.coordinator.client, "access_token", None):
-            return "Cloud"
-        return "Reconnecting LAN" if getattr(self.coordinator, "connection_mode", "auto") != MODE_CLOUD else "Offline"
+        try:
+            if self.coordinator.is_paused:
+                return "Paused"
+            is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
+            if is_lan:
+                return "LAN"
+            if getattr(self.coordinator.client, "access_token", None):
+                return "Cloud"
+            cfg_mode = getattr(self.coordinator, "connection_mode", "auto")
+            return "Reconnecting LAN" if cfg_mode != MODE_CLOUD else "Offline"
+        except Exception:
+            return "Offline"
 
     @property
     def icon(self) -> str:
-        if self.coordinator.is_paused:
-            return "mdi:pause-circle-outline"
-        val = self.native_value
-        if val == "LAN":
-            return "mdi:lan-connect"
-        if val == "Cloud":
-            return "mdi:cloud-outline"
-        return "mdi:lan-disconnect"
+        try:
+            if self.coordinator.is_paused:
+                return "mdi:pause-circle-outline"
+            val = self.native_value
+            if val == "LAN":
+                return "mdi:lan-connect"
+            if val == "Cloud":
+                return "mdi:cloud-outline"
+            return "mdi:lan-disconnect"
+        except Exception:
+            return "mdi:lan-disconnect"
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -680,7 +699,7 @@ class OukitelInverterIdlePowerSensor(CoordinatorEntity, SensorEntity):
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:power-sleep"
-    _attr_suggested_display_precision = 1
+    _attr_suggested_display_precision = 0
     _attr_has_entity_name = True
     _attr_translation_key = "inverter_idle_power"
 
@@ -695,13 +714,13 @@ class OukitelInverterIdlePowerSensor(CoordinatorEntity, SensorEntity):
         return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> int:
         if not self.coordinator.data or self.coordinator.is_paused:
-            return 0.0
+            return 0
         ac_switch = bool(self.coordinator.data.get("ac_switch", False))
         if not ac_switch:
-            return 0.0
-        return 18.0
+            return 0
+        return 18
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -714,7 +733,7 @@ class OukitelInverterIdlePowerSensor(CoordinatorEntity, SensorEntity):
             "description": desc,
             "ac_switch": "ON" if ac_switch else "OFF",
             "inverter_state": "Standby (Idle)" if (ac_switch and ac_out <= 5.0) else ("Inverting" if ac_switch else "Off"),
-            "nominal_idle_draw_w": 18.0,
+            "nominal_idle_draw_w": 18,
         }
 
 
@@ -724,7 +743,7 @@ class OukitelInverterEfficiencySensor(CoordinatorEntity, SensorEntity):
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:gauge"
-    _attr_suggested_display_precision = 1
+    _attr_suggested_display_precision = 0
     _attr_has_entity_name = True
     _attr_translation_key = "inverter_efficiency"
 
@@ -739,29 +758,29 @@ class OukitelInverterEfficiencySensor(CoordinatorEntity, SensorEntity):
         return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> int:
         if not self.coordinator.data or self.coordinator.is_paused:
-            return 0.0
+            return 0
         ac_switch = bool(self.coordinator.data.get("ac_switch", False))
         if not ac_switch:
-            return 0.0
+            return 0
 
         ac_out = float(self.coordinator.data.get("ac_output_power") or 0.0)
         if ac_out <= 5.0:
-            return 0.0
+            return 0
 
         ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
 
         # 1. UPS Bypass mode: AC mains feeds loads directly through bypass relay
         if ac_in > 10.0 and ac_in >= (ac_out - 15.0):
-            return round(min(98.5, max(95.0, (ac_out / (ac_out + 3.5)) * 100.0)), 1)
+            return int(round(min(98.5, max(95.0, (ac_out / (ac_out + 3.5)) * 100.0))))
 
         # 2. Inverting mode (DC bus / Battery / Solar to AC):
         # Calibrated quadratic loss model for Oukitel bidirectional inverter
         p_loss = 18.0 + (0.035 * ac_out) + (0.000025 * (ac_out ** 2))
         p_in = ac_out + p_loss
         eff = (ac_out / p_in) * 100.0
-        return round(min(93.5, max(10.0, eff)), 1)
+        return int(round(min(94.0, max(10.0, eff))))
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -775,7 +794,7 @@ class OukitelInverterEfficiencySensor(CoordinatorEntity, SensorEntity):
         return {
             "description": desc,
             "mode": "Bypass (Grid Passthrough)" if is_bypass else ("Inverting (Battery/Solar)" if ac_switch else "Off"),
-            "ac_output_power_w": ac_out,
+            "ac_output_power_w": int(round(ac_out)),
         }
 
 
@@ -786,7 +805,7 @@ class OukitelInverterLossPowerSensor(CoordinatorEntity, SensorEntity):
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:fire-alert"
-    _attr_suggested_display_precision = 1
+    _attr_suggested_display_precision = 0
     _attr_has_entity_name = True
     _attr_translation_key = "inverter_loss_power"
 
@@ -801,23 +820,23 @@ class OukitelInverterLossPowerSensor(CoordinatorEntity, SensorEntity):
         return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> int:
         if not self.coordinator.data or self.coordinator.is_paused:
-            return 0.0
+            return 0
         ac_switch = bool(self.coordinator.data.get("ac_switch", False))
         if not ac_switch:
-            return 0.0
+            return 0
 
         ac_out = float(self.coordinator.data.get("ac_output_power") or 0.0)
         if ac_out <= 5.0:
-            return 18.0
+            return 18
 
         ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
         if ac_in > 10.0 and ac_in >= (ac_out - 15.0):
-            return round(min(25.0, max(2.0, ac_out * 0.015)), 1)
+            return int(round(min(25.0, max(2.0, ac_out * 0.015))))
 
         p_loss = 18.0 + (0.035 * ac_out) + (0.000025 * (ac_out ** 2))
-        return round(p_loss, 1)
+        return int(round(p_loss))
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -906,7 +925,7 @@ class OukitelBatteryHealthSensor(CoordinatorEntity, RestoreEntity, SensorEntity)
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:battery-heart-variant"
-    _attr_suggested_display_precision = 1
+    _attr_suggested_display_precision = 0
     _attr_has_entity_name = True
     _attr_translation_key = "battery_state_of_health_estimated"
 
@@ -923,8 +942,8 @@ class OukitelBatteryHealthSensor(CoordinatorEntity, RestoreEntity, SensorEntity)
         return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
-    def native_value(self) -> float:
-        return round(self._soh, 1)
+    def native_value(self) -> int:
+        return int(round(self._soh))
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -965,7 +984,7 @@ class OukitelDaysSinceFullChargeSensor(CoordinatorEntity, RestoreEntity, SensorE
     _attr_native_unit_of_measurement = UnitOfTime.DAYS
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:calendar-clock"
-    _attr_suggested_display_precision = 1
+    _attr_suggested_display_precision = 0
     _attr_has_entity_name = True
     _attr_translation_key = "days_since_last_full_charge"
 
@@ -981,10 +1000,10 @@ class OukitelDaysSinceFullChargeSensor(CoordinatorEntity, RestoreEntity, SensorE
         return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
-    def native_value(self) -> float:
+    def native_value(self) -> int:
         now_ts = time.time()
         elapsed_s = max(0.0, now_ts - self._last_full_charge_ts)
-        return round(elapsed_s / 86400.0, 1)
+        return int(elapsed_s / 86400.0)
 
     @property
     def extra_state_attributes(self) -> dict:

@@ -257,7 +257,7 @@ class LocalSession:
         if cmd == _CMD_PING:
             await self._send_raw(_CMD_PONG)
             return
-        if cmd in (_CMD_TELEMETRY, _CMD_READ, _CMD_WRITE):
+        if cmd in (_CMD_TELEMETRY, _CMD_READ):
             try:
                 data = aes_decrypt(self._key, self._iv, payload)
                 fields = ttlv_decode(data)

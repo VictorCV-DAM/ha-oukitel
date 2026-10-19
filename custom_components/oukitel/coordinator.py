@@ -734,16 +734,30 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             on_telemetry=self._on_lan_telemetry,
         )
         self._lan_session = session
-        try:
-            await session.connect()
-        except (LocalSessionError, LocalAuthError) as exc:
-            if self.connection_mode == MODE_LAN:
+        max_attempts = 3
+        last_exc = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                await session.connect()
+                last_exc = None
+                break
+            except (LocalSessionError, LocalAuthError) as exc:
+                last_exc = exc
+                if attempt < max_attempts:
+                    _LOGGER.info(
+                        "oukitel: LAN session attempt %s/%s failed (%s), retrying in 2s...",
+                        attempt, max_attempts, exc,
+                    )
+                    await asyncio.sleep(2.0)
+
+        if last_exc:
+            if self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
                 _LOGGER.error(
-                    "oukitel: LAN session failed to connect to %s: %s (Solo LAN mode — Cloud fallback disabled)",
-                    host, exc,
+                    "oukitel: LAN session failed to connect to %s: %s (Offline/LAN mode — scheduling reconnect)",
+                    host, last_exc,
                 )
             else:
-                _LOGGER.warning("oukitel: LAN session failed to start: %s — using cloud", exc)
+                _LOGGER.warning("oukitel: LAN session failed to start: %s — using cloud", last_exc)
             if self._lan_session is session:
                 self._lan_session = None
             return
@@ -1112,7 +1126,14 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         init_data[k] = v
                     data = init_data
         else:
-            data = await self._update_cloud()
+            try:
+                data = await self._update_cloud()
+            except Exception as exc:
+                if self.data or self._lan_state:
+                    _LOGGER.debug("oukitel: Cloud unreachable (%s) — using local/cached state", exc)
+                    data = dict(self._lan_state or self.data)
+                else:
+                    raise UpdateFailed(f"Error communicating with Oukitel cloud API: {exc}") from exc
 
         if hasattr(self, "predictive_tracker") and self.predictive_tracker is not None:
             self.predictive_tracker.update(data)
