@@ -732,6 +732,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
         try:
             await session.request_read()
+            await asyncio.sleep(0.3)
+            await session.request_read()
             _LOGGER.debug("oukitel: Initial LAN telemetry read requested")
         except Exception as read_exc:
             _LOGGER.debug("oukitel: Initial request_read notice: %s", read_exc)
@@ -864,6 +866,18 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         _unpack_port_data(current_data)
         self._apply_user_overrides(current_data)
 
+        # Derive missing AC or DC input power if total_input_power is present
+        tot_in = current_data.get("total_input_power")
+        dc_in = current_data.get("dc_input")
+        ac_in = current_data.get("ac_input")
+        if tot_in is not None:
+            if ac_in is None and dc_in is not None:
+                current_data["ac_input"] = max(0, tot_in - dc_in)
+            elif dc_in is None and ac_in is not None:
+                current_data["dc_input"] = max(0, tot_in - ac_in)
+            elif ac_in is None and dc_in is None:
+                current_data["ac_input"] = tot_in
+
         if current_data.get("battery_percentage") is not None:
             self._lan_has_valid_telemetry = True
 
@@ -954,18 +968,18 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         if self.connection_mode == MODE_CLOUD:
             data = await self._update_cloud()
-        elif self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
+        elif self._lan_active and self._lan_session:
             data = await self._update_lan()
         elif self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
             # If LAN session is initializing in the background during setup or running offline, request read and wait
-            if self._lan_session and not self._lan_state:
+            if self._lan_session:
                 try:
                     await self._lan_session.request_read()
                 except Exception:
                     pass
 
             for _ in range(100):
-                if self._lan_active and self._lan_state:
+                if self._lan_active and self._lan_state and self._lan_state.get("battery_percentage") is not None:
                     data = await self._update_lan()
                     break
                 await asyncio.sleep(0.1)
