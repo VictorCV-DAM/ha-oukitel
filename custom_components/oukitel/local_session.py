@@ -285,14 +285,17 @@ class LocalSession:
                 self._writer.write(build_frame(pid_mode, _CMD_WRITE, ciphertext))
                 await self._writer.drain()
 
-        # 2. Snapshot read of tags (cmd 17)
-        now = time.monotonic()
-        if force_read or self._last_read_sent == 0.0 or (now - self._last_read_sent) >= _MIN_READ_INTERVAL:
+        await asyncio.sleep(0.15)
+
+        # 2. Heartbeat (cmd 28729)
+        await self._send_heartbeat()
+
+        # 3. Snapshot read of tags (cmd 17) only on initial connect or explicit request
+        if force_read:
+            await asyncio.sleep(0.15)
             await self._send_read_tags(self._read_tags)
 
-        # 3. Heartbeat (cmd 28729)
-        await self._send_heartbeat()
-        _LOGGER.debug("oukitel: LAN subscription, read, and heartbeat armed")
+        _LOGGER.debug("oukitel: LAN subscription armed (force_read=%s)", force_read)
 
     async def resubscribe(self) -> None:
         """Re-arm high-frequency reporting on an existing socket."""

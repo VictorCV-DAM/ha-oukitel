@@ -1192,7 +1192,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
     async def _async_rearm_lan(self) -> bool:
         """Re-arm high-frequency telemetry subscription on an existing silent socket."""
         session = self._lan_session
-        if session is None:
+        if session is None or not getattr(session, "is_ready", False):
             return False
         self._lan_last_rearm = time.monotonic()
         _LOGGER.debug(
@@ -1201,6 +1201,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         )
         try:
             await session.resubscribe()
+            await session.request_read(force=True)
         except Exception as exc:
             _LOGGER.debug("oukitel: LAN re-arm failed: %s", exc)
             return False
