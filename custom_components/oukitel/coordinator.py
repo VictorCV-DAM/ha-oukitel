@@ -802,13 +802,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_connected_at = time.monotonic()
         _LOGGER.info("oukitel: LAN session established and active with %s!", host)
         self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
-        try:
-            await session.request_read()
-            await asyncio.sleep(0.3)
-            await session.request_read()
-            _LOGGER.debug("oukitel: Initial LAN telemetry read requested")
-        except Exception as read_exc:
-            _LOGGER.debug("oukitel: Initial request_read notice: %s", read_exc)
 
     async def _lan_read_loop(self, host: str, auth_key: str) -> None:
         reconnect_delay = _LAN_RECONNECT_DELAY
@@ -1009,6 +1002,14 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 current_data["ac_input"] = int(round(float(current_data["ac_input"])))
             if current_data.get("dc_input") is not None:
                 current_data["dc_input"] = int(round(float(current_data["dc_input"])))
+        elif ac_in is not None or dc_in is not None:
+            ac_v = int(round(float(ac_in or 0)))
+            dc_v = int(round(float(dc_in or 0)))
+            if ac_in is not None:
+                current_data["ac_input"] = ac_v
+            if dc_in is not None:
+                current_data["dc_input"] = dc_v
+            current_data["total_input_power"] = ac_v + dc_v
 
         # Zero out individual port outputs if corresponding switch is OFF
         if not current_data.get("ac_switch", True):
@@ -1040,9 +1041,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         calculated_out = ac_out + dc_out + usb_out
         reported_out = int(round(float(current_data.get("total_output_power") or 0)))
 
-        # Only use calculated_out if reported_out is 0 and calculated_out > 0 (prevents stale sticky lock)
-        if reported_out == 0 and calculated_out > 0:
-            current_data["total_output_power"] = calculated_out
+        if 5 in fields and reported_out > 0:
+            current_data["total_output_power"] = reported_out
+        elif ("5" not in current_data) or any(t in fields for t in (6, 7, 8, 9)) or (reported_out == 0 and calculated_out > 0):
+            current_data["total_output_power"] = calculated_out if calculated_out > 0 else reported_out
         else:
             current_data["total_output_power"] = reported_out
 
@@ -1213,27 +1215,21 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 self._lan_active = False
                 return await self._update_cloud()
 
-        if self._lan_session:
+        if self._lan_session and self._lan_last_report is not None and (now - self._lan_last_report) > 10.0:
             try:
-                prev_report = self._lan_last_report
                 await self._lan_session.request_read()
-                for _ in range(8):
-                    await asyncio.sleep(0.05)
-                    if self._lan_last_report != prev_report:
-                        break
             except Exception:
                 pass
 
-        if not self._lan_state or "1" not in self._lan_state:
-            max_wait = 25 if not self.data else 10
-            for step in range(max_wait):
-                if self._lan_state and "1" in self._lan_state:
+        if not self.data:
+            # Wait up to 4.5s on initial boot for the station's 18-tag sequence (44->43->46->7->20->1->5->4)
+            for _ in range(45):
+                if (
+                    self._lan_state
+                    and "1" in self._lan_state
+                    and ("4" in self._lan_state or "5" in self._lan_state or "6" in self._lan_state)
+                ):
                     break
-                if step == 10 and self._lan_session:
-                    try:
-                        await self._lan_session.request_read((1, 4, 5, 11, 12, 2, 3, 14, 33, 20, 43, 44, 46))
-                    except Exception:
-                        pass
                 await asyncio.sleep(0.1)
 
         if not self._lan_state:

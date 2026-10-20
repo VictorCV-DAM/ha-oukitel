@@ -11,6 +11,7 @@ import asyncio
 import logging
 import socket
 import struct
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -38,7 +39,6 @@ from .local_scan import (
     _CMD_WRITE,
     _CMD_WRITE_ACK,
     _DEFAULT_READ_TAGS,
-    _PRIORITY_READ_TAGS,
     _REPORT_MODE_LAN,
     _TAG_REPORT_MODE,
     _TCP_PORT,
@@ -48,7 +48,8 @@ _LOGGER = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT = 15.0
 _READ_TIMEOUT = 90.0
-_KEEPALIVE_INTERVAL = 12.0
+_KEEPALIVE_INTERVAL = 15.0
+_MIN_READ_INTERVAL = 8.0
 _CLOSE_TIMEOUT = 5.0
 
 
@@ -81,6 +82,7 @@ class LocalSession:
         self._iv: bytes | None = None
         self._packet_id = 1000
         self._write_lock = asyncio.Lock()
+        self._last_read_sent: float = 0.0
 
     def _next_pid(self) -> int:
         self._packet_id += 1
@@ -115,7 +117,7 @@ class LocalSession:
         _LOGGER.debug("oukitel: LAN TCP socket open, starting handshake")
         await self._handshake()
         _LOGGER.debug("oukitel: LAN subscribing to telemetry")
-        await self._subscribe()
+        await self._subscribe(force_read=True)
         self._keepalive_task = asyncio.ensure_future(self._keepalive_loop())
 
     async def close(self) -> None:
@@ -167,20 +169,23 @@ class LocalSession:
         ciphertext = aes_encrypt(self._key, self._iv, body)
         pid = self._next_pid()
         frame = build_frame(pid, _CMD_READ, ciphertext)
+        self._last_read_sent = time.monotonic()
         diag_log("LAN_TX_READ", pid=pid, tags=list(tags))
         async with self._write_lock:
             if self._writer:
                 self._writer.write(frame)
                 await self._writer.drain()
 
-    async def request_read(self, tags: tuple[int, ...] | None = None) -> None:
-        if tags is not None:
-            await self._send_read_tags(tags)
+    async def request_read(
+        self,
+        tags: tuple[int, ...] | None = None,
+        force: bool = False,
+    ) -> None:
+        now = time.monotonic()
+        if not force and self._last_read_sent > 0 and (now - self._last_read_sent) < _MIN_READ_INTERVAL:
             return
-        # Send priority scalar tags first (Tag 1 battery_percentage at index 0) so the MCU responds immediately
-        await self._send_read_tags(_PRIORITY_READ_TAGS)
-        await asyncio.sleep(0.12)
-        await self._send_read_tags(self._read_tags)
+        target_tags = tags if tags is not None else self._read_tags
+        await self._send_read_tags(target_tags)
 
     # ------------------------------------------------------------------
     # Internal
@@ -249,8 +254,8 @@ class LocalSession:
         diag_log("LAN_HANDSHAKE_REJECTED", host=self._host, result=result, fields=result_fields)
         raise LocalAuthError(f"Station rejected login (result={result}, fields={result_fields})")
 
-    async def _subscribe(self) -> None:
-        # 1. Mode high-frequency LAN (cmd 19)
+    async def _subscribe(self, force_read: bool = False) -> None:
+        # 1. Mode high-frequency LAN (cmd 19, tag 100 = 3)
         body = ttlv_encode([(_TAG_REPORT_MODE, "num", _REPORT_MODE_LAN)])
         ciphertext = aes_encrypt(self._key, self._iv, body)
         pid_mode = self._next_pid()
@@ -260,7 +265,7 @@ class LocalSession:
                 self._writer.write(build_frame(pid_mode, _CMD_WRITE, ciphertext))
                 await self._writer.drain()
 
-        await asyncio.sleep(0.12)
+        await asyncio.sleep(0.15)
 
         # 2. Heartbeat (cmd 28729)
         hb_body = ttlv_encode([(1, "num", 30), (2, "num", 1)])
@@ -271,15 +276,15 @@ class LocalSession:
                 self._writer.write(build_frame(pid_hb, _CMD_KEEPALIVE, hb_cipher))
                 await self._writer.drain()
 
-        await asyncio.sleep(0.12)
+        await asyncio.sleep(0.15)
 
-        # 3. Snapshot read all tags (cmd 17) — priority scalar tags first, then full tag set
-        await self.request_read()
-        _LOGGER.debug("oukitel: LAN subscription, heartbeat, and initial read armed")
+        # 3. Single snapshot read of all tags (cmd 17) — rate-limited so we never interrupt an active 18-tag readout
+        await self.request_read(force=force_read)
+        _LOGGER.debug("oukitel: LAN subscription, heartbeat, and read armed")
 
     async def resubscribe(self) -> None:
         """Re-arm high-frequency reporting on an existing socket."""
-        await self._subscribe()
+        await self._subscribe(force_read=False)
 
     async def _keepalive_loop(self) -> None:
         while True:
@@ -287,7 +292,7 @@ class LocalSession:
                 await asyncio.sleep(_KEEPALIVE_INTERVAL)
                 if not self._writer or self._writer.is_closing():
                     break
-                await self._subscribe()
+                await self._subscribe(force_read=False)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

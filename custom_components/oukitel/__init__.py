@@ -92,6 +92,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     device_key = entry.data.get("device_key")
 
+    # Store initial user options snapshot BEFORE any async_update_entry calls
+    hass.data[DOMAIN][entry.entry_id] = {
+        "options": dict(entry.options),
+    }
+
     diag_log(
         "SETUP_ENTRY_START",
         mode=connection_mode,
@@ -210,34 +215,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         total_output_power=coordinator.data.get("total_output_power") if coordinator.data else None,
     )
 
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-
     hass.data[DOMAIN][entry.entry_id] = {
         "client": client,
         "coordinator": coordinator,
+        "options": dict(entry.options),
     }
+
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload config entry when options are updated."""
+    """Reload config entry ONLY when user-facing options are updated."""
+    entry_store = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if entry_store and entry_store.get("options") == dict(entry.options):
+        _LOGGER.debug("oukitel: Internal config entry data updated — skipping integration reload")
+        return
+    diag_log("RELOAD_ENTRY_OPTIONS_CHANGED", new_options=dict(entry.options))
     await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     coordinator: OukitelDataCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-    if coordinator._last_valid_battery is not None:
-        try:
-            batt_int = int(round(coordinator._last_valid_battery))
-            if entry.data.get("last_battery_percentage") != batt_int:
-                new_data = dict(entry.data)
-                new_data["last_battery_percentage"] = batt_int
-                hass.config_entries.async_update_entry(entry, data=new_data)
-        except Exception:
-            pass
     await coordinator.async_shutdown_lan()
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
