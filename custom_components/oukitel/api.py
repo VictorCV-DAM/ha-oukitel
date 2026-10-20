@@ -13,6 +13,7 @@ from Crypto.Util.Padding import pad
 import requests
 
 from .const import REGION_SERVERS
+from .diag_logger import diag_log, is_offline_simulated
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,6 +76,13 @@ class AcceleronixCloudClient:
 
     def login(self, timeout: float = 4.0) -> bool:
         """Authenticate with Oukitel / Acceleronix Cloud API and obtain tokens."""
+        t0 = time.monotonic()
+        if is_offline_simulated():
+            diag_log("CLOUD_LOGIN_SIMULATED_OFFLINE", timeout=timeout)
+            time.sleep(min(timeout, 1.5))
+            self.access_token = None
+            return False
+
         chars = string.ascii_letters + string.digits
         random_str = "".join(random.choice(chars) for _ in range(16))
 
@@ -100,21 +108,29 @@ class AcceleronixCloudClient:
         try:
             r = requests.post(url, headers=headers, data=payload, timeout=timeout)
             res = r.json()
+            elapsed = round(time.monotonic() - t0, 3)
             if res.get("code") == 200:
                 data = res["data"]
                 self.access_token = data["accessToken"]["token"]
                 self.token_expiry = data["accessToken"].get("expirationTime", int(time.time()) + 7000)
                 self.refresh_token = data["refreshToken"]["token"]
                 _LOGGER.debug("oukitel: Session authenticated successfully.")
+                diag_log("CLOUD_LOGIN_OK", elapsed_s=elapsed)
                 return True
             _LOGGER.error("oukitel: Login failed: %s (code %s)", res.get("msg"), res.get("code"))
+            diag_log("CLOUD_LOGIN_REJECTED", code=res.get("code"), msg=res.get("msg"), elapsed_s=elapsed)
             return False
         except Exception as err:
+            elapsed = round(time.monotonic() - t0, 3)
             _LOGGER.debug("oukitel: Exception during login: %s", err)
+            diag_log("CLOUD_LOGIN_TIMEOUT_OR_ERR", elapsed_s=elapsed, error=str(err))
             return False
 
     def ensure_authenticated(self) -> bool:
         """Ensure token is valid; renew automatically if close to expiration."""
+        if is_offline_simulated():
+            self.access_token = None
+            return False
         if not self.access_token or time.time() > (self.token_expiry - 120):
             return self.login()
         return True

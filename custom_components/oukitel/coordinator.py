@@ -32,6 +32,7 @@ from .const import (
     MODE_LAN,
     get_battery_capacity_wh,
 )
+from .diag_logger import diag_log
 from .local_scan import find_device_on_lan
 from .local_session import LocalSession, LocalAuthError, LocalSessionError
 
@@ -1049,6 +1050,19 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             self._lan_has_valid_telemetry = True
 
         self._lan_state = current_data
+        diag_log(
+            "COORD_LAN_STATE_UPDATED",
+            tags_in_frame=list(fields.keys()),
+            battery_percentage=current_data.get("battery_percentage"),
+            raw_tag_1_present="1" in current_data,
+            total_input_power=current_data.get("total_input_power"),
+            total_output_power=current_data.get("total_output_power"),
+            ac_input=current_data.get("ac_input"),
+            dc_input=current_data.get("dc_input"),
+            ac_switch=current_data.get("ac_switch"),
+            dc_switch=current_data.get("dc_switch"),
+            usb_switch=current_data.get("usb_switch"),
+        )
         self.hass.loop.call_soon_threadsafe(
             self.async_set_updated_data, dict(self._lan_state)
         )

@@ -14,6 +14,7 @@ import struct
 from collections.abc import Callable
 from typing import Any
 
+from .diag_logger import diag_log
 from .local_frame import (
     FrameAssembler,
     auth_key_bytes,
@@ -93,12 +94,14 @@ class LocalSession:
 
     async def connect(self) -> None:
         _LOGGER.debug("oukitel: LAN connecting to %s:%s", self._host, _TCP_PORT)
+        diag_log("LAN_CONNECT_START", host=self._host, port=_TCP_PORT)
         try:
             self._reader, self._writer = await asyncio.wait_for(
                 asyncio.open_connection(self._host, _TCP_PORT),
                 timeout=_CONNECT_TIMEOUT,
             )
         except (OSError, asyncio.TimeoutError) as exc:
+            diag_log("LAN_CONNECT_FAIL", host=self._host, port=_TCP_PORT, error=str(exc))
             raise LocalSessionError(f"Cannot reach {self._host}:{_TCP_PORT}") from exc
 
         if self._writer is not None:
@@ -116,6 +119,7 @@ class LocalSession:
         self._keepalive_task = asyncio.ensure_future(self._keepalive_loop())
 
     async def close(self) -> None:
+        diag_log("LAN_CLOSE", host=self._host)
         if self._keepalive_task and not self._keepalive_task.done():
             self._keepalive_task.cancel()
             try:
@@ -138,17 +142,21 @@ class LocalSession:
                 )
             except asyncio.TimeoutError:
                 _LOGGER.info("oukitel: LAN read timeout for %s", self._host)
+                diag_log("LAN_READ_TIMEOUT", host=self._host)
                 return
             if not chunk:
                 _LOGGER.info("oukitel: LAN socket closed by peer")
+                diag_log("LAN_PEER_CLOSED", host=self._host)
                 return
-            for _pid, cmd, payload in self._assembler.feed(chunk):
-                await self._handle(cmd, payload)
+            for pid, cmd, payload in self._assembler.feed(chunk):
+                await self._handle(cmd, payload, pid=pid)
 
     async def send_write(self, tag: int, kind: str, value: Any) -> None:
         body = ttlv_encode([(tag, kind, value)])
         ciphertext = aes_encrypt(self._key, self._iv, body)
-        frame = build_frame(self._next_pid(), _CMD_WRITE, ciphertext)
+        pid = self._next_pid()
+        frame = build_frame(pid, _CMD_WRITE, ciphertext)
+        diag_log("LAN_TX_WRITE", pid=pid, tag=tag, kind=kind, value=value)
         async with self._write_lock:
             if self._writer:
                 self._writer.write(frame)
@@ -157,7 +165,9 @@ class LocalSession:
     async def _send_read_tags(self, tags: tuple[int, ...]) -> None:
         body = b"".join(struct.pack(">H", t) for t in tags)
         ciphertext = aes_encrypt(self._key, self._iv, body)
-        frame = build_frame(self._next_pid(), _CMD_READ, ciphertext)
+        pid = self._next_pid()
+        frame = build_frame(pid, _CMD_READ, ciphertext)
+        diag_log("LAN_TX_READ", pid=pid, tags=list(tags))
         async with self._write_lock:
             if self._writer:
                 self._writer.write(frame)
@@ -211,6 +221,7 @@ class LocalSession:
             (v for v in nonce_fields.values() if isinstance(v, str)), None
         )
         if not nonce_str:
+            diag_log("LAN_HANDSHAKE_ERR", reason="no_nonce", fields=nonce_fields)
             raise LocalAuthError("Device did not send a nonce")
 
         self._iv = nonce_str.encode()
@@ -232,17 +243,21 @@ class LocalSession:
         )
         if result == 0:
             _LOGGER.info("oukitel: LAN login OK! Handshake succeeded with %s", self._host)
+            diag_log("LAN_HANDSHAKE_OK", host=self._host, nonce=nonce_str)
             return
 
+        diag_log("LAN_HANDSHAKE_REJECTED", host=self._host, result=result, fields=result_fields)
         raise LocalAuthError(f"Station rejected login (result={result}, fields={result_fields})")
 
     async def _subscribe(self) -> None:
         # 1. Mode high-frequency LAN (cmd 19)
         body = ttlv_encode([(_TAG_REPORT_MODE, "num", _REPORT_MODE_LAN)])
         ciphertext = aes_encrypt(self._key, self._iv, body)
+        pid_mode = self._next_pid()
+        diag_log("LAN_TX_REPORT_MODE", pid=pid_mode, tag=_TAG_REPORT_MODE, mode=_REPORT_MODE_LAN)
         async with self._write_lock:
             if self._writer:
-                self._writer.write(build_frame(self._next_pid(), _CMD_WRITE, ciphertext))
+                self._writer.write(build_frame(pid_mode, _CMD_WRITE, ciphertext))
                 await self._writer.drain()
 
         await asyncio.sleep(0.12)
@@ -250,9 +265,10 @@ class LocalSession:
         # 2. Heartbeat (cmd 28729)
         hb_body = ttlv_encode([(1, "num", 30), (2, "num", 1)])
         hb_cipher = aes_encrypt(self._key, self._iv, hb_body)
+        pid_hb = self._next_pid()
         async with self._write_lock:
             if self._writer:
-                self._writer.write(build_frame(self._next_pid(), _CMD_KEEPALIVE, hb_cipher))
+                self._writer.write(build_frame(pid_hb, _CMD_KEEPALIVE, hb_cipher))
                 await self._writer.drain()
 
         await asyncio.sleep(0.12)
@@ -277,7 +293,7 @@ class LocalSession:
             except Exception as exc:
                 _LOGGER.debug("oukitel: LAN keepalive tick notice: %s", exc)
 
-    async def _handle(self, cmd: int, payload: bytes) -> None:
+    async def _handle(self, cmd: int, payload: bytes, pid: int = 0) -> None:
         if cmd == _CMD_PING:
             await self._send_raw(_CMD_PONG)
             return
@@ -285,6 +301,13 @@ class LocalSession:
             try:
                 data = aes_decrypt(self._key, self._iv, payload)
                 fields = ttlv_decode(data)
+                diag_log(
+                    "LAN_RX_DATA",
+                    pid=pid,
+                    cmd=cmd,
+                    tags_received=list(fields.keys()),
+                    fields=fields,
+                )
                 if fields:
                     self._on_telemetry(fields)
                 if cmd == _CMD_WRITE:
@@ -292,4 +315,7 @@ class LocalSession:
                     ack_cipher = aes_encrypt(self._key, self._iv, ack_body)
                     await self._send_raw(_CMD_WRITE_ACK, ack_cipher)
             except Exception as exc:
+                diag_log("LAN_RX_DECODE_ERR", pid=pid, cmd=cmd, raw_len=len(payload), error=str(exc))
                 _LOGGER.debug("oukitel: Could not decode frame cmd=%s: %s", cmd, exc)
+        else:
+            diag_log("LAN_RX_ACK_OR_CTRL", pid=pid, cmd=cmd, raw_len=len(payload))

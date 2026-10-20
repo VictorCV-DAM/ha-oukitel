@@ -24,6 +24,7 @@ from .const import (
     MODE_CLOUD,
 )
 from .coordinator import OukitelDataCoordinator
+from .diag_logger import diag_log, is_offline_simulated
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -91,6 +92,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     device_key = entry.data.get("device_key")
 
+    diag_log(
+        "SETUP_ENTRY_START",
+        mode=connection_mode,
+        host=host,
+        device_key=device_key,
+        has_cached_auth_key=bool(entry.options.get(CONF_AUTH_KEY) or entry.data.get(CONF_AUTH_KEY)),
+        last_battery_percentage=entry.data.get("last_battery_percentage"),
+        simulated_offline=is_offline_simulated(),
+    )
+
     _LOGGER.debug(
         "oukitel: Setting up entry for %s (device_key=%s, mode=%s, host=%s)",
         email, device_key, connection_mode, host,
@@ -138,10 +149,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not cloud_connected:
         cached_auth_key = entry.options.get(CONF_AUTH_KEY) or entry.data.get(CONF_AUTH_KEY)
         if connection_mode == MODE_CLOUD:
+            diag_log("SETUP_ABORT", reason="cloud_only_and_unreachable")
             raise ConfigEntryNotReady(
                 "Oukitel cloud unreachable and integration is configured for Cloud Only mode. Retrying automatically..."
             )
         if not cached_auth_key:
+            diag_log("SETUP_ABORT", reason="no_cached_auth_key")
             raise ConfigEntryNotReady(
                 "Oukitel cloud unreachable and no cached LAN authKey found in configuration. Retrying automatically..."
             )
@@ -165,13 +178,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         host=host,
         config_entry=entry,
     )
-    
+
     # Setup LAN mode if not forced to Cloud
     if connection_mode != MODE_CLOUD:
         if not cloud_connected:
             _LOGGER.info("oukitel: Offline boot — establishing LAN session before first coordinator refresh...")
             await coordinator.async_setup_lan()
             if not coordinator._lan_active:
+                diag_log("SETUP_ABORT", reason="lan_unreachable_during_offline_boot", host=host)
                 raise ConfigEntryNotReady(
                     f"Oukitel station '{host or 'auto-discovery'}' unreachable on LAN and cloud is offline. Retrying automatically..."
                 )
@@ -184,7 +198,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_config_entry_first_refresh()
     except Exception as err:
         _LOGGER.error("oukitel: First refresh failed (%s): %s", type(err).__name__, err)
+        diag_log("SETUP_FIRST_REFRESH_FAILED", error=str(err))
         raise ConfigEntryNotReady(f"Initial coordinator refresh failed ({type(err).__name__}): {err}") from err
+
+    diag_log(
+        "SETUP_ENTRY_COMPLETE",
+        cloud_connected=cloud_connected,
+        lan_active=coordinator._lan_active,
+        battery_percentage=coordinator.data.get("battery_percentage") if coordinator.data else None,
+        total_input_power=coordinator.data.get("total_input_power") if coordinator.data else None,
+        total_output_power=coordinator.data.get("total_output_power") if coordinator.data else None,
+    )
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
