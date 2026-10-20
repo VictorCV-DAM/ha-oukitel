@@ -24,7 +24,7 @@ from .const import (
     MODE_CLOUD,
 )
 from .coordinator import OukitelDataCoordinator
-from .diag_logger import diag_log, is_offline_simulated
+from .diag_logger import diag_log
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -104,7 +104,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         device_key=device_key,
         has_cached_auth_key=bool(entry.options.get(CONF_AUTH_KEY) or entry.data.get(CONF_AUTH_KEY)),
         last_battery_percentage=entry.data.get("last_battery_percentage"),
-        simulated_offline=is_offline_simulated(),
     )
 
     _LOGGER.debug(
@@ -147,9 +146,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass.config_entries.async_update_entry(entry, data=new_data)
                 _LOGGER.debug("oukitel: Persisted device credentials to config entry data")
         else:
-            _LOGGER.warning("oukitel: Failed to login to Oukitel cloud (unsuccessful credentials or response)")
+            if connection_mode == MODE_CLOUD:
+                _LOGGER.warning("oukitel: Failed to login to Oukitel cloud (unsuccessful credentials or response)")
+            else:
+                _LOGGER.info("oukitel: Cloud login unavailable during startup — proceeding with local LAN session")
     except Exception as exc:
-        _LOGGER.warning("oukitel: Exception connecting to Oukitel cloud (network/DNS/timeout): %s", exc)
+        if connection_mode == MODE_CLOUD:
+            _LOGGER.warning("oukitel: Exception connecting to Oukitel cloud (network/DNS/timeout): %s", exc)
+        else:
+            _LOGGER.info("oukitel: Cloud unreachable during startup (%s) — proceeding with local LAN session", exc)
 
     if not cloud_connected:
         cached_auth_key = entry.options.get(CONF_AUTH_KEY) or entry.data.get(CONF_AUTH_KEY)

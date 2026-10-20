@@ -254,6 +254,15 @@ class LocalSession:
         diag_log("LAN_HANDSHAKE_REJECTED", host=self._host, result=result, fields=result_fields)
         raise LocalAuthError(f"Station rejected login (result={result}, fields={result_fields})")
 
+    async def _send_heartbeat(self) -> None:
+        hb_body = ttlv_encode([(1, "num", 30), (2, "num", 1)])
+        hb_cipher = aes_encrypt(self._key, self._iv, hb_body)
+        pid_hb = self._next_pid()
+        async with self._write_lock:
+            if self._writer:
+                self._writer.write(build_frame(pid_hb, _CMD_KEEPALIVE, hb_cipher))
+                await self._writer.drain()
+
     async def _subscribe(self, force_read: bool = False) -> None:
         # 1. Mode high-frequency LAN (cmd 19, tag 100 = 3)
         body = ttlv_encode([(_TAG_REPORT_MODE, "num", _REPORT_MODE_LAN)])
@@ -268,13 +277,7 @@ class LocalSession:
         await asyncio.sleep(0.15)
 
         # 2. Heartbeat (cmd 28729)
-        hb_body = ttlv_encode([(1, "num", 30), (2, "num", 1)])
-        hb_cipher = aes_encrypt(self._key, self._iv, hb_body)
-        pid_hb = self._next_pid()
-        async with self._write_lock:
-            if self._writer:
-                self._writer.write(build_frame(pid_hb, _CMD_KEEPALIVE, hb_cipher))
-                await self._writer.drain()
+        await self._send_heartbeat()
 
         await asyncio.sleep(0.15)
 
@@ -287,12 +290,17 @@ class LocalSession:
         await self._subscribe(force_read=False)
 
     async def _keepalive_loop(self) -> None:
+        tick = 0
         while True:
             try:
                 await asyncio.sleep(_KEEPALIVE_INTERVAL)
                 if not self._writer or self._writer.is_closing():
                     break
-                await self._subscribe(force_read=False)
+                tick += 1
+                if tick % 2 == 0:
+                    await self._subscribe(force_read=False)
+                else:
+                    await self._send_heartbeat()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

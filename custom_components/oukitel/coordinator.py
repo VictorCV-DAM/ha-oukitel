@@ -42,9 +42,9 @@ _LAN_STALE_TIMEOUT = 150.0
 _LAN_RECONNECT_DELAY = 10.0
 _CLOUD_SNAPSHOT_INTERVAL = 60.0
 _LAN_RETRY_INTERVAL = 20.0
-_LAN_SILENCE_TIMEOUT = 120.0
-_LAN_REARM_TIMEOUT = 25.0
-_LAN_REARM_INTERVAL = 5.0
+_LAN_SILENCE_TIMEOUT = 150.0
+_LAN_REARM_TIMEOUT = 65.0
+_LAN_REARM_INTERVAL = 30.0
 
 STATIC_METADATA_KEYS = (
     "temp",
@@ -55,6 +55,39 @@ STATIC_METADATA_KEYS = (
     "Frequency_Switchover",
     "ACvoltage_Switchover",
     "ac_charging_limit",
+)
+
+PERSISTED_SNAPSHOT_KEYS = (
+    "battery_percentage",
+    "total_input_power",
+    "total_output_power",
+    "ac_input",
+    "dc_input",
+    "ac_output_power",
+    "ac_output_voltage",
+    "dc_output_power",
+    "dc_output_current",
+    "dc_output_voltage",
+    "usb_a_power",
+    "usb_c_qc_power",
+    "typec1_power",
+    "typec2_power",
+    "typec3_power",
+    "typec4_power",
+    "remain_time",
+    "remaining_time",
+    "remain_charging_time",
+    "ac_switch",
+    "dc_switch",
+    "usb_switch",
+    "ac_charging_limit",
+    "Frequency_Switchover",
+    "ACvoltage_Switchover",
+    "BMS_Version",
+    "AC_Version",
+    "temp",
+    "inverter_temp",
+    "wifi_signal",
 )
 
 
@@ -420,27 +453,60 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._user_overrides: dict[str, tuple] = {}
         self._last_device_list_check: float = 0.0
         self.last_user_command_time: float = 0.0
-        self._static_metadata: dict[str, Any] = {}
+        self._static_metadata: dict[str, Any] = dict(
+            (config_entry.data.get("static_metadata") or {}) if config_entry else {}
+        )
         self._last_cloud_snapshot: float = 0.0
+        self._last_entry_persist: float = 0.0
         self._use_struct_switch_protocol: bool | None = None
         self._last_valid_battery: float | None = (
             config_entry.data.get("last_battery_percentage") if config_entry else None
         )
+        if config_entry and isinstance(config_entry.data.get("last_telemetry_snapshot"), dict):
+            for k, v in config_entry.data["last_telemetry_snapshot"].items():
+                if v is not None and k not in self._lan_state:
+                    self._lan_state[k] = v
+                if k in STATIC_METADATA_KEYS and v is not None and k not in self._static_metadata:
+                    self._static_metadata[k] = v
 
     def async_set_updated_data(self, data: dict[str, Any]) -> None:
         """Update coordinator data and refresh predictive autonomy tracker."""
-        batt = data.get("battery_percentage") if data else None
-        if batt is not None:
+        if data and self.config_entry:
             try:
-                batt_int = int(round(float(batt)))
-                if batt_int > 0:
-                    self._last_valid_battery = batt_int
-                    if (
-                        self.config_entry
-                        and self.config_entry.data.get("last_battery_percentage") != batt_int
-                    ):
+                now_mono = time.monotonic()
+                new_data = None
+                batt = data.get("battery_percentage")
+                batt_changed = False
+                if batt is not None:
+                    batt_int = int(round(float(batt)))
+                    if batt_int > 0:
+                        self._last_valid_battery = batt_int
+                        if self.config_entry.data.get("last_battery_percentage") != batt_int:
+                            new_data = dict(self.config_entry.data)
+                            new_data["last_battery_percentage"] = batt_int
+                            batt_changed = True
+
+                # Check if static metadata gained any new keys
+                persisted_meta = dict(self.config_entry.data.get("static_metadata") or {})
+                meta_changed = False
+                for k in STATIC_METADATA_KEYS:
+                    val = self._static_metadata.get(k) if k in self._static_metadata else data.get(k)
+                    if val is not None and persisted_meta.get(k) != val:
+                        persisted_meta[k] = val
+                        self._static_metadata[k] = val
+                        meta_changed = True
+
+                if batt_changed or meta_changed or (now_mono - self._last_entry_persist >= 60.0):
+                    if new_data is None:
                         new_data = dict(self.config_entry.data)
-                        new_data["last_battery_percentage"] = batt_int
+                    new_data["static_metadata"] = persisted_meta
+                    snapshot = dict(self.config_entry.data.get("last_telemetry_snapshot") or {})
+                    for k in PERSISTED_SNAPSHOT_KEYS:
+                        if k in data and data[k] is not None:
+                            snapshot[k] = data[k]
+                    new_data["last_telemetry_snapshot"] = snapshot
+                    self._last_entry_persist = now_mono
+                    if new_data != self.config_entry.data:
                         self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
             except Exception:
                 pass
@@ -985,32 +1051,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if current_data.get("battery_percentage") is None and self._last_valid_battery is not None:
             current_data["battery_percentage"] = int(round(self._last_valid_battery))
 
-        # Derive missing AC or DC input power if total_input_power is present
-        tot_in = current_data.get("total_input_power")
-        dc_in = current_data.get("dc_input")
-        ac_in = current_data.get("ac_input")
-        if tot_in is not None:
-            tot_in_int = int(round(float(tot_in)))
-            current_data["total_input_power"] = tot_in_int
-            if ac_in is None and dc_in is not None:
-                current_data["ac_input"] = max(0, tot_in_int - int(round(float(dc_in))))
-            elif dc_in is None and ac_in is not None:
-                current_data["dc_input"] = max(0, tot_in_int - int(round(float(ac_in))))
-            elif ac_in is None and dc_in is None:
-                current_data["ac_input"] = tot_in_int
-            if current_data.get("ac_input") is not None:
-                current_data["ac_input"] = int(round(float(current_data["ac_input"])))
-            if current_data.get("dc_input") is not None:
-                current_data["dc_input"] = int(round(float(current_data["dc_input"])))
-        elif ac_in is not None or dc_in is not None:
-            ac_v = int(round(float(ac_in or 0)))
-            dc_v = int(round(float(dc_in or 0)))
-            if ac_in is not None:
-                current_data["ac_input"] = ac_v
-            if dc_in is not None:
-                current_data["dc_input"] = dc_v
-            current_data["total_input_power"] = ac_v + dc_v
-
         # Zero out individual port outputs if corresponding switch is OFF
         if not current_data.get("ac_switch", True):
             current_data["ac_output_power"] = 0
@@ -1047,6 +1087,33 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             current_data["total_output_power"] = calculated_out if calculated_out > 0 else reported_out
         else:
             current_data["total_output_power"] = reported_out
+
+        # Derive missing AC or DC input power if total_input_power is present
+        tot_in = current_data.get("total_input_power")
+        dc_in = current_data.get("dc_input")
+        ac_in = current_data.get("ac_input")
+        if dc_in is None:
+            dc_in = 0
+            current_data["dc_input"] = 0
+        else:
+            dc_in = int(round(float(dc_in)))
+            current_data["dc_input"] = dc_in
+
+        if tot_in is not None:
+            tot_in_int = int(round(float(tot_in)))
+            current_data["total_input_power"] = tot_in_int
+            if ac_in is None or "11" not in current_data:
+                tot_out_int = int(round(float(current_data.get("total_output_power") or 0)))
+                if tot_in_int > tot_out_int and tot_out_int > 0:
+                    current_data["ac_input"] = max(0, tot_in_int - tot_out_int - dc_in)
+                else:
+                    current_data["ac_input"] = max(0, tot_in_int - dc_in)
+            else:
+                current_data["ac_input"] = int(round(float(ac_in)))
+        elif ac_in is not None:
+            ac_v = int(round(float(ac_in)))
+            current_data["ac_input"] = ac_v
+            current_data["total_input_power"] = ac_v + dc_in
 
         if current_data.get("battery_percentage") is not None:
             self._lan_has_valid_telemetry = True
@@ -1215,7 +1282,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 self._lan_active = False
                 return await self._update_cloud()
 
-        if self._lan_session and self._lan_last_report is not None and (now - self._lan_last_report) > 10.0:
+        if self._lan_session and self._lan_last_report is not None and (now - self._lan_last_report) > 25.0:
             try:
                 await self._lan_session.request_read()
             except Exception:
@@ -1227,7 +1294,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 if (
                     self._lan_state
                     and "1" in self._lan_state
-                    and ("4" in self._lan_state or "5" in self._lan_state or "6" in self._lan_state)
+                    and ("4" in self._lan_state or "5" in self._lan_state)
+                    and ("4" in self._lan_state and "5" in self._lan_state or "6" in self._lan_state)
                 ):
                     break
                 await asyncio.sleep(0.1)
