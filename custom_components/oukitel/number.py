@@ -120,6 +120,9 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
             except Exception as exc:
                 _LOGGER.warning("oukitel: LAN write failed for charging limit: %s", exc)
 
+        if lan_ok:
+            return
+
         # Synchronize clean single-property charging limit to Cloud only if not LAN-only and authenticated
         cloud_ok = False
         if self.coordinator.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):

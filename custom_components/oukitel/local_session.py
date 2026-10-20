@@ -46,10 +46,10 @@ from .local_scan import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_CONNECT_TIMEOUT = 15.0
+_CONNECT_TIMEOUT = 12.0
 _READ_TIMEOUT = 90.0
-_KEEPALIVE_INTERVAL = 15.0
-_MIN_READ_INTERVAL = 8.0
+_KEEPALIVE_INTERVAL = 12.0
+_MIN_READ_INTERVAL = 10.0
 _CLOSE_TIMEOUT = 5.0
 
 
@@ -83,6 +83,7 @@ class LocalSession:
         self._packet_id = 1000
         self._write_lock = asyncio.Lock()
         self._last_read_sent: float = 0.0
+        self.is_ready: bool = False
 
     def _next_pid(self) -> int:
         self._packet_id += 1
@@ -118,9 +119,11 @@ class LocalSession:
         await self._handshake()
         _LOGGER.debug("oukitel: LAN subscribing to telemetry")
         await self._subscribe(force_read=True)
+        self.is_ready = True
         self._keepalive_task = asyncio.ensure_future(self._keepalive_loop())
 
     async def close(self) -> None:
+        self.is_ready = False
         diag_log("LAN_CLOSE", host=self._host)
         if self._keepalive_task and not self._keepalive_task.done():
             self._keepalive_task.cancel()
@@ -154,6 +157,9 @@ class LocalSession:
                 await self._handle(cmd, payload, pid=pid)
 
     async def send_write(self, tag: int, kind: str, value: Any) -> None:
+        if not self._writer or not self._iv:
+            _LOGGER.debug("oukitel: Cannot send LAN write (session not ready, iv=%s)", bool(self._iv))
+            return
         body = ttlv_encode([(tag, kind, value)])
         ciphertext = aes_encrypt(self._key, self._iv, body)
         pid = self._next_pid()
@@ -165,6 +171,8 @@ class LocalSession:
                 await self._writer.drain()
 
     async def _send_read_tags(self, tags: tuple[int, ...]) -> None:
+        if not self._writer or not self._iv:
+            return
         body = b"".join(struct.pack(">H", t) for t in tags)
         ciphertext = aes_encrypt(self._key, self._iv, body)
         pid = self._next_pid()
@@ -264,6 +272,9 @@ class LocalSession:
                 await self._writer.drain()
 
     async def _subscribe(self, force_read: bool = False) -> None:
+        if not self._writer or not self._iv:
+            return
+
         # 1. Mode high-frequency LAN (cmd 19, tag 100 = 3)
         body = ttlv_encode([(_TAG_REPORT_MODE, "num", _REPORT_MODE_LAN)])
         ciphertext = aes_encrypt(self._key, self._iv, body)
@@ -274,33 +285,26 @@ class LocalSession:
                 self._writer.write(build_frame(pid_mode, _CMD_WRITE, ciphertext))
                 await self._writer.drain()
 
-        await asyncio.sleep(0.15)
+        # 2. Snapshot read of tags (cmd 17)
+        now = time.monotonic()
+        if force_read or self._last_read_sent == 0.0 or (now - self._last_read_sent) >= _MIN_READ_INTERVAL:
+            await self._send_read_tags(self._read_tags)
 
-        # 2. Heartbeat (cmd 28729)
+        # 3. Heartbeat (cmd 28729)
         await self._send_heartbeat()
-
-        await asyncio.sleep(0.15)
-
-        # 3. Single snapshot read of all tags (cmd 17) — rate-limited so we never interrupt an active 18-tag readout
-        await self.request_read(force=force_read)
-        _LOGGER.debug("oukitel: LAN subscription, heartbeat, and read armed")
+        _LOGGER.debug("oukitel: LAN subscription, read, and heartbeat armed")
 
     async def resubscribe(self) -> None:
         """Re-arm high-frequency reporting on an existing socket."""
         await self._subscribe(force_read=False)
 
     async def _keepalive_loop(self) -> None:
-        tick = 0
         while True:
             try:
                 await asyncio.sleep(_KEEPALIVE_INTERVAL)
                 if not self._writer or self._writer.is_closing():
                     break
-                tick += 1
-                if tick % 2 == 0:
-                    await self._subscribe(force_read=False)
-                else:
-                    await self._send_heartbeat()
+                await self._subscribe(force_read=False)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

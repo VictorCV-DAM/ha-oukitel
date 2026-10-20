@@ -457,7 +457,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             (config_entry.data.get("static_metadata") or {}) if config_entry else {}
         )
         self._last_cloud_snapshot: float = 0.0
-        self._last_entry_persist: float = 0.0
+        self._last_entry_persist: float = -60.0
         self._use_struct_switch_protocol: bool | None = None
         self._last_valid_battery: float | None = (
             config_entry.data.get("last_battery_percentage") if config_entry else None
@@ -468,6 +468,18 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     self._lan_state[k] = v
                 if k in STATIC_METADATA_KEYS and v is not None and k not in self._static_metadata:
                     self._static_metadata[k] = v
+            # Seed raw tag keys so _unpack_port_data doesn't revert to uninitialized states
+            sw_tag_map = {"ac_switch": 43, "usb_switch": 44, "dc_switch": 46}
+            for sw_k, sw_tag in sw_tag_map.items():
+                if sw_k in self._lan_state:
+                    self._lan_state[sw_tag] = self._lan_state[sw_k]
+                    self._lan_state[str(sw_tag)] = self._lan_state[sw_k]
+            if "total_input_power" in self._lan_state:
+                self._lan_state[4] = self._lan_state["total_input_power"]
+                self._lan_state["4"] = self._lan_state["total_input_power"]
+            if "total_output_power" in self._lan_state:
+                self._lan_state[5] = self._lan_state["total_output_power"]
+                self._lan_state["5"] = self._lan_state["total_output_power"]
 
     def async_set_updated_data(self, data: dict[str, Any]) -> None:
         """Update coordinator data and refresh predictive autonomy tracker."""
@@ -531,6 +543,32 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if self._lan_state is not None:
             self._lan_state[key] = value
 
+        # Sync raw and string tag keys into state so _unpack_port_data doesn't revert to stale values
+        tag_key_map = {
+            "ac_switch": 43,
+            "usb_switch": 44,
+            "dc_switch": 46,
+            "ac_charging_limit": 20,
+            "Frequency_Switchover": 27,
+            "ACvoltage_Switchover": 28,
+        }
+        if key in tag_key_map:
+            tag = tag_key_map[key]
+            tag_val = value
+            if key == "Frequency_Switchover" and isinstance(value, str):
+                tag_val = 0 if "50" in value else 1
+            elif key == "ACvoltage_Switchover" and isinstance(value, str):
+                try:
+                    tag_val = int(value.replace("V", "").strip())
+                except Exception:
+                    tag_val = value
+            if self.data is not None:
+                self.data[tag] = tag_val
+                self.data[str(tag)] = tag_val
+            if self._lan_state is not None:
+                self._lan_state[tag] = tag_val
+                self._lan_state[str(tag)] = tag_val
+
     def async_clear_user_override(self, key: str) -> None:
         """Cancel user command override immediately (e.g. if cloud command failed)."""
         self._user_overrides.pop(key, None)
@@ -542,23 +580,31 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         # 1. Check known product_key
         pk = (getattr(self.client, "product_key", None) or "").strip().lower()
-        if pk in ("p11ssr",):  # BP2000 Pro / BP2000
-            self._use_struct_switch_protocol = True
-            return True
         if pk in ("p11wn7",):  # P2001 Plus
             self._use_struct_switch_protocol = False
             return False
+        if pk in ("p11ssr",):  # BP2000 Pro / BP2000
+            self._use_struct_switch_protocol = True
+            return True
 
-        # 2. Check telemetry signature: if station reports Tag 6, 7 or 9 as dict/struct
+        # 2. If station reported direct flat switch tags 43, 44 or 46
+        for t in (43, 44, 46):
+            if self._lan_state and (t in self._lan_state or str(t) in self._lan_state):
+                self._use_struct_switch_protocol = False
+                return False
+            if self.data and (t in self.data or str(t) in self.data):
+                self._use_struct_switch_protocol = False
+                return False
+
+        # 3. Check telemetry signature: if station reports Tag 6, 7 or 9 as nested struct with subtag 1
         for t in (6, 7, 9):
-            if self._lan_state and isinstance(self._lan_state.get(t), dict):
-                self._use_struct_switch_protocol = True
-                return True
-            if self.data and isinstance(self.data.get(t), dict):
+            d = (self._lan_state.get(t) if self._lan_state else None) or (self.data.get(t) if self.data else None)
+            if isinstance(d, dict) and (1 in d or "1" in d):
                 self._use_struct_switch_protocol = True
                 return True
 
         # Default fallback to flat tags (P2001 Plus baseline)
+        self._use_struct_switch_protocol = False
         return False
 
     async def async_send_switch_command(self, key: str, value: bool) -> bool:
@@ -568,7 +614,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         for attempt in range(2):
             # 1. LAN write dispatch
             lan_ok = False
-            if self._lan_active and self._lan_session:
+            session = self._lan_session
+            if self._lan_active and session and session._writer and session._iv:
                 try:
                     if is_struct:
                         struct_map = {
@@ -578,7 +625,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         }
                         if key in struct_map:
                             tag, subtag = struct_map[key]
-                            await self._lan_session.send_write(tag, "struct", [(subtag, "bool", value)])
+                            await session.send_write(tag, "struct", [(subtag, "bool", value)])
                             lan_ok = True
                             _LOGGER.debug(
                                 "oukitel: Instant LAN struct switch write: tag %s subtag %s = %s",
@@ -592,13 +639,17 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         }
                         tag = tag_map.get(key)
                         if tag is not None:
-                            await self._lan_session.send_write(tag, "bool", value)
+                            await session.send_write(tag, "bool", value)
                             lan_ok = True
                             _LOGGER.debug("oukitel: Instant LAN flat switch write: tag %s = %s", tag, value)
                 except Exception as exc:
                     _LOGGER.warning("oukitel: LAN write failed: %s", exc)
 
-            # 2. Cloud shadow synchronization (always sync unless in Solo LAN mode or offline)
+            # If LAN write succeeded, return True immediately without blocking on cloud!
+            if lan_ok:
+                return True
+
+            # 2. Cloud fallback only if LAN failed, not in Solo LAN mode, and authenticated
             cloud_ok = False
             if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
                 try:
@@ -623,34 +674,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 except Exception as exc:
                     _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
 
-            if lan_ok or cloud_ok:
+            if cloud_ok:
                 return True
 
-            # State readback verification: if Cloud control returned failure (e.g. timeout / code 5340),
-            # check whether the station physically applied the command before reporting failure
-            if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
-                try:
-                    await asyncio.sleep(1.0)
-                    verification_data = await self.hass.async_add_executor_job(self.client.get_telemetry)
-                    if verification_data:
-                        _unpack_port_data(verification_data)
-                        if key in verification_data:
-                            actual_val = bool(verification_data[key])
-                            if actual_val == value:
-                                _LOGGER.info(
-                                    "oukitel: Switch command %s=%s confirmed via state readback verification",
-                                    key, value,
-                                )
-                                return True
-                except Exception as verify_err:
-                    _LOGGER.debug("oukitel: State readback verification error: %s", verify_err)
-
             if attempt == 0:
-                _LOGGER.debug(
-                    "oukitel: Switch command %s=%s unconfirmed on attempt 1; retrying in 1.5s...",
-                    key, value,
-                )
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(0.5)
 
         return False
 
@@ -807,7 +835,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             auth_key_b64=auth_key,
             on_telemetry=self._on_lan_telemetry,
         )
-        self._lan_session = session
         max_attempts = 3
         last_exc = None
         for attempt in range(1, max_attempts + 1):
@@ -842,7 +869,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     auth_key_b64=auth_key,
                     on_telemetry=self._on_lan_telemetry,
                 )
-                self._lan_session = session
                 try:
                     await session.connect()
                     last_exc = None
@@ -857,15 +883,20 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 )
             else:
                 _LOGGER.warning("oukitel: LAN session failed to start on %s: %s — scheduling persistent reconnect and using cloud", host, last_exc)
-            if self._lan_session is session:
-                self._lan_session = None
+            self._lan_session = None
+            self._lan_active = False
+            self._lan_last_report = None
+            self._lan_last_rearm = 0.0
             # Launch background reconnect loop so it recovers automatically as soon as the station is ready
             if self._lan_listen_task is None or self._lan_listen_task.done():
                 self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
             return
 
+        self._lan_session = session
         self._lan_active = True
+        self._lan_last_report = None
         self._lan_connected_at = time.monotonic()
+        self._lan_last_rearm = 0.0
         _LOGGER.info("oukitel: LAN session established and active with %s!", host)
         self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
 
@@ -888,6 +919,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     self._lan_session = None
 
                 self._lan_active = False
+                self._lan_last_report = None
+                self._lan_last_rearm = 0.0
 
             if self._paused:
                 break
@@ -912,22 +945,22 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 auth_key_b64=auth_key,
                 on_telemetry=self._on_lan_telemetry,
             )
-            self._lan_session = session
             try:
                 await session.connect()
+                self._lan_session = session
                 self._lan_active = True
+                self._lan_last_report = None
                 self._lan_connected_at = time.monotonic()
+                self._lan_last_rearm = 0.0
                 reconnect_delay = _LAN_RECONNECT_DELAY
                 reported_disconnect = False
                 _LOGGER.info("oukitel: LAN session re-established with %s!", target)
-                try:
-                    await session.request_read()
-                except Exception:
-                    pass
             except (LocalSessionError, LocalAuthError) as exc:
                 _LOGGER.debug("oukitel: LAN reconnect to %s failed: %s", target, exc)
                 self._lan_session = None
                 self._lan_active = False
+                self._lan_last_report = None
+                self._lan_last_rearm = 0.0
                 # If target failed, scan LAN via UDP to see if IP changed on router
                 try:
                     discovered = await find_device_on_lan(self.client.device_key or "")
@@ -1114,6 +1147,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             ac_v = int(round(float(ac_in)))
             current_data["ac_input"] = ac_v
             current_data["total_input_power"] = ac_v + dc_in
+        else:
+            current_data["total_input_power"] = 0
+            current_data["ac_input"] = 0
+
+        if current_data.get("total_output_power") is None:
+            current_data["total_output_power"] = 0
 
         if current_data.get("battery_percentage") is not None:
             self._lan_has_valid_telemetry = True
@@ -1222,7 +1261,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             data = await self._update_lan()
         elif self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
             # If LAN session is initializing in the background during setup or running offline, request read and wait
-            if self._lan_session:
+            if self._lan_session and getattr(self._lan_session, "is_ready", False):
                 try:
                     await self._lan_session.request_read()
                 except Exception:
@@ -1281,12 +1320,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.info("oukitel: LAN telemetry stale — falling back to cloud")
                 self._lan_active = False
                 return await self._update_cloud()
-
-        if self._lan_session and self._lan_last_report is not None and (now - self._lan_last_report) > 25.0:
-            try:
-                await self._lan_session.request_read()
-            except Exception:
-                pass
 
         if not self.data:
             # Wait up to 4.5s on initial boot for the station's 18-tag sequence (44->43->46->7->20->1->5->4)
