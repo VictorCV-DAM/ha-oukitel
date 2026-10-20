@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 import struct
 from collections.abc import Callable
 from typing import Any
@@ -34,7 +35,9 @@ from .local_scan import (
     _CMD_READ,
     _CMD_TELEMETRY,
     _CMD_WRITE,
+    _CMD_WRITE_ACK,
     _DEFAULT_READ_TAGS,
+    _PRIORITY_READ_TAGS,
     _REPORT_MODE_LAN,
     _TAG_REPORT_MODE,
     _TCP_PORT,
@@ -98,6 +101,14 @@ class LocalSession:
         except (OSError, asyncio.TimeoutError) as exc:
             raise LocalSessionError(f"Cannot reach {self._host}:{_TCP_PORT}") from exc
 
+        if self._writer is not None:
+            sock = self._writer.get_extra_info("socket")
+            if sock is not None:
+                try:
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                except Exception:
+                    pass
+
         _LOGGER.debug("oukitel: LAN TCP socket open, starting handshake")
         await self._handshake()
         _LOGGER.debug("oukitel: LAN subscribing to telemetry")
@@ -143,14 +154,23 @@ class LocalSession:
                 self._writer.write(frame)
                 await self._writer.drain()
 
-    async def request_read(self) -> None:
-        body = b"".join(struct.pack(">H", t) for t in self._read_tags)
+    async def _send_read_tags(self, tags: tuple[int, ...]) -> None:
+        body = b"".join(struct.pack(">H", t) for t in tags)
         ciphertext = aes_encrypt(self._key, self._iv, body)
         frame = build_frame(self._next_pid(), _CMD_READ, ciphertext)
         async with self._write_lock:
             if self._writer:
                 self._writer.write(frame)
                 await self._writer.drain()
+
+    async def request_read(self, tags: tuple[int, ...] | None = None) -> None:
+        if tags is not None:
+            await self._send_read_tags(tags)
+            return
+        # Send priority scalar tags first (Tag 1 battery_percentage at index 0) so the MCU responds immediately
+        await self._send_read_tags(_PRIORITY_READ_TAGS)
+        await asyncio.sleep(0.12)
+        await self._send_read_tags(self._read_tags)
 
     # ------------------------------------------------------------------
     # Internal
@@ -205,7 +225,7 @@ class LocalSession:
         result_payload = await self._recv_cmd(_CMD_LOGIN_OK)
         result_fields = ttlv_decode(result_payload)
         _LOGGER.debug("oukitel: LAN CMD_LOGIN_OK raw hex: %s, parsed fields: %s", result_payload.hex(), result_fields)
-        
+
         result = next(
             (v for v in result_fields.values() if isinstance(v, (int, float))),
             None,
@@ -225,17 +245,21 @@ class LocalSession:
                 self._writer.write(build_frame(self._next_pid(), _CMD_WRITE, ciphertext))
                 await self._writer.drain()
 
-        # 2. Snapshot read all tags (cmd 17)
-        await self.request_read()
+        await asyncio.sleep(0.12)
 
-        # 3. Heartbeat (cmd 28729)
+        # 2. Heartbeat (cmd 28729)
         hb_body = ttlv_encode([(1, "num", 30), (2, "num", 1)])
         hb_cipher = aes_encrypt(self._key, self._iv, hb_body)
         async with self._write_lock:
             if self._writer:
                 self._writer.write(build_frame(self._next_pid(), _CMD_KEEPALIVE, hb_cipher))
                 await self._writer.drain()
-        _LOGGER.debug("oukitel: LAN subscription and heartbeat armed")
+
+        await asyncio.sleep(0.12)
+
+        # 3. Snapshot read all tags (cmd 17) — priority scalar tags first, then full tag set
+        await self.request_read()
+        _LOGGER.debug("oukitel: LAN subscription, heartbeat, and initial read armed")
 
     async def resubscribe(self) -> None:
         """Re-arm high-frequency reporting on an existing socket."""
@@ -257,11 +281,15 @@ class LocalSession:
         if cmd == _CMD_PING:
             await self._send_raw(_CMD_PONG)
             return
-        if cmd in (_CMD_TELEMETRY, _CMD_READ):
+        if cmd in (_CMD_TELEMETRY, _CMD_READ, _CMD_WRITE):
             try:
                 data = aes_decrypt(self._key, self._iv, payload)
                 fields = ttlv_decode(data)
                 if fields:
                     self._on_telemetry(fields)
+                if cmd == _CMD_WRITE:
+                    ack_body = ttlv_encode([(1, "num", 0)])
+                    ack_cipher = aes_encrypt(self._key, self._iv, ack_body)
+                    await self._send_raw(_CMD_WRITE_ACK, ack_cipher)
             except Exception as exc:
-                _LOGGER.info("oukitel: Could not decode telemetry frame cmd=%s: %s", cmd, exc)
+                _LOGGER.debug("oukitel: Could not decode frame cmd=%s: %s", cmd, exc)

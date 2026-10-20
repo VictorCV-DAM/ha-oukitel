@@ -428,6 +428,21 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     def async_set_updated_data(self, data: dict[str, Any]) -> None:
         """Update coordinator data and refresh predictive autonomy tracker."""
+        batt = data.get("battery_percentage") if data else None
+        if batt is not None:
+            try:
+                batt_int = int(round(float(batt)))
+                if batt_int > 0:
+                    self._last_valid_battery = batt_int
+                    if (
+                        self.config_entry
+                        and self.config_entry.data.get("last_battery_percentage") != batt_int
+                    ):
+                        new_data = dict(self.config_entry.data)
+                        new_data["last_battery_percentage"] = batt_int
+                        self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
+            except Exception:
+                pass
         if hasattr(self, "predictive_tracker") and self.predictive_tracker is not None:
             self.predictive_tracker.update(data)
         super().async_set_updated_data(data)
@@ -1195,11 +1210,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             except Exception:
                 pass
 
-        if not self._lan_state:
-            max_wait = 35 if not self.data else 10
-            for _ in range(max_wait):
-                if self._lan_state:
+        if not self._lan_state or "1" not in self._lan_state:
+            max_wait = 25 if not self.data else 10
+            for step in range(max_wait):
+                if self._lan_state and "1" in self._lan_state:
                     break
+                if step == 10 and self._lan_session:
+                    try:
+                        await self._lan_session.request_read((1, 4, 5, 11, 12, 2, 3, 14, 33, 20, 43, 44, 46))
+                    except Exception:
+                        pass
                 await asyncio.sleep(0.1)
 
         if not self._lan_state:
@@ -1218,6 +1238,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
 
         data = dict(self._lan_state)
+        if data.get("battery_percentage") is None and self._last_valid_battery is not None:
+            data["battery_percentage"] = int(round(self._last_valid_battery))
         # Preserve static/cloud-only diagnostic tags from metadata cache and prior state
         for k, v in self._static_metadata.items():
             if k not in data or data[k] is None:

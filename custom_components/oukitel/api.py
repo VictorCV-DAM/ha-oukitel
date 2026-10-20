@@ -73,7 +73,7 @@ class AcceleronixCloudClient:
         raw = email + pwd_b64 + random_str + self.user_domain_secret
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-    def login(self, timeout: float = 10.0) -> bool:
+    def login(self, timeout: float = 4.0) -> bool:
         """Authenticate with Oukitel / Acceleronix Cloud API and obtain tokens."""
         chars = string.ascii_letters + string.digits
         random_str = "".join(random.choice(chars) for _ in range(16))
@@ -113,7 +113,7 @@ class AcceleronixCloudClient:
             _LOGGER.debug("oukitel: Exception during login: %s", err)
             return False
 
-    def ensure_authenticated(self):
+    def ensure_authenticated(self) -> bool:
         """Ensure token is valid; renew automatically if close to expiration."""
         if not self.access_token or time.time() > (self.token_expiry - 120):
             return self.login()
@@ -130,27 +130,29 @@ class AcceleronixCloudClient:
 
     def get_devices_list(self) -> list[dict]:
         """Fetch all bound devices in the user account."""
-        self.ensure_authenticated()
+        if not self.ensure_authenticated():
+            return []
         url = f"{self.base_url}/v2/binding/enduserapi/userDeviceList"
         try:
-            r = requests.get(url, headers=self.get_auth_headers(), timeout=15)
+            r = requests.get(url, headers=self.get_auth_headers(), timeout=8)
             res = r.json()
             if res.get("code") == 200:
                 return res.get("data", {}).get("list", [])
             if res.get("code") == 5032:
-                self.login()
-                return self.get_devices_list()
+                if self.login():
+                    return self.get_devices_list()
+                return []
             _LOGGER.error("oukitel: Error fetching devices list: %s", res.get("msg"))
             return []
         except Exception as err:
-            _LOGGER.error("oukitel: Exception in get_devices_list: %s", err)
+            _LOGGER.debug("oukitel: Exception in get_devices_list: %s", err)
             return []
 
     def fetch_device_info(self) -> bool:
         """Fetch bound device key and product key for target device (or first available)."""
         devices = self.get_devices_list()
         if not devices:
-            _LOGGER.error("oukitel: No bound devices found in account.")
+            _LOGGER.debug("oukitel: No bound devices returned from cloud.")
             return False
 
         dev = None
@@ -180,7 +182,8 @@ class AcceleronixCloudClient:
 
     def control_device(self, properties_list: list) -> bool:
         """Send hardware control commands via batchControlDevice."""
-        self.ensure_authenticated()
+        if not self.ensure_authenticated():
+            return False
         if not self.device_key or not self.product_key:
             if not self.fetch_device_info():
                 return False
@@ -198,7 +201,7 @@ class AcceleronixCloudClient:
         }
 
         try:
-            r = requests.post(url, headers=headers, json=payload, timeout=12)
+            r = requests.post(url, headers=headers, json=payload, timeout=10)
             res = r.json()
             code = res.get("code")
 
@@ -206,8 +209,9 @@ class AcceleronixCloudClient:
                 _LOGGER.debug("oukitel: Cloud command succeeded: %s", properties_list)
                 return True
             if code == 5032:
-                self.login()
-                return self.control_device(properties_list)
+                if self.login():
+                    return self.control_device(properties_list)
+                return False
             if code == 5340:
                 _LOGGER.warning(
                     "oukitel: Cloud control transient timeout/batch ACK delay (code 5340): %s — verification needed",
@@ -217,7 +221,7 @@ class AcceleronixCloudClient:
             _LOGGER.error("oukitel: Cloud control error: %s (code %s)", res.get("msg"), code)
             return False
         except Exception as err:
-            _LOGGER.error("oukitel: Exception in control_device: %s", err)
+            _LOGGER.debug("oukitel: Exception in control_device: %s", err)
             return False
 
     def wake_device(self) -> bool:
@@ -226,7 +230,8 @@ class AcceleronixCloudClient:
 
     def get_telemetry(self) -> dict:
         """Retrieve real-time telemetry from Cloud API."""
-        self.ensure_authenticated()
+        if not self.ensure_authenticated():
+            return {}
         if not self.device_key or not self.product_key:
             if not self.fetch_device_info():
                 return {}
@@ -235,12 +240,13 @@ class AcceleronixCloudClient:
         params = {"pk": self.product_key, "dk": self.device_key}
 
         try:
-            r = requests.get(url, headers=self.get_auth_headers(), params=params, timeout=10)
+            r = requests.get(url, headers=self.get_auth_headers(), params=params, timeout=8)
             res = r.json()
 
             if res.get("code") == 5032:
-                self.login()
-                return self.get_telemetry()
+                if self.login():
+                    return self.get_telemetry()
+                return {}
 
             if res.get("code") != 200:
                 _LOGGER.warning("oukitel: Telemetry response not OK: %s", res)
@@ -304,7 +310,7 @@ class AcceleronixCloudClient:
             return metrics
 
         except Exception as err:
-            _LOGGER.error("oukitel: Exception fetching telemetry: %s", err)
+            _LOGGER.debug("oukitel: Exception fetching telemetry: %s", err)
             return {}
 
     def fetch_auth_key(self) -> str | None:
