@@ -231,6 +231,19 @@ class CloudBridge:
                 _LOGGER.info("oukitel: subscribed to %s (req_qos=%d, granted_qos=%d, downlink %s)", topic, req_qos, req_qos, self._down_base)
             except Exception:  # noqa: BLE001
                 pass
+            # Send initial USER-BIND confirmation to acknowledge binding and turn Wi-Fi icon solid
+            import json
+            user_bind = json.dumps({
+                "data": {"subtype": "USER-BIND", "isBind": True, "bindStatus": 1},
+                "content": {"data": {"subtype": "USER-BIND", "isBind": True, "bindStatus": 1}},
+                "cmd": "bind",
+                "code": 200,
+                "result": 0,
+                "msg": "success"
+            }).encode("utf-8")
+            await self._send_downlink("sys", user_bind, qos=1)
+            await self._send_downlink("sys_", user_bind, qos=1)
+
             # Without the SUBACK the station will not publish; without a
             # stimulus it publishes only once. The two together open the tap.
             await self._stimulate()

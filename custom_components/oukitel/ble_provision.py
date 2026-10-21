@@ -134,7 +134,7 @@ async def point_station(
     password: str,
     endpoint: str,
     mac: str,
-    listen_for: float = 30.0,
+    listen_for: float = 60.0,
     source: str = "",
 ) -> tuple[bool, str]:
     """Send the 0x7010 provisioning frame to the station over BLE and await confirmation.
