@@ -246,8 +246,10 @@ class CloudBridge:
                 writer.write((b"\x40" if qos == 1 else b"\x50") + _enc_varint(2) + pid)
                 await writer.drain()
             for _p, _c, payload in asm.feed(resto):
+                _LOGGER.info("oukitel: frame in PUBLISH cmd=%s payload_len=%s", _c, len(payload))
                 try:
                     campi = ttlv_decode(payload)
+                    _LOGGER.info("oukitel: received telemetry tags: %s", list(campi.keys()))
                 except Exception as exc:  # noqa: BLE001
                     _LOGGER.debug("oukitel: bus frame not decoded: %s", exc)
                     continue
