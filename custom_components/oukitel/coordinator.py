@@ -651,6 +651,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def async_setup_lan(self) -> None:
         """Try to start LAN mode; silently skips if device not found on LAN or paused."""
+        if self.use_bridge:
+            _LOGGER.debug("oukitel: use_bridge is active, skipping classic LAN setup")
+            return
         if self._paused:
             _LOGGER.debug("oukitel: Skipping LAN setup — integration is paused")
             return
