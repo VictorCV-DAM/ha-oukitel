@@ -38,13 +38,13 @@ from .local_session import LocalSession, LocalAuthError, LocalSessionError
 
 _LOGGER = logging.getLogger(__name__)
 
-_LAN_STALE_TIMEOUT = 150.0
-_LAN_RECONNECT_DELAY = 10.0
+_LAN_STALE_TIMEOUT = 180.0
+_LAN_RECONNECT_DELAY = 3.0
 _CLOUD_SNAPSHOT_INTERVAL = 60.0
-_LAN_RETRY_INTERVAL = 20.0
-_LAN_SILENCE_TIMEOUT = 150.0
-_LAN_REARM_TIMEOUT = 65.0
-_LAN_REARM_INTERVAL = 30.0
+_LAN_RETRY_INTERVAL = 15.0
+_LAN_SILENCE_TIMEOUT = 240.0
+_LAN_REARM_TIMEOUT = 120.0
+_LAN_REARM_INTERVAL = 60.0
 
 STATIC_METADATA_KEYS = (
     "temp",
@@ -1132,7 +1132,24 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             dc_in = int(round(float(dc_in)))
             current_data["dc_input"] = dc_in
 
-        if tot_in is not None:
+        if 4 in fields and tot_in is not None:
+            tot_in_int = int(round(float(tot_in)))
+            current_data["total_input_power"] = tot_in_int
+            if ac_in is None or "11" not in current_data:
+                tot_out_int = int(round(float(current_data.get("total_output_power") or 0)))
+                if tot_in_int > tot_out_int and tot_out_int > 0:
+                    current_data["ac_input"] = max(0, tot_in_int - tot_out_int - dc_in)
+                else:
+                    current_data["ac_input"] = max(0, tot_in_int - dc_in)
+            else:
+                current_data["ac_input"] = int(round(float(ac_in)))
+        elif 11 in fields or 12 in fields:
+            ac_v = int(round(float(current_data.get("ac_input") or 0)))
+            if current_data.get("ac_switch", False) and ac_out > 0 and ac_v > 0:
+                current_data["total_input_power"] = ac_v + ac_out + dc_in
+            else:
+                current_data["total_input_power"] = ac_v + dc_in
+        elif tot_in is not None:
             tot_in_int = int(round(float(tot_in)))
             current_data["total_input_power"] = tot_in_int
             if ac_in is None or "11" not in current_data:
@@ -1201,7 +1218,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         )
         try:
             await session.resubscribe()
-            await session.request_read(force=True)
         except Exception as exc:
             _LOGGER.debug("oukitel: LAN re-arm failed: %s", exc)
             return False

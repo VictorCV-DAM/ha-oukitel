@@ -47,7 +47,7 @@ from .local_scan import (
 _LOGGER = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT = 12.0
-_READ_TIMEOUT = 90.0
+_READ_TIMEOUT = 120.0
 _KEEPALIVE_INTERVAL = 12.0
 _MIN_READ_INTERVAL = 10.0
 _CLOSE_TIMEOUT = 5.0
