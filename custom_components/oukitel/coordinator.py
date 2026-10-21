@@ -403,6 +403,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._static_metadata: dict[str, Any] = {}
         self._last_cloud_snapshot: float = 0.0
         self._use_struct_switch_protocol: bool | None = None
+        self._lan_flush_handle = None
 
     def async_set_updated_data(self, data: dict[str, Any]) -> None:
         """Update coordinator data and refresh predictive autonomy tracker."""
@@ -868,11 +869,21 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             self._lan_has_valid_telemetry = True
 
         self._lan_state = current_data
-        self.hass.loop.call_soon_threadsafe(
-            self.async_set_updated_data, dict(self._lan_state)
-        )
+        # Debounce coordinator updates to coalesce high-frequency multi-packet TTLV bursts
+        if self._lan_flush_handle is None:
+            self._lan_flush_handle = self.hass.loop.call_later(
+                0.25, self._flush_lan_telemetry
+            )
+
+    def _flush_lan_telemetry(self) -> None:
+        self._lan_flush_handle = None
+        if self._lan_state and not self._paused:
+            self.async_set_updated_data(dict(self._lan_state))
 
     async def async_shutdown_lan(self) -> None:
+        if self._lan_flush_handle is not None:
+            self._lan_flush_handle.cancel()
+            self._lan_flush_handle = None
         if self._lan_listen_task and not self._lan_listen_task.done():
             self._lan_listen_task.cancel()
             try:

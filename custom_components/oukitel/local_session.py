@@ -250,7 +250,6 @@ class LocalSession:
                     break
 
     async def _handle(self, cmd: int, payload: bytes) -> None:
-        _LOGGER.debug("oukitel: LAN frame received: cmd=%s (%#06x), len=%s", cmd, cmd, len(payload))
         if cmd in (_CMD_PING, _CMD_PONG, _CMD_KEEPALIVE):
             if cmd == _CMD_PING:
                 await self._send_raw(_CMD_PONG)
@@ -267,8 +266,9 @@ class LocalSession:
             try:
                 data = aes_decrypt(self._key, self._iv, payload)
                 fields = ttlv_decode(data)
-                _LOGGER.debug("oukitel: LAN telemetry decoded: cmd=%s: %s", cmd, fields)
                 if fields:
                     self._on_telemetry(fields)
             except Exception as exc:
                 _LOGGER.debug("oukitel: Could not decode frame cmd=%s: %s", cmd, exc)
+        else:
+            _LOGGER.debug("oukitel: Unknown LAN frame received: cmd=%s (%#06x), len=%s", cmd, cmd, len(payload))
