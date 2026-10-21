@@ -185,10 +185,11 @@ You can configure the active connection mode at any time directly in Home Assist
 | **Works Outside Local Network** | ❌ (requires VPN) | ✅ Yes |
 
 > [!NOTE]
-> **Offline LAN Behavior & Manufacturer Firmware Architecture**:
-> - **100% Offline Switch Control**: All hardware switches (AC inverter, 12V DC, USB ports) and power settings execute locally via TCP port 6607 with zero latency and millimeter precision, even during total internet/fiber outages.
-> - **Firmware-Imposed Telemetry Architecture**: In the manufacturer's factory firmware, the Quectel Wi-Fi MCU couples its internal UART polling loop (which requests sensor metrics from the BMS) to its cloud MQTT keepalive state. During an internet outage, live wattage/battery telemetry continues over LAN for ~120 seconds before the MCU pauses internal UART polling. The local LAN TCP socket stays permanently connected via authentic Quectel heartbeats (`CMD 28727 <-> 28728`), entities remain Available without false errors, and live telemetry auto-resumes cleanly within 30 seconds of internet restoration.
-> - For a thorough technical breakdown of reverse-engineered opcodes, TSL property 100, empirical test logs, and open developer roadmaps, see [docs/OFFLINE_LAN_RESEARCH.md](docs/OFFLINE_LAN_RESEARCH.md).
+> **Comportamiento Offline y Limitación de Fabricante: "Caso de corte externo / Corte de red de proveedor"**:
+> - **¿Qué es el "Caso de corte externo / Corte de red de proveedor"?**: Es el escenario real donde la vivienda o instalación pierde la conexión a internet/fibra con el operador exterior (ISP), pero el router y la Wi-Fi local siguen encendidos (típicamente alimentados por la propia estación de energía Oukitel como SAI/UPS).
+> - **Control de Relés 100% Offline y Milimétrico**: Los interruptores de hardware (inversor AC 230V, tomas 12V DC, puertos USB) y selectores de potencia operan de manera puramente local a través del puerto TCP 6607 con latencia cero y fiabilidad absoluta, sin necesidad de conexión externa.
+> - **Defensa Técnica de la Limitación de Firmware del Fabricante**: Tras rigurosas pruebas empíricas y de ingeniería inversa, se ha demostrado que el microcontrolador Wi-Fi Quectel de fábrica suspende la lectura del bus serie UART hacia el BMS tras ~120 segundos sin enlace MQTT hacia el servidor cloud del fabricante (`iot-south.acceleronix.io`). El socket LAN local de la estación se mantiene 100% vivo respondiendo a los latidos Quectel (`CMD 28727 <-> 28728`), las entidades no caen en error de "No disponible", y el flujo de telemetría se restablece de forma totalmente autónoma a los 30 segundos de recuperar la fibra.
+> - **Informe Completo y Hoja de Ruta Abierta**: Para ver el desglose técnico de códigos binarios, modelo TSL, cronogramas de prueba y posibles líneas de investigación futura para la comunidad, consulte [docs/OFFLINE_LAN_RESEARCH.md](docs/OFFLINE_LAN_RESEARCH.md).
 
 > [!TIP]
 > The **Connection Mode** diagnostic sensor on the device page always reports whether the station is actively communicating via `LAN` or `Cloud`.

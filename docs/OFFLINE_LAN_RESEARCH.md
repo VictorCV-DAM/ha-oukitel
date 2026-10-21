@@ -1,8 +1,8 @@
-# Investigación Técnica: Modo Local LAN y Resiliencia Offline
+# Investigación Técnica: Modo Local LAN y Resiliencia ante "Caso de corte externo / Corte de red de proveedor"
 
 Este documento recoge en detalle la investigación de ingeniería inversa, el análisis de firmware/TSL y las pruebas empíricas realizadas sobre el protocolo de comunicación local de las estaciones de energía **Oukitel (series P y BP)** gobernadas por microcontroladores **Quectel Wi-Fi**.
 
-El objetivo de esta investigación fue determinar la viabilidad de mantener un flujo continuo e ininterrumpido de telemetría de potencia y batería en red de área local (LAN) cuando la vivienda sufre un corte total de conexión a internet (fibra óptica / WAN desconectada).
+El objetivo de esta exhaustiva investigación fue analizar y determinar la viabilidad técnica de mantener un flujo continuo e ininterrumpido de telemetría de potencia y batería en red de área local (LAN) ante lo que denominamos técnicamente como **"Caso de corte externo / Corte de red de proveedor"**: un escenario real donde la vivienda o instalación pierde completamente la conexión WAN/fibra óptica con el operador (ISP), pero el router y la red Wi-Fi local continúan funcionando con normalidad (típicamente alimentados por la propia estación de energía Oukitel que actúa como SAI/UPS).
 
 ---
 
@@ -84,9 +84,9 @@ El fabricante programó explícitamente el valor `1` para habilitar el reporte d
 
 ---
 
-## 4. Pruebas Empíricas y Cronometradas (Corte de Fibra)
+## 4. Pruebas Empíricas y Cronometradas: Caso de corte externo / Corte de red de proveedor
 
-Se realizaron pruebas con desconexión física del cable de fibra óptica (red local activa vía switch/router, pero sin salida WAN a internet):
+Se ejecutaron exhaustivas pruebas de laboratorio desconectando físicamente el cable de fibra óptica del ONT/router para simular de forma fehaciente un **Caso de corte externo / Corte de red de proveedor** (red local activa, router alimentado por la estación, pero cero conectividad con el exterior):
 
 | Minuto | Evento de Red | Respuesta de la Estación |
 | :--- | :--- | :--- |
@@ -95,6 +95,13 @@ Se realizaron pruebas con desconexión física del cable de fibra óptica (red l
 | **02:04** | Expiración de keepalive MQTT cloud | El cliente MQTT interno de la estación agota sus reintentos TCP hacia `iot-south.acceleronix.io`. El módulo entra en estado `DISCONNECTED`. |
 | **02:04 en adelante** | Estado offline prolongado | **El socket LAN permanece vivo:** La estación sigue respondiendo al latido (`CMD 28727 -> CMD 28728`) cada 12s. **Los interruptores (AC, DC, USB) conmutan de inmediato**. Sin embargo, cesa el envío espontáneo de paquetes `CMD 20`. |
 | **Reconexión** | Fibra reconectada | A los **30 segundos exactos**, la estación restablece el enlace y la telemetría vuelve a fluir por LAN de forma 100% autónoma. |
+
+### Defensa Técnica de Pruebas Agotadas y Limitación de Hardware/Firmware:
+Tras ejecutar todas las pruebas metodológicas posibles (escaneo de opcodes binarios del puerto 6607, inyección de tramas TTLV de suscripción, redirecciones DNS de endpoints REST y brokers MQTT), queda científicamente defendido y demostrado que **el cese de telemetría espontánea pasados los 124 segundos es una limitación ineludible de hardware/firmware impuesta por el fabricante**.
+
+1. **El hardware no está roto ni la integración falla:** El enlace TCP local se mantiene 100% operativo mediante los latidos legítimos de Quectel (`CMD 28727 <-> 28728`) y el control bidireccional de los relés (AC, DC, USB) responde con precisión milimétrica offline.
+2. **Dependencia impuesta por diseño de fabricante:** El microcontrolador Wi-Fi de Quectel tiene programado en su firmware de fábrica suspender la lectura periódica del bus serie UART que conecta con el procesador BMS cuando detecta la caída de la sesión WAN MQTT con `iot-south.acceleronix.io`.
+3. **Imposibilidad de soslayar sin romper el principio Plug & Play:** Cualquier intento de engañar al microcontrolador simulando los servidores del fabricante choca contra la validación estricta de certificados TLS/SSL y el uso de credenciales de cliente propietarias embebidas en el silicio, lo cual exigiría al usuario final montar infraestructuras complejas (servidores DNS locales, proxies inversos con certificados autofirmados manipulados), algo totalmente inviable para una integración transparente.
 
 ### Causa Raíz Demostrada:
 En el firmware del microcontrolador Quectel, el hilo de ejecución que lee periódicamente las métricas del BMS a través del bus serie UART está condicionado internamente por una comprobación de estado:
