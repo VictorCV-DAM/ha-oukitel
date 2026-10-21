@@ -268,6 +268,10 @@ class LocalSession:
                 fields = ttlv_decode(data)
                 if fields:
                     self._on_telemetry(fields)
+                if cmd == _CMD_WRITE:
+                    ack_body = ttlv_encode([(1, "num", 0)])
+                    ack_cipher = aes_encrypt(self._key, self._iv, ack_body)
+                    await self._send_raw(28726, ack_cipher)
             except Exception as exc:
                 _LOGGER.debug("oukitel: Could not decode frame cmd=%s: %s", cmd, exc)
         else:

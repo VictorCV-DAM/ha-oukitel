@@ -173,7 +173,7 @@ class CloudBridge:
                 if not buf and chunk[0] == 0x16:
                     _LOGGER.info("oukitel: %s tried TLS (0x16), closing to force plain MQTT fallback", eti)
                     break
-                _LOGGER.info("oukitel: fake cloud recv %d bytes from %s: %s", len(chunk), eti, chunk[:48].hex())
+                _LOGGER.debug("oukitel: fake cloud recv %d bytes from %s: %s", len(chunk), eti, chunk[:48].hex())
                 buf += chunk
                 while len(buf) >= 2:
                     lung, i = _dec_varint(buf, 1)
@@ -207,7 +207,7 @@ class CloudBridge:
         self, writer: asyncio.StreamWriter, eti: str, tipo: int, flags: int, body: bytes, asm: FrameAssembler
     ) -> bool:
         """Answer one MQTT packet. Returns True if it is the station."""
-        _LOGGER.info("oukitel: fake cloud packet from %s: tipo=%d flags=%d len=%d", eti, tipo, flags, len(body))
+        _LOGGER.debug("oukitel: fake cloud packet from %s: tipo=%d flags=%d len=%d", eti, tipo, flags, len(body))
 
         if tipo == _CONNECT:
             self._writer = writer
@@ -237,7 +237,7 @@ class CloudBridge:
             return True
 
         if tipo == 4:  # PUBACK
-            _LOGGER.info("oukitel: station acknowledged downlink frame (PUBACK pid=%s)", body[:2].hex() if body else "")
+            _LOGGER.debug("oukitel: station acknowledged downlink frame (PUBACK pid=%s)", body[:2].hex() if body else "")
             return True
 
         if tipo == _PINGREQ:

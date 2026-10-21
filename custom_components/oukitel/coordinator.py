@@ -502,6 +502,31 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 except Exception as exc:
                     _LOGGER.debug("oukitel: LAN write failed: %s", exc)
 
+            if self._bridge and self._bridge.connected:
+                try:
+                    if is_struct:
+                        struct_map = {
+                            "ac_switch": (6, 1),
+                            "usb_switch": (7, 1),
+                            "dc_switch": (9, 1),
+                        }
+                        if key in struct_map:
+                            tag, subtag = struct_map[key]
+                            await self._bridge.send_write(tag, "struct", [(subtag, "bool", value)])
+                            lan_ok = True
+                    else:
+                        tag_map = {
+                            "ac_switch": 43,
+                            "usb_switch": 44,
+                            "dc_switch": 46,
+                        }
+                        tag = tag_map.get(key)
+                        if tag is not None:
+                            await self._bridge.send_write(tag, "bool", value)
+                            lan_ok = True
+                except Exception as exc:
+                    _LOGGER.debug("oukitel: Bridge switch write notice: %s", exc)
+
             # 2. Cloud shadow synchronization (always sync unless in Solo LAN mode or offline)
             cloud_ok = False
             if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
@@ -632,9 +657,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             _LOGGER.error("oukitel: fake cloud did not start: %s", exc)
             return False
         self._bridge = bridge
-        self._lan_session = bridge
-        self._lan_active = True
-        self._lan_connected_at = time.monotonic()
         self._bridge_absent_since = time.monotonic()
         self._bridge_never_seen = True
         return True
@@ -644,6 +666,25 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if connected:
             self._lan_connected_at = time.monotonic()
             self._bridge_never_seen = False
+            self._bridge_absent_since = None
+            if self.hass and self.hass.is_running:
+                base_data = self._lan_state or self.data
+                if not base_data:
+                    base_data = {
+                        "online": True,
+                        "wifi_signal": -60,
+                        "battery_percentage": 0,
+                        "battery_soc": 0,
+                        "total_input_power": 0,
+                        "total_output_power": 0,
+                        "ac_output_power": 0,
+                        "dc_output_power": 0,
+                        "usb_power": 0,
+                        "ac_switch": False,
+                        "dc_switch": False,
+                        "usb_switch": False,
+                    }
+                self.async_set_updated_data(dict(base_data))
         else:
             self._lan_has_valid_telemetry = False
             if self._bridge_absent_since is None:
@@ -651,9 +692,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def async_setup_lan(self) -> None:
         """Try to start LAN mode; silently skips if device not found on LAN or paused."""
-        if self.use_bridge:
-            _LOGGER.debug("oukitel: use_bridge is active, skipping classic LAN setup")
-            return
         if self._paused:
             _LOGGER.debug("oukitel: Skipping LAN setup — integration is paused")
             return
@@ -1004,8 +1042,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
             if self._lan_has_valid_telemetry and self._lan_state:
                 data = await self._update_lan()
+            elif (self._bridge and self._bridge.connected) or self._lan_active:
+                data = await self._update_lan_offline()
             else:
-                grace = 0.0 if self._bridge_never_seen else _BRIDGE_ABSENCE_MAX
+                grace = 60.0 if self._bridge_never_seen else _BRIDGE_ABSENCE_MAX
                 if self._bridge_absent_since is None:
                     self._bridge_absent_since = time.monotonic()
                 absent_since = self._bridge_absent_since
@@ -1014,12 +1054,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     and absent_since is not None
                     and (time.monotonic() - absent_since) >= grace
                 ):
-                    raise UpdateFailed(
-                        "the station never connected to the fake cloud"
-                        if self._bridge_never_seen
-                        else "the station is not connected to the local fake cloud"
+                    _LOGGER.debug(
+                        "oukitel: station not connected to fake cloud yet; serving last known / offline baseline"
                     )
-                data = dict(self.data or {})
+                data = await self._update_lan_offline()
 
             if hasattr(self, "predictive_tracker") and self.predictive_tracker is not None:
                 self.predictive_tracker.update(data)
@@ -1084,6 +1122,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             data.update(self.data)
         data.setdefault("online", True)
         data.setdefault("wifi_signal", -60)
+        data.setdefault("battery_percentage", 0)
         data.setdefault("battery_soc", 0)
         data.setdefault("total_input_power", 0)
         data.setdefault("total_output_power", 0)

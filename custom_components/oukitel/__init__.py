@@ -188,8 +188,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_setup_bridge()
     
     # Setup LAN mode if not using bridge and not forced to Cloud
-    if not use_bridge and connection_mode != MODE_CLOUD:
-        if not cloud_connected:
+    if connection_mode != MODE_CLOUD:
+        if not cloud_connected and not use_bridge:
             _LOGGER.info("oukitel: Offline boot — establishing LAN session before first coordinator refresh...")
             for attempt in range(1, 4):
                 await coordinator.async_setup_lan()
@@ -202,8 +202,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     f"Oukitel station '{host or 'auto-discovery'}' unreachable on LAN and cloud is offline. Retrying automatically..."
                 )
         else:
-            _LOGGER.debug("oukitel: Creating background task for LAN setup")
-            hass.async_create_task(coordinator.async_setup_lan())
+            _LOGGER.debug("oukitel: Establishing LAN setup")
+            await coordinator.async_setup_lan()
 
     _LOGGER.debug("oukitel: Awaiting initial coordinator refresh")
     try:
