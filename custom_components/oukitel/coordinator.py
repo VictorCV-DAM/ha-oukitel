@@ -1147,10 +1147,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     data[k] = self.data[k]
         self._apply_user_overrides(data)
 
-        # Trigger background cloud shadow refresh every 60s in auto/cloud mode
+        # Trigger background cloud shadow refresh every 60s in auto/cloud mode (disabled in bridge mode)
         now = time.monotonic()
         if (
-            self.connection_mode != MODE_LAN
+            not self.use_bridge
+            and self.connection_mode != MODE_LAN
             and (now - self._last_cloud_snapshot) >= _CLOUD_SNAPSHOT_INTERVAL
         ):
             self.hass.async_create_task(self._async_refresh_cloud_shadow())

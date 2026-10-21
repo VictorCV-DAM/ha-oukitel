@@ -171,8 +171,9 @@ class CloudBridge:
                 # The station tries TLS first (with a PSK we do not have): we
                 # shut the door on it and it falls back to plain MQTT.
                 if not buf and chunk[0] == 0x16:
-                    _LOGGER.debug("oukitel: %s tried TLS, closing", eti)
+                    _LOGGER.info("oukitel: %s tried TLS (0x16), closing to force plain MQTT fallback", eti)
                     break
+                _LOGGER.info("oukitel: fake cloud recv %d bytes from %s: %s", len(chunk), eti, chunk[:48].hex())
                 buf += chunk
                 while len(buf) >= 2:
                     lung, i = _dec_varint(buf, 1)
@@ -206,24 +207,28 @@ class CloudBridge:
         self, writer: asyncio.StreamWriter, eti: str, tipo: int, flags: int, body: bytes, asm: FrameAssembler
     ) -> bool:
         """Answer one MQTT packet. Returns True if it is the station."""
+        _LOGGER.info("oukitel: fake cloud packet from %s: tipo=%d flags=%d len=%d", eti, tipo, flags, len(body))
+
         if tipo == _CONNECT:
             self._writer = writer
             writer.write(b"\x20\x02\x00\x00")  # CONNACK ok
             await writer.drain()
-            _LOGGER.info("oukitel: station connected to the fake cloud (%s)", eti)
+            _LOGGER.info("oukitel: station connected to the fake cloud (%s) - CONNACK sent", eti)
             if self._on_conn:
                 self._on_conn(True)
             return True
 
         if tipo == _SUBSCRIBE:
             pid = body[0:2]
-            writer.write(b"\x90" + _enc_varint(3) + pid + b"\x00")  # SUBACK
+            tl = int.from_bytes(body[2:4], "big")
+            topic = body[4 : 4 + tl].decode("utf-8", "replace")
+            req_qos = body[4 + tl] if len(body) > 4 + tl else 0
+            suback_qos = req_qos if req_qos <= 1 else 1
+            writer.write(b"\x90\x03" + pid + bytes([suback_qos]))
             await writer.drain()
             try:
-                tl = int.from_bytes(body[2:4], "big")
-                topic = body[4 : 4 + tl].decode("utf-8", "replace")
                 self._down_base = topic[:-2] if topic.endswith("/+") else topic.rsplit("/", 1)[0]
-                _LOGGER.info("oukitel: subscribed to %s (downlink %s)", topic, self._down_base)
+                _LOGGER.info("oukitel: subscribed to %s (req_qos=%d, downlink %s)", topic, req_qos, self._down_base)
             except Exception:  # noqa: BLE001
                 pass
             # Without the SUBACK the station will not publish; without a
@@ -232,6 +237,7 @@ class CloudBridge:
             return True
 
         if tipo == _PINGREQ:
+            _LOGGER.info("oukitel: fake cloud received PINGREQ from %s - sending PINGRESP", eti)
             writer.write(b"\xd0\x00")
             await writer.drain()
             return True
@@ -239,19 +245,32 @@ class CloudBridge:
         if tipo == _PUBLISH:
             qos = (flags >> 1) & 3
             tl = int.from_bytes(body[0:2], "big")
-            resto = body[2 + tl :]
-            if qos > 0 and len(resto) >= 2:
-                pid = resto[0:2]
-                resto = resto[2:]
+            topic = body[2 : 2 + tl].decode("utf-8", "replace")
+            payload = body[2 + tl :]
+            pid_hex = ""
+            if qos > 0 and len(payload) >= 2:
+                pid = payload[0:2]
+                pid_hex = pid.hex()
+                payload = payload[2:]
                 writer.write((b"\x40" if qos == 1 else b"\x50") + _enc_varint(2) + pid)
                 await writer.drain()
-            for _p, _c, payload in asm.feed(resto):
-                _LOGGER.info("oukitel: frame in PUBLISH cmd=%s payload_len=%s", _c, len(payload))
+            _LOGGER.info(
+                "oukitel: fake cloud PUBLISH on '%s' (qos=%d pid=%s len=%d): %s",
+                topic, qos, pid_hex, len(payload), payload[:48].hex(),
+            )
+            frames = asm.feed(payload)
+            if not frames:
+                _LOGGER.info(
+                    "oukitel: asm.feed did not yield a frame yet (payload len %d, asm_buf %d)",
+                    len(payload), len(asm._buf),
+                )
+            for _p, _c, frame_body in frames:
+                _LOGGER.info("oukitel: frame in PUBLISH cmd=0x%04X pid=%d payload_len=%d", _c, _p, len(frame_body))
                 try:
-                    campi = ttlv_decode(payload)
-                    _LOGGER.info("oukitel: received telemetry tags: %s", list(campi.keys()))
+                    campi = ttlv_decode(frame_body)
+                    _LOGGER.info("oukitel: received telemetry tags: %s", campi)
                 except Exception as exc:  # noqa: BLE001
-                    _LOGGER.debug("oukitel: bus frame not decoded: %s", exc)
+                    _LOGGER.warning("oukitel: bus frame ttlv_decode error: %s", exc)
                     continue
                 if not campi:
                     continue
@@ -270,6 +289,7 @@ class CloudBridge:
                     _LOGGER.warning("oukitel: bus telemetry not applied: %s", exc)
             return True
 
+        _LOGGER.info("oukitel: fake cloud other packet tipo=%d flags=%d len=%d body=%s", tipo, flags, len(body), body[:32].hex())
         return False
 
     # ------------------------------------------------------------- downlink
@@ -288,7 +308,9 @@ class CloudBridge:
         base = self._down_base
         if writer is None or base is None:
             raise RuntimeError("no station connected to the fake cloud")
-        writer.write(self._pacchetto_publish(f"{base}/rw".encode(), frame))
+        topic = f"{base}/rw".encode()
+        _LOGGER.info("oukitel: sending downlink to %s (%d bytes): %s", topic.decode(), len(frame), frame[:32].hex())
+        writer.write(self._pacchetto_publish(topic, frame))
         await writer.drain()
 
     async def _stimulate(self, rumoroso: bool = True) -> None:
