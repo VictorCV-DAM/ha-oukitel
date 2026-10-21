@@ -236,6 +236,10 @@ class CloudBridge:
             await self._stimulate()
             return True
 
+        if tipo == 4:  # PUBACK
+            _LOGGER.info("oukitel: station acknowledged downlink frame (PUBACK pid=%s)", body[:2].hex() if body else "")
+            return True
+
         if tipo == _PINGREQ:
             _LOGGER.info("oukitel: fake cloud received PINGREQ from %s - sending PINGRESP", eti)
             writer.write(b"\xd0\x00")
@@ -294,7 +298,16 @@ class CloudBridge:
 
     # ------------------------------------------------------------- downlink
 
-    def _pacchetto_publish(self, topic: bytes, frame: bytes) -> bytes:
+    def _pacchetto_publish(self, topic: bytes, frame: bytes, qos: int = 1, pid: int = 1) -> bytes:
+        if qos == 1:
+            return (
+                b"\x32"
+                + _enc_varint(2 + len(topic) + 2 + len(frame))
+                + len(topic).to_bytes(2, "big")
+                + topic
+                + pid.to_bytes(2, "big")
+                + frame
+            )
         return (
             b"\x30"
             + _enc_varint(2 + len(topic) + len(frame))
@@ -308,9 +321,14 @@ class CloudBridge:
         base = self._down_base
         if writer is None or base is None:
             raise RuntimeError("no station connected to the fake cloud")
-        topic = f"{base}/rw".encode()
-        _LOGGER.info("oukitel: sending downlink to %s (%d bytes): %s", topic.decode(), len(frame), frame[:32].hex())
-        writer.write(self._pacchetto_publish(topic, frame))
+        self._mqtt_pid = (getattr(self, "_mqtt_pid", 0) % 65535) + 1
+        for sub in ("bus", "rw"):
+            topic = f"{base}/{sub}".encode()
+            pkt1 = self._pacchetto_publish(topic, frame, qos=1, pid=self._mqtt_pid)
+            pkt0 = self._pacchetto_publish(topic, frame, qos=0)
+            _LOGGER.info("oukitel: sending downlink to %s (%d bytes): %s", topic.decode(), len(frame), frame[:32].hex())
+            writer.write(pkt1)
+            writer.write(pkt0)
         await writer.drain()
 
     async def _stimulate(self, rumoroso: bool = True) -> None:
