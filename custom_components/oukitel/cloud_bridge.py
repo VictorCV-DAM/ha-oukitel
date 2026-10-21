@@ -223,12 +223,12 @@ class CloudBridge:
             tl = int.from_bytes(body[2:4], "big")
             topic = body[4 : 4 + tl].decode("utf-8", "replace")
             req_qos = body[4 + tl] if len(body) > 4 + tl else 0
-            # Cash83 documented: grant QoS 0 in SUBACK (90 03 <pid> 00)
-            writer.write(b"\x90\x03" + pid + b"\x00")
+            # Grant requested QoS (0 or 1) so Quectel client sees subscription accepted
+            writer.write(b"\x90\x03" + pid + bytes([req_qos]))
             await writer.drain()
             try:
                 self._down_base = topic[:-2] if topic.endswith("/+") else topic.rsplit("/", 1)[0]
-                _LOGGER.info("oukitel: subscribed to %s (req_qos=%d, granted_qos=0, downlink %s)", topic, req_qos, self._down_base)
+                _LOGGER.info("oukitel: subscribed to %s (req_qos=%d, granted_qos=%d, downlink %s)", topic, req_qos, req_qos, self._down_base)
             except Exception:  # noqa: BLE001
                 pass
             # Without the SUBACK the station will not publish; without a
@@ -342,54 +342,69 @@ class CloudBridge:
         await asyncio.sleep(0.04)
 
     async def _manda_frame(self, frame: bytes) -> None:
-        # Cash83 documented: publish to <base>/rw with QoS 0
-        await self._send_downlink("rw", frame, qos=0)
-        # Quectel standard bus: <base>/bus with QoS 1
+        # Quectel official TTLV bus topic: <base>/bus_ with QoS 1
+        await self._send_downlink("bus_", frame, qos=1)
+        # Quectel official TTLV sys topic: <base>/sys_ with QoS 1
+        await self._send_downlink("sys_", frame, qos=1)
+        # Quectel JSON bus topic: <base>/bus with QoS 1
         await self._send_downlink("bus", frame, qos=1)
-        # Also try <base>/rw with QoS 1
+        # Legacy Cash83 topic: <base>/rw with QoS 0 and QoS 1
+        await self._send_downlink("rw", frame, qos=0)
         await self._send_downlink("rw", frame, qos=1)
 
     async def _stimulate(self, rumoroso: bool = True) -> None:
-        """High-frequency mode + telemetry query, covering both cash83 and Oukitel LAN patterns."""
+        """High-frequency mode + telemetry query + login/activation sequence."""
         if self._writer is None or self._down_base is None:
             return
         try:
-            # 1. Cash83 HFR mode (cmd 19, tag 100 = 3)
+            # 0. Quectel Login OK / Activation (CMD 28725 with result=0)
+            self._pid += 1
+            await self._send_downlink("sys_", build_frame(self._pid, 28725, ttlv_encode([(1, "num", 0)])), qos=1)
+            await self._send_downlink("bus_", build_frame(self._pid, 28725, ttlv_encode([(1, "num", 0)])), qos=1)
+            await self._send_downlink("sys", build_frame(self._pid, 28725, ttlv_encode([(1, "num", 0)])), qos=1)
+            await self._send_downlink("sys", b'{"cmd":28725,"code":200,"result":0,"msg":"success"}', qos=1)
+            await self._send_downlink("sys", b'{"code":200,"msg":"success"}', qos=1)
+
+            # 1. Quectel Heartbeat / Keepalive (CMD 28729 & CMD 28727)
+            self._pid += 1
+            await self._send_downlink("sys_", build_frame(self._pid, 28729, ttlv_encode([(1, "num", 30), (2, "num", 1)])), qos=1)
+            await self._send_downlink("sys_", build_frame(self._pid, 28727, b""), qos=1)
+            await self._send_downlink("bus_", build_frame(self._pid, 28727, b""), qos=1)
+
+            # 2. Cash83 HFR mode (cmd 19, tag 100 = 3)
             self._pid += 1
             await self._manda_frame(
                 build_frame(self._pid, 19, ttlv_encode([(HFR_TAG, "num", HFR_VALUE)]))
             )
-            # 2. Oukitel LAN HFR mode (cmd 19, tag 100 = 1)
+            # 3. Oukitel LAN HFR mode (cmd 19, tag 100 = 1)
             self._pid += 1
             await self._manda_frame(
                 build_frame(self._pid, 19, ttlv_encode([(HFR_TAG, "num", 1)]))
             )
-            # 3. Oukitel Telemetry Query (cmd 35, empty)
+            # 4. Oukitel Wi-Fi HFR mode (cmd 19, tag 100 = 2)
+            self._pid += 1
+            await self._manda_frame(
+                build_frame(self._pid, 19, ttlv_encode([(HFR_TAG, "num", 2)]))
+            )
+            # 5. Oukitel Telemetry Query (cmd 35, empty)
             self._pid += 1
             await self._manda_frame(
                 build_frame(self._pid, 35, b"")
             )
-            # 4. Oukitel Telemetry Query (cmd 35, tags)
+            # 6. Oukitel Telemetry Query (cmd 35, tags)
             self._pid += 1
             tag_bytes = b"".join(i.to_bytes(2, "big") for i in KNOWN_TAG_IDS)
             await self._manda_frame(
                 build_frame(self._pid, 35, tag_bytes)
             )
-            # 5. Cash83 Read (cmd 17, tags)
+            # 7. Cash83 Read (cmd 17, tags)
             self._pid += 1
             await self._manda_frame(
                 build_frame(self._pid, 17, tag_bytes)
             )
-            # 6. Quectel Heartbeat Ping (cmd 28727)
-            self._pid += 1
-            await self._manda_frame(
-                build_frame(self._pid, 28727, b"")
-            )
-            # 7. Also ping the system topic <base>/sys
-            await self._send_downlink("sys", build_frame(self._pid, 28727, b""), qos=0)
 
             if rumoroso:
-                _LOGGER.info("oukitel: comprehensive stimulus sent (cmds 19[m3/m1], 35[empty/tags], 17, 28727)")
+                _LOGGER.info("oukitel: comprehensive stimulus sent to bus_, sys_, bus, rw (cmds 28725, 28729, 28727, 19[m3/m1/m2], 35, 17)")
         except Exception as exc:  # noqa: BLE001
             _LOGGER.debug("oukitel: stimulus failed: %s", exc)
 

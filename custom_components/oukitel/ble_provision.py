@@ -244,7 +244,11 @@ async def point_station(
                     _LOGGER.info("oukitel: BLE 0x7011 confirmation received")
             elif cmd == CMD_PROGRESS:
                 # Keep BLE link alive while station connects to Wi-Fi
-                _LOGGER.info("oukitel: Station joining Wi-Fi network (0x7014 progress notification)")
+                try:
+                    fields = ttlv_decode(payload)
+                    _LOGGER.info("oukitel: Station joining Wi-Fi network (0x7014 progress notification: %s)", fields)
+                except Exception:
+                    _LOGGER.info("oukitel: Station joining Wi-Fi network (0x7014 progress notification)")
 
         try:
             await client.stop_notify(target_char)
