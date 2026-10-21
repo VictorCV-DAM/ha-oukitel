@@ -1218,6 +1218,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         )
         try:
             await session.resubscribe()
+            await session.request_read(force=True)
         except Exception as exc:
             _LOGGER.debug("oukitel: LAN re-arm failed: %s", exc)
             return False
@@ -1326,6 +1327,19 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             return _build_paused_data(self._lan_state or self.data)
 
         now = time.monotonic()
+        # Active polling fallback: if no push frame arrived in >= 4s (offline or steady state), request tags
+        silent_for = None if self._lan_last_report is None else (now - self._lan_last_report)
+        if silent_for is None or silent_for >= 4.0:
+            if self._lan_session and getattr(self._lan_session, "is_ready", False):
+                try:
+                    await self._lan_session.request_read()
+                    for _ in range(8):
+                        await asyncio.sleep(0.05)
+                        if self._lan_last_report is not None and (time.monotonic() - self._lan_last_report) < 1.0:
+                            break
+                except Exception as exc:
+                    _LOGGER.debug("oukitel: LAN active read request notice: %s", exc)
+
         stale = (
             self._lan_last_report is not None
             and (now - self._lan_last_report) > _LAN_STALE_TIMEOUT
