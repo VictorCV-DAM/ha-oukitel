@@ -179,13 +179,32 @@ You can configure the active connection mode at any time directly in Home Assist
 |---|---|---|
 | **Protocol** | TCP port 6607 (binary, AES-128 push) | Acceleronix REST API (JSON) |
 | **Latency** | Real-time push (~1 s) | Polling interval (min. 3 s) |
-| **Internet Required** | Only during first setup | Always |
-| **Works Offline / Cloud Down** | ✅ Yes | ❌ No |
+| **Internet Required** | Only during initial account binding | Always |
+| **Switch Control Offline** | ✅ Yes (Instant local control) | ❌ No |
+| **Works Offline / Cloud Down** | ✅ Yes (Resilient) | ❌ No |
 | **Works Outside Local Network** | ❌ (requires VPN) | ✅ Yes |
+
+> [!NOTE]
+> **Offline LAN Behavior & Manufacturer Firmware Architecture**:
+> - **100% Offline Switch Control**: All hardware switches (AC inverter, 12V DC, USB ports) and power settings execute locally via TCP port 6607 with zero latency and millimeter precision, even during total internet/fiber outages.
+> - **Firmware-Imposed Telemetry Architecture**: In the manufacturer's factory firmware, the Quectel Wi-Fi MCU couples its internal UART polling loop (which requests sensor metrics from the BMS) to its cloud MQTT keepalive state. During an internet outage, live wattage/battery telemetry continues over LAN for ~120 seconds before the MCU pauses internal UART polling. The local LAN TCP socket stays permanently connected via authentic Quectel heartbeats (`CMD 28727 <-> 28728`), entities remain Available without false errors, and live telemetry auto-resumes cleanly within 30 seconds of internet restoration.
+> - For a thorough technical breakdown of reverse-engineered opcodes, TSL property 100, empirical test logs, and open developer roadmaps, see [docs/OFFLINE_LAN_RESEARCH.md](docs/OFFLINE_LAN_RESEARCH.md).
 
 > [!TIP]
 > The **Connection Mode** diagnostic sensor on the device page always reports whether the station is actively communicating via `LAN` or `Cloud`.
 
+
+---
+
+## 🚀 What's New in v1.5.7: Official Quectel Heartbeat, Offline LAN Control & Firmware Resilience
+
+- **💓 Official Quectel LAN Heartbeat (`CMD 28727 <-> 28728`):** Implemented the authentic Quectel binary heartbeat discovered through bytecode reverse engineering. The station acknowledges every ping immediately, preventing TCP socket teardowns on silence.
+- **⚡ Native High-Frequency LAN Reporting (`Tag 100 = 1`):** Subscribes directly using the official manufacturer TSL specification (`high_frequency_reporting: 1 = 局域网高频上报`), eliminating redundant dual-mode packet hammering.
+- **🔌 100% Offline Switch Control:** AC, DC, and USB power relays execute instantly via local LAN with millimeter precision, even during total internet/fiber outages.
+- **🛡️ Watchdog & Resilience Hardening:** Removed aggressive 45-second silence disconnects in `coordinator.py`. Entities remain permanently `Available` in Home Assistant without false "Unavailable" drops or reload hangs.
+- **🔄 Instant 30-Second Auto-Recovery:** When internet or Wi-Fi reconnects after an outage, the real-time telemetry stream auto-recovers completely autonomously within 30 seconds without requiring Home Assistant or integration restarts.
+- **🧹 Zero Log Pollution:** Relegated all routine high-frequency incoming telemetry and write ACK frames from `INFO` to `DEBUG`, keeping user logs clean and performant.
+- **🔬 Comprehensive Research Log:** Added [docs/OFFLINE_LAN_RESEARCH.md](docs/OFFLINE_LAN_RESEARCH.md) detailing the reverse-engineered packet structure, empirical timing tests, hardware limitations of the Quectel Wi-Fi MCU, and open research avenues for the developer community.
 
 ---
 

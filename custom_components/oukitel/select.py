@@ -117,10 +117,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
                     lan_ok = True
                     _LOGGER.debug("oukitel: Instant LAN frequency write: tag 27 = %s", cloud_val)
                 except Exception as exc:
-                    _LOGGER.warning("oukitel: LAN frequency write failed: %s", exc)
-
-            if lan_ok:
-                return
+                    _LOGGER.debug("oukitel: LAN frequency write failed: %s", exc)
 
             # 3. Send command to cloud formatted as TSL string only if not LAN-only and authenticated
             cloud_ok = False
@@ -222,10 +219,7 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
                     lan_ok = True
                     _LOGGER.debug("oukitel: Instant LAN voltage write: tag 28 = %s", clean_num)
                 except Exception as exc:
-                    _LOGGER.warning("oukitel: LAN voltage write failed: %s", exc)
-
-            if lan_ok:
-                return
+                    _LOGGER.debug("oukitel: LAN voltage write failed: %s", exc)
 
             # 3. Send command to cloud formatted as TSL string only if not LAN-only and authenticated
             cloud_ok = False

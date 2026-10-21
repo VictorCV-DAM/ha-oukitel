@@ -34,9 +34,6 @@ from .const import (
     DEFAULT_FIXED_PRICE,
     DOMAIN,
     ENTITY_DESCRIPTIONS,
-    MODE_AUTO,
-    MODE_CLOUD,
-    MODE_LAN,
     VERSION,
     get_battery_capacity_wh,
     get_entity_description,
@@ -97,41 +94,14 @@ def _build_calculated_device_info(coordinator: OukitelDataCoordinator, client) -
     if coordinator.hass and hasattr(coordinator.hass, "config") and getattr(coordinator.hass.config, "language", None):
         is_es = str(coordinator.hass.config.language).lower().startswith("es")
 
-    parent_id = None
-    if coordinator.hass:
-        try:
-            device_registry = dr.async_get(coordinator.hass)
-            if hasattr(device_registry, "async_get_device_by_identifier"):
-                parent_device = device_registry.async_get_device_by_identifier((DOMAIN, client.device_key))
-            else:
-                parent_device = device_registry.async_get_device(identifiers={(DOMAIN, client.device_key)})
-            if parent_device:
-                parent_id = parent_device.id
-        except Exception:
-            pass
-
-    info_kwargs = {
-        "identifiers": {(DOMAIN, f"{client.device_key}_calculated")},
-        "name": f"{client.device_name} Sensores Calculados" if is_es else f"{client.device_name} Calculated Sensors",
-        "manufacturer": "OUKITEL",
-        "model": "Métricas Energéticas y Económicas Calculadas" if is_es else "Calculated Energy & Financial Metrics",
-        "sw_version": f"Cloud+LAN {VERSION}",
-    }
-    if parent_id:
-        info_kwargs["via_device_id"] = parent_id
-    elif coordinator.hass:
-        try:
-            device_registry = dr.async_get(coordinator.hass)
-            parent_device = device_registry.async_get_or_create(
-                config_entry_id=coordinator.config_entry.entry_id if coordinator.config_entry else None,
-                identifiers={(DOMAIN, client.device_key)},
-            )
-            if parent_device:
-                info_kwargs["via_device_id"] = parent_device.id
-        except Exception:
-            pass
-
-    return DeviceInfo(**info_kwargs)
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{client.device_key}_calculated")},
+        via_device=(DOMAIN, client.device_key),
+        name=f"{client.device_name} Sensores Calculados" if is_es else f"{client.device_name} Calculated Sensors",
+        manufacturer="OUKITEL",
+        model="Métricas Energéticas y Económicas Calculadas" if is_es else "Calculated Energy & Financial Metrics",
+        sw_version=f"Cloud+LAN {VERSION}",
+    )
 
 
 FAULT_STATUS_OPTIONS = [
@@ -297,15 +267,6 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             self._attr_entity_category = category
         if key == "device_fault_status":
             self._attr_options = FAULT_STATUS_OPTIONS
-        elif dev_class in (
-            SensorDeviceClass.POWER,
-            SensorDeviceClass.BATTERY,
-            SensorDeviceClass.TEMPERATURE,
-            SensorDeviceClass.DURATION,
-            SensorDeviceClass.VOLTAGE,
-            SensorDeviceClass.SIGNAL_STRENGTH,
-        ):
-            self._attr_suggested_display_precision = 0
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -425,10 +386,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                     val = int(((batt / 100.0) * cap_wh / abs(net_power)) * 60)
                 elif net_power > 5.0 and batt < 100:
                     val = int((((100.0 - batt) / 100.0) * cap_wh / net_power) * 60)
-            try:
-                return int(round(float(val)))
-            except (ValueError, TypeError):
-                return val
+            return val
 
         # 2. Remaining Discharge Time: Autonomy remaining while draining battery
         if self._key == "remain_time":
@@ -443,10 +401,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                 if batt > 0 and abs(net_power) > 5.0:
                     cap_wh = get_battery_capacity_wh(self.client)
                     val = int(((batt / 100.0) * cap_wh / abs(net_power)) * 60)
-            try:
-                return int(round(float(val)))
-            except (ValueError, TypeError):
-                return val
+            return val
 
         # 3. Remaining Charge Time: Estimated time to reach 100% full
         if self._key == "remain_charging_time":
@@ -468,10 +423,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                     cap_wh = get_battery_capacity_wh(self.client)
                     needed_wh = ((100.0 - batt_pct) / 100.0) * cap_wh
                     val = int((needed_wh / net_power) * 60)
-            try:
-                return int(round(float(val)))
-            except (ValueError, TypeError):
-                return val
+            return val
 
         # 4. AC Output Voltage: 230V (or configured ACvoltage_Switchover) when AC output/switch active, 0V when off
         if self._key == "ac_output_voltage":
@@ -481,10 +433,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
                 return 0
             val = self.coordinator.data.get("ac_output_voltage")
             if val is not None and val > 0:
-                try:
-                    return int(round(float(val)))
-                except (ValueError, TypeError):
-                    return val
+                return val
             v_enum = self.coordinator.data.get("ACvoltage_Switchover")
             enum_map = {0: 100, 1: 110, 2: 120, 3: 220, 4: 230}
             return enum_map.get(v_enum, 230)
@@ -493,20 +442,17 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         if self._key == "dc_output_voltage":
             val = self.coordinator.data.get("dc_output_voltage")
             if val is not None and val > 0:
-                try:
-                    return int(round(float(val)))
-                except (ValueError, TypeError):
-                    return val
+                return val
             dc_p = float(self.coordinator.data.get("dc_output_power") or 0)
             dc_sw = bool(self.coordinator.data.get("dc_switch", False))
             if dc_p > 0 or dc_sw:
-                return 12
-            return 0
+                return 12.0
+            return 0.0
 
         if self._key == "dc_output_current":
             val = self.coordinator.data.get("dc_output_current")
             if val is not None and val > 0:
-                return round(float(val), 2)
+                return val
             dc_p = float(self.coordinator.data.get("dc_output_power") or 0)
             if dc_p > 0:
                 return round(dc_p / 12.0, 2)
@@ -515,14 +461,10 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         # 6. Inverter Temperature: fallback to unit temperature (temp) if tag 33 is absent
         if self._key == "inverter_temp":
             val = self.coordinator.data.get("inverter_temp")
-            if val is None or val <= 0:
-                val = self.coordinator.data.get("temp")
-            if val is not None:
-                try:
-                    return int(round(float(val)))
-                except (ValueError, TypeError):
-                    return val
-            return None
+            if val is not None and val > 0:
+                return val
+            val = self.coordinator.data.get("temp")
+            return val if val is not None else None
 
         # 7. Individual port outputs and power metrics default to 0 if None/inactive (prevents "Unknown" states)
         if self._key in (
@@ -540,44 +482,25 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             "dc_input",
         ):
             val = self.coordinator.data.get(self._key)
-            if val is not None:
-                try:
-                    return int(round(float(val)))
-                except (ValueError, TypeError):
-                    return val
-            return 0
+            return val if val is not None else 0
 
         # 8. Temperature: return unit temperature, fallback to inverter_temp
         if self._key == "temp":
             val = self.coordinator.data.get("temp")
-            if val is None:
-                val = self.coordinator.data.get("inverter_temp")
             if val is not None:
-                try:
-                    return int(round(float(val)))
-                except (ValueError, TypeError):
-                    return val
-            return None
+                return val
+            val = self.coordinator.data.get("inverter_temp")
+            return val if val is not None else None
 
-        # 9. Battery default to None if not received
+        # 9. Battery default to 0 if not received
         if self._key == "battery_percentage":
             val = self.coordinator.data.get("battery_percentage")
-            if val is not None:
-                try:
-                    return int(round(float(val)))
-                except (ValueError, TypeError):
-                    return val
-            return None
+            return val if val is not None else 0
 
         # 10. WiFi signal default
         if self._key == "wifi_signal":
             val = self.coordinator.data.get("wifi_signal")
-            if val is not None:
-                try:
-                    return int(round(float(val)))
-                except (ValueError, TypeError):
-                    return val
-            return None
+            return val
 
         # 11. Version string formatting (e.g. 215, 106)
         if self._key in ("BMS_Version", "AC_Version"):
@@ -635,7 +558,7 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
     _attr_name = None
     _attr_icon = "mdi:lan-connect"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["LAN", "Cloud", "Paused", "Reconnecting LAN", "Offline"]
+    _attr_options = ["LAN", "Cloud", "Paused"]
 
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
@@ -649,32 +572,17 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
-        try:
-            if self.coordinator.is_paused:
-                return "Paused"
-            is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
-            if is_lan:
-                return "LAN"
-            if getattr(self.coordinator.client, "access_token", None):
-                return "Cloud"
-            cfg_mode = getattr(self.coordinator, "connection_mode", "auto")
-            return "Reconnecting LAN" if cfg_mode != MODE_CLOUD else "Offline"
-        except Exception:
-            return "Offline"
+        if self.coordinator.is_paused:
+            return "Paused"
+        is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
+        return "LAN" if is_lan else "Cloud"
 
     @property
     def icon(self) -> str:
-        try:
-            if self.coordinator.is_paused:
-                return "mdi:pause-circle-outline"
-            val = self.native_value
-            if val == "LAN":
-                return "mdi:lan-connect"
-            if val == "Cloud":
-                return "mdi:cloud-outline"
-            return "mdi:lan-disconnect"
-        except Exception:
-            return "mdi:lan-disconnect"
+        if self.coordinator.is_paused:
+            return "mdi:pause-circle-outline"
+        is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
+        return "mdi:lan-connect" if is_lan else "mdi:cloud-outline"
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -699,7 +607,7 @@ class OukitelInverterIdlePowerSensor(CoordinatorEntity, SensorEntity):
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:power-sleep"
-    _attr_suggested_display_precision = 0
+    _attr_suggested_display_precision = 1
     _attr_has_entity_name = True
     _attr_translation_key = "inverter_idle_power"
 
@@ -714,13 +622,13 @@ class OukitelInverterIdlePowerSensor(CoordinatorEntity, SensorEntity):
         return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
-    def native_value(self) -> int:
+    def native_value(self) -> float:
         if not self.coordinator.data or self.coordinator.is_paused:
-            return 0
+            return 0.0
         ac_switch = bool(self.coordinator.data.get("ac_switch", False))
         if not ac_switch:
-            return 0
-        return 18
+            return 0.0
+        return 18.0
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -733,7 +641,7 @@ class OukitelInverterIdlePowerSensor(CoordinatorEntity, SensorEntity):
             "description": desc,
             "ac_switch": "ON" if ac_switch else "OFF",
             "inverter_state": "Standby (Idle)" if (ac_switch and ac_out <= 5.0) else ("Inverting" if ac_switch else "Off"),
-            "nominal_idle_draw_w": 18,
+            "nominal_idle_draw_w": 18.0,
         }
 
 
@@ -743,7 +651,7 @@ class OukitelInverterEfficiencySensor(CoordinatorEntity, SensorEntity):
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:gauge"
-    _attr_suggested_display_precision = 0
+    _attr_suggested_display_precision = 1
     _attr_has_entity_name = True
     _attr_translation_key = "inverter_efficiency"
 
@@ -758,29 +666,29 @@ class OukitelInverterEfficiencySensor(CoordinatorEntity, SensorEntity):
         return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
-    def native_value(self) -> int:
+    def native_value(self) -> float:
         if not self.coordinator.data or self.coordinator.is_paused:
-            return 0
+            return 0.0
         ac_switch = bool(self.coordinator.data.get("ac_switch", False))
         if not ac_switch:
-            return 0
+            return 0.0
 
         ac_out = float(self.coordinator.data.get("ac_output_power") or 0.0)
         if ac_out <= 5.0:
-            return 0
+            return 0.0
 
         ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
 
         # 1. UPS Bypass mode: AC mains feeds loads directly through bypass relay
         if ac_in > 10.0 and ac_in >= (ac_out - 15.0):
-            return int(round(min(98.5, max(95.0, (ac_out / (ac_out + 3.5)) * 100.0))))
+            return round(min(98.5, max(95.0, (ac_out / (ac_out + 3.5)) * 100.0)), 1)
 
         # 2. Inverting mode (DC bus / Battery / Solar to AC):
         # Calibrated quadratic loss model for Oukitel bidirectional inverter
         p_loss = 18.0 + (0.035 * ac_out) + (0.000025 * (ac_out ** 2))
         p_in = ac_out + p_loss
         eff = (ac_out / p_in) * 100.0
-        return int(round(min(94.0, max(10.0, eff))))
+        return round(min(93.5, max(10.0, eff)), 1)
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -794,7 +702,7 @@ class OukitelInverterEfficiencySensor(CoordinatorEntity, SensorEntity):
         return {
             "description": desc,
             "mode": "Bypass (Grid Passthrough)" if is_bypass else ("Inverting (Battery/Solar)" if ac_switch else "Off"),
-            "ac_output_power_w": int(round(ac_out)),
+            "ac_output_power_w": ac_out,
         }
 
 
@@ -805,7 +713,7 @@ class OukitelInverterLossPowerSensor(CoordinatorEntity, SensorEntity):
     _attr_native_unit_of_measurement = UnitOfPower.WATT
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:fire-alert"
-    _attr_suggested_display_precision = 0
+    _attr_suggested_display_precision = 1
     _attr_has_entity_name = True
     _attr_translation_key = "inverter_loss_power"
 
@@ -820,23 +728,23 @@ class OukitelInverterLossPowerSensor(CoordinatorEntity, SensorEntity):
         return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
-    def native_value(self) -> int:
+    def native_value(self) -> float:
         if not self.coordinator.data or self.coordinator.is_paused:
-            return 0
+            return 0.0
         ac_switch = bool(self.coordinator.data.get("ac_switch", False))
         if not ac_switch:
-            return 0
+            return 0.0
 
         ac_out = float(self.coordinator.data.get("ac_output_power") or 0.0)
         if ac_out <= 5.0:
-            return 18
+            return 18.0
 
         ac_in = float(self.coordinator.data.get("ac_input") or 0.0)
         if ac_in > 10.0 and ac_in >= (ac_out - 15.0):
-            return int(round(min(25.0, max(2.0, ac_out * 0.015))))
+            return round(min(25.0, max(2.0, ac_out * 0.015)), 1)
 
         p_loss = 18.0 + (0.035 * ac_out) + (0.000025 * (ac_out ** 2))
-        return int(round(p_loss))
+        return round(p_loss, 1)
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -925,7 +833,7 @@ class OukitelBatteryHealthSensor(CoordinatorEntity, RestoreEntity, SensorEntity)
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:battery-heart-variant"
-    _attr_suggested_display_precision = 0
+    _attr_suggested_display_precision = 1
     _attr_has_entity_name = True
     _attr_translation_key = "battery_state_of_health_estimated"
 
@@ -942,8 +850,8 @@ class OukitelBatteryHealthSensor(CoordinatorEntity, RestoreEntity, SensorEntity)
         return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
-    def native_value(self) -> int:
-        return int(round(self._soh))
+    def native_value(self) -> float:
+        return round(self._soh, 1)
 
     @property
     def extra_state_attributes(self) -> dict:
@@ -984,7 +892,7 @@ class OukitelDaysSinceFullChargeSensor(CoordinatorEntity, RestoreEntity, SensorE
     _attr_native_unit_of_measurement = UnitOfTime.DAYS
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:calendar-clock"
-    _attr_suggested_display_precision = 0
+    _attr_suggested_display_precision = 1
     _attr_has_entity_name = True
     _attr_translation_key = "days_since_last_full_charge"
 
@@ -1000,10 +908,10 @@ class OukitelDaysSinceFullChargeSensor(CoordinatorEntity, RestoreEntity, SensorE
         return _build_calculated_device_info(self.coordinator, self.client)
 
     @property
-    def native_value(self) -> int:
+    def native_value(self) -> float:
         now_ts = time.time()
         elapsed_s = max(0.0, now_ts - self._last_full_charge_ts)
-        return int(elapsed_s / 86400.0)
+        return round(elapsed_s / 86400.0, 1)
 
     @property
     def extra_state_attributes(self) -> dict:

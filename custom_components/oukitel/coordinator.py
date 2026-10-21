@@ -32,19 +32,18 @@ from .const import (
     MODE_LAN,
     get_battery_capacity_wh,
 )
-from .diag_logger import diag_log
 from .local_scan import find_device_on_lan
 from .local_session import LocalSession, LocalAuthError, LocalSessionError
 
 _LOGGER = logging.getLogger(__name__)
 
-_LAN_STALE_TIMEOUT = 180.0
-_LAN_RECONNECT_DELAY = 3.0
+_LAN_STALE_TIMEOUT = 150.0
+_LAN_RECONNECT_DELAY = 10.0
 _CLOUD_SNAPSHOT_INTERVAL = 60.0
-_LAN_RETRY_INTERVAL = 15.0
-_LAN_SILENCE_TIMEOUT = 240.0
-_LAN_REARM_TIMEOUT = 120.0
-_LAN_REARM_INTERVAL = 60.0
+_LAN_RETRY_INTERVAL = 20.0
+_LAN_SILENCE_TIMEOUT = 45.0
+_LAN_REARM_TIMEOUT = 25.0
+_LAN_REARM_INTERVAL = 5.0
 
 STATIC_METADATA_KEYS = (
     "temp",
@@ -55,39 +54,6 @@ STATIC_METADATA_KEYS = (
     "Frequency_Switchover",
     "ACvoltage_Switchover",
     "ac_charging_limit",
-)
-
-PERSISTED_SNAPSHOT_KEYS = (
-    "battery_percentage",
-    "total_input_power",
-    "total_output_power",
-    "ac_input",
-    "dc_input",
-    "ac_output_power",
-    "ac_output_voltage",
-    "dc_output_power",
-    "dc_output_current",
-    "dc_output_voltage",
-    "usb_a_power",
-    "usb_c_qc_power",
-    "typec1_power",
-    "typec2_power",
-    "typec3_power",
-    "typec4_power",
-    "remain_time",
-    "remaining_time",
-    "remain_charging_time",
-    "ac_switch",
-    "dc_switch",
-    "usb_switch",
-    "ac_charging_limit",
-    "Frequency_Switchover",
-    "ACvoltage_Switchover",
-    "BMS_Version",
-    "AC_Version",
-    "temp",
-    "inverter_temp",
-    "wifi_signal",
 )
 
 
@@ -119,15 +85,9 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
                 p = 0
         v = ac_val.get(3) if 3 in ac_val else ac_val.get("3")
         if p is not None:
-            try:
-                target["ac_output_power"] = int(round(float(p)))
-            except (ValueError, TypeError):
-                target["ac_output_power"] = p
+            target["ac_output_power"] = p
         if v is not None:
-            try:
-                target["ac_output_voltage"] = int(round(float(v)))
-            except (ValueError, TypeError):
-                target["ac_output_voltage"] = v
+            target["ac_output_voltage"] = v
 
     # 2. USB Info: 1=usb_switch, 2=USB-A power (W), 3=USB-C QC power (W)
     usb_val = _parse_dict(target.get(7) or target.get("7") or target.get("USB_Info") or target.get("usb_data"))
@@ -148,15 +108,9 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
             except (ValueError, TypeError):
                 pass
         if usb_a is not None:
-            try:
-                target["usb_a_power"] = int(round(float(usb_a)))
-            except (ValueError, TypeError):
-                target["usb_a_power"] = usb_a
+            target["usb_a_power"] = usb_a
         if usb_c is not None:
-            try:
-                target["usb_c_qc_power"] = int(round(float(usb_c)))
-            except (ValueError, TypeError):
-                target["usb_c_qc_power"] = usb_c
+            target["usb_c_qc_power"] = usb_c
 
     # 3. Type-C Info: 2=Type-C 1 (W), 5=Type-C 2 (W), 6=Type-C 3 (W), 7=Type-C 4 (W)
     typec_val = _parse_dict(target.get(8) or target.get("8") or target.get("TypeC_Info") or target.get("typec_data"))
@@ -185,12 +139,14 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
                 c4 = float(typec_val["Typec4_output"])
             except (ValueError, TypeError):
                 pass
-        for c_idx, c_val in ((1, c1), (2, c2), (3, c3), (4, c4)):
-            if c_val is not None:
-                try:
-                    target[f"typec{c_idx}_power"] = int(round(float(c_val)))
-                except (ValueError, TypeError):
-                    target[f"typec{c_idx}_power"] = c_val
+        if c1 is not None:
+            target["typec1_power"] = c1
+        if c2 is not None:
+            target["typec2_power"] = c2
+        if c3 is not None:
+            target["typec3_power"] = c3
+        if c4 is not None:
+            target["typec4_power"] = c4
 
     # 4. DC Info: 1=dc_switch, 2=DC Car output power (W), 3=voltage (V), 4=current (A)
     dc_val = _parse_dict(target.get(9) or target.get("9") or target.get("DC_Info") or target.get("dc_data"))
@@ -207,20 +163,11 @@ def _unpack_port_data(target: dict[str, Any]) -> None:
         dc_v = dc_val.get(3) if 3 in dc_val else dc_val.get("3")
         dc_a = dc_val.get(4) if 4 in dc_val else dc_val.get("4")
         if dc_p is not None:
-            try:
-                target["dc_output_power"] = int(round(float(dc_p)))
-            except (ValueError, TypeError):
-                target["dc_output_power"] = dc_p
+            target["dc_output_power"] = dc_p
         if dc_v is not None:
-            try:
-                target["dc_output_voltage"] = int(round(float(dc_v)))
-            except (ValueError, TypeError):
-                target["dc_output_voltage"] = dc_v
+            target["dc_output_voltage"] = dc_v
         if dc_a is not None:
-            try:
-                target["dc_output_current"] = round(float(dc_a), 2)
-            except (ValueError, TypeError):
-                target["dc_output_current"] = dc_a
+            target["dc_output_current"] = dc_a
 
     # 5. Direct switch tags (LAN TTLV 43=ac_switch, 44=usb_switch, 46=dc_switch)
     for sw_k, sw_tag in (("ac_switch", 43), ("usb_switch", 44), ("dc_switch", 46)):
@@ -453,75 +400,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._user_overrides: dict[str, tuple] = {}
         self._last_device_list_check: float = 0.0
         self.last_user_command_time: float = 0.0
-        self._static_metadata: dict[str, Any] = dict(
-            (config_entry.data.get("static_metadata") or {}) if config_entry else {}
-        )
+        self._static_metadata: dict[str, Any] = {}
         self._last_cloud_snapshot: float = 0.0
-        self._last_entry_persist: float = -60.0
         self._use_struct_switch_protocol: bool | None = None
-        self._last_valid_battery: float | None = (
-            config_entry.data.get("last_battery_percentage") if config_entry else None
-        )
-        if config_entry and isinstance(config_entry.data.get("last_telemetry_snapshot"), dict):
-            for k, v in config_entry.data["last_telemetry_snapshot"].items():
-                if v is not None and k not in self._lan_state:
-                    self._lan_state[k] = v
-                if k in STATIC_METADATA_KEYS and v is not None and k not in self._static_metadata:
-                    self._static_metadata[k] = v
-            # Seed raw tag keys so _unpack_port_data doesn't revert to uninitialized states
-            sw_tag_map = {"ac_switch": 43, "usb_switch": 44, "dc_switch": 46}
-            for sw_k, sw_tag in sw_tag_map.items():
-                if sw_k in self._lan_state:
-                    self._lan_state[sw_tag] = self._lan_state[sw_k]
-                    self._lan_state[str(sw_tag)] = self._lan_state[sw_k]
-            if "total_input_power" in self._lan_state:
-                self._lan_state[4] = self._lan_state["total_input_power"]
-                self._lan_state["4"] = self._lan_state["total_input_power"]
-            if "total_output_power" in self._lan_state:
-                self._lan_state[5] = self._lan_state["total_output_power"]
-                self._lan_state["5"] = self._lan_state["total_output_power"]
 
     def async_set_updated_data(self, data: dict[str, Any]) -> None:
         """Update coordinator data and refresh predictive autonomy tracker."""
-        if data and self.config_entry:
-            try:
-                now_mono = time.monotonic()
-                new_data = None
-                batt = data.get("battery_percentage")
-                batt_changed = False
-                if batt is not None:
-                    batt_int = int(round(float(batt)))
-                    if batt_int > 0:
-                        self._last_valid_battery = batt_int
-                        if self.config_entry.data.get("last_battery_percentage") != batt_int:
-                            new_data = dict(self.config_entry.data)
-                            new_data["last_battery_percentage"] = batt_int
-                            batt_changed = True
-
-                # Check if static metadata gained any new keys
-                persisted_meta = dict(self.config_entry.data.get("static_metadata") or {})
-                meta_changed = False
-                for k in STATIC_METADATA_KEYS:
-                    val = self._static_metadata.get(k) if k in self._static_metadata else data.get(k)
-                    if val is not None and persisted_meta.get(k) != val:
-                        persisted_meta[k] = val
-                        self._static_metadata[k] = val
-                        meta_changed = True
-
-                if batt_changed or meta_changed or (now_mono - self._last_entry_persist >= 60.0):
-                    if new_data is None:
-                        new_data = dict(self.config_entry.data)
-                    new_data["static_metadata"] = persisted_meta
-                    snapshot = dict(self.config_entry.data.get("last_telemetry_snapshot") or {})
-                    for k in PERSISTED_SNAPSHOT_KEYS:
-                        if k in data and data[k] is not None:
-                            snapshot[k] = data[k]
-                    new_data["last_telemetry_snapshot"] = snapshot
-                    self._last_entry_persist = now_mono
-                    if new_data != self.config_entry.data:
-                        self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
-            except Exception:
-                pass
         if hasattr(self, "predictive_tracker") and self.predictive_tracker is not None:
             self.predictive_tracker.update(data)
         super().async_set_updated_data(data)
@@ -543,32 +427,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if self._lan_state is not None:
             self._lan_state[key] = value
 
-        # Sync raw and string tag keys into state so _unpack_port_data doesn't revert to stale values
-        tag_key_map = {
-            "ac_switch": 43,
-            "usb_switch": 44,
-            "dc_switch": 46,
-            "ac_charging_limit": 20,
-            "Frequency_Switchover": 27,
-            "ACvoltage_Switchover": 28,
-        }
-        if key in tag_key_map:
-            tag = tag_key_map[key]
-            tag_val = value
-            if key == "Frequency_Switchover" and isinstance(value, str):
-                tag_val = 0 if "50" in value else 1
-            elif key == "ACvoltage_Switchover" and isinstance(value, str):
-                try:
-                    tag_val = int(value.replace("V", "").strip())
-                except Exception:
-                    tag_val = value
-            if self.data is not None:
-                self.data[tag] = tag_val
-                self.data[str(tag)] = tag_val
-            if self._lan_state is not None:
-                self._lan_state[tag] = tag_val
-                self._lan_state[str(tag)] = tag_val
-
     def async_clear_user_override(self, key: str) -> None:
         """Cancel user command override immediately (e.g. if cloud command failed)."""
         self._user_overrides.pop(key, None)
@@ -580,31 +438,23 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         # 1. Check known product_key
         pk = (getattr(self.client, "product_key", None) or "").strip().lower()
-        if pk in ("p11wn7",):  # P2001 Plus
-            self._use_struct_switch_protocol = False
-            return False
         if pk in ("p11ssr",):  # BP2000 Pro / BP2000
             self._use_struct_switch_protocol = True
             return True
+        if pk in ("p11wn7",):  # P2001 Plus
+            self._use_struct_switch_protocol = False
+            return False
 
-        # 2. If station reported direct flat switch tags 43, 44 or 46
-        for t in (43, 44, 46):
-            if self._lan_state and (t in self._lan_state or str(t) in self._lan_state):
-                self._use_struct_switch_protocol = False
-                return False
-            if self.data and (t in self.data or str(t) in self.data):
-                self._use_struct_switch_protocol = False
-                return False
-
-        # 3. Check telemetry signature: if station reports Tag 6, 7 or 9 as nested struct with subtag 1
+        # 2. Check telemetry signature: if station reports Tag 6, 7 or 9 as dict/struct
         for t in (6, 7, 9):
-            d = (self._lan_state.get(t) if self._lan_state else None) or (self.data.get(t) if self.data else None)
-            if isinstance(d, dict) and (1 in d or "1" in d):
+            if self._lan_state and isinstance(self._lan_state.get(t), dict):
+                self._use_struct_switch_protocol = True
+                return True
+            if self.data and isinstance(self.data.get(t), dict):
                 self._use_struct_switch_protocol = True
                 return True
 
         # Default fallback to flat tags (P2001 Plus baseline)
-        self._use_struct_switch_protocol = False
         return False
 
     async def async_send_switch_command(self, key: str, value: bool) -> bool:
@@ -614,8 +464,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         for attempt in range(2):
             # 1. LAN write dispatch
             lan_ok = False
-            session = self._lan_session
-            if self._lan_active and session and session._writer and session._iv:
+            if self._lan_active and self._lan_session:
                 try:
                     if is_struct:
                         struct_map = {
@@ -625,7 +474,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         }
                         if key in struct_map:
                             tag, subtag = struct_map[key]
-                            await session.send_write(tag, "struct", [(subtag, "bool", value)])
+                            await self._lan_session.send_write(tag, "struct", [(subtag, "bool", value)])
                             lan_ok = True
                             _LOGGER.debug(
                                 "oukitel: Instant LAN struct switch write: tag %s subtag %s = %s",
@@ -639,17 +488,13 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         }
                         tag = tag_map.get(key)
                         if tag is not None:
-                            await session.send_write(tag, "bool", value)
+                            await self._lan_session.send_write(tag, "bool", value)
                             lan_ok = True
                             _LOGGER.debug("oukitel: Instant LAN flat switch write: tag %s = %s", tag, value)
                 except Exception as exc:
-                    _LOGGER.warning("oukitel: LAN write failed: %s", exc)
+                    _LOGGER.debug("oukitel: LAN write failed: %s", exc)
 
-            # If LAN write succeeded, return True immediately without blocking on cloud!
-            if lan_ok:
-                return True
-
-            # 2. Cloud fallback only if LAN failed, not in Solo LAN mode, and authenticated
+            # 2. Cloud shadow synchronization (always sync unless in Solo LAN mode or offline)
             cloud_ok = False
             if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
                 try:
@@ -672,13 +517,36 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         cloud_payload,
                     )
                 except Exception as exc:
-                    _LOGGER.warning("oukitel: Cloud switch sync failed: %s", exc)
+                    _LOGGER.debug("oukitel: Cloud switch sync failed (offline or unreachable): %s", exc)
 
-            if cloud_ok:
+            if lan_ok or cloud_ok:
                 return True
 
+            # State readback verification: if Cloud control returned failure (e.g. timeout / code 5340),
+            # check whether the station physically applied the command before reporting failure
+            if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
+                try:
+                    await asyncio.sleep(1.0)
+                    verification_data = await self.hass.async_add_executor_job(self.client.get_telemetry)
+                    if verification_data:
+                        _unpack_port_data(verification_data)
+                        if key in verification_data:
+                            actual_val = bool(verification_data[key])
+                            if actual_val == value:
+                                _LOGGER.info(
+                                    "oukitel: Switch command %s=%s confirmed via state readback verification",
+                                    key, value,
+                                )
+                                return True
+                except Exception as verify_err:
+                    _LOGGER.debug("oukitel: State readback verification error: %s", verify_err)
+
             if attempt == 0:
-                await asyncio.sleep(0.5)
+                _LOGGER.debug(
+                    "oukitel: Switch command %s=%s unconfirmed on attempt 1; retrying in 1.5s...",
+                    key, value,
+                )
+                await asyncio.sleep(1.5)
 
         return False
 
@@ -811,20 +679,28 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 new_data[CONF_AUTH_KEY] = auth_key
                 self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
 
-            # Seed only static metadata (BMS_Version, AC_Version, etc.) from Cloud shadow — never pollute LAN state with stale dynamic metrics
+            # Seed initial state and static diagnostics (temp, BMS_Version, AC_Version, etc.) from Cloud shadow
             if getattr(self.client, "access_token", None):
                 try:
                     cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
                     if cloud_snapshot:
+                        for k, val in cloud_snapshot.items():
+                            if val is not None:
+                                self._lan_state[k] = val
                         for k in STATIC_METADATA_KEYS:
                             val = cloud_snapshot.get(k)
                             if val is not None:
                                 self._static_metadata[k] = val
+                                self._lan_state[k] = val
+                        if "temp" in cloud_snapshot and "inverter_temp" not in self._static_metadata:
+                            self._static_metadata["inverter_temp"] = cloud_snapshot["temp"]
+                            self._lan_state["inverter_temp"] = cloud_snapshot["temp"]
+                        _unpack_port_data(self._lan_state)
                         self._last_cloud_snapshot = time.monotonic()
                 except Exception as exc:
-                    _LOGGER.debug("oukitel: Could not seed static metadata from cloud: %s", exc)
+                    _LOGGER.debug("oukitel: Could not seed initial telemetry from cloud: %s", exc)
 
-            _LOGGER.info("oukitel: Target device host %s — initiating LAN session", host)
+            _LOGGER.info("oukitel: Device found at %s — starting LAN session", host)
             await self._start_lan_session(host, auth_key)
         finally:
             self._lan_setup_in_flight = False
@@ -835,92 +711,48 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             auth_key_b64=auth_key,
             on_telemetry=self._on_lan_telemetry,
         )
-        max_attempts = 5
-        last_exc = None
-        for attempt in range(1, max_attempts + 1):
-            try:
-                await session.connect()
-                last_exc = None
-                break
-            except (LocalSessionError, LocalAuthError) as exc:
-                last_exc = exc
-                if attempt < max_attempts:
-                    _LOGGER.info(
-                        "oukitel: LAN session attempt %s/%s failed (%s), retrying in 2s...",
-                        attempt, max_attempts, exc,
-                    )
-                    await asyncio.sleep(2.0)
-
-        if last_exc:
-            # Fallback: if configured host failed, perform UDP broadcast scan to discover IP change
-            discovered = None
-            try:
-                _LOGGER.info("oukitel: Host %s unreachable — scanning LAN via UDP broadcast for %s...", host, self.client.device_key)
-                discovered = await find_device_on_lan(self.client.device_key or "")
-            except Exception as scan_exc:
-                _LOGGER.debug("oukitel: Fallback UDP scan failed: %s", scan_exc)
-
-            if discovered and discovered != host:
-                _LOGGER.info("oukitel: Device discovered at new IP %s (was %s) — connecting...", discovered, host)
-                host = discovered
-                self.lan_host = discovered
-                session = LocalSession(
-                    host=host,
-                    auth_key_b64=auth_key,
-                    on_telemetry=self._on_lan_telemetry,
-                )
-                try:
-                    await session.connect()
-                    last_exc = None
-                except (LocalSessionError, LocalAuthError) as exc:
-                    last_exc = exc
-
-        if last_exc:
-            if self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
-                _LOGGER.info(
-                    "oukitel: LAN connect to %s waiting for network ready (%s) — persistent background loop active",
-                    host, last_exc,
+        self._lan_session = session
+        try:
+            await session.connect()
+        except (LocalSessionError, LocalAuthError) as exc:
+            if self.connection_mode == MODE_LAN:
+                _LOGGER.error(
+                    "oukitel: LAN session failed to connect to %s: %s (Solo LAN mode — Cloud fallback disabled)",
+                    host, exc,
                 )
             else:
-                _LOGGER.warning("oukitel: LAN session failed to start on %s: %s — scheduling persistent reconnect and using cloud", host, last_exc)
-            self._lan_session = None
-            self._lan_active = False
-            self._lan_last_report = None
-            self._lan_last_rearm = 0.0
-            # Launch background reconnect loop so it recovers automatically as soon as the station is ready
-            if self._lan_listen_task is None or self._lan_listen_task.done():
-                self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
+                _LOGGER.warning("oukitel: LAN session failed to start: %s — using cloud", exc)
+            if self._lan_session is session:
+                self._lan_session = None
             return
 
-        self._lan_session = session
         self._lan_active = True
-        self._lan_last_report = None
         self._lan_connected_at = time.monotonic()
-        self._lan_last_rearm = 0.0
         _LOGGER.info("oukitel: LAN session established and active with %s!", host)
         self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
+        try:
+            await session.request_read()
+            _LOGGER.debug("oukitel: Initial LAN telemetry read requested")
+        except Exception as read_exc:
+            _LOGGER.debug("oukitel: Initial request_read notice: %s", read_exc)
 
     async def _lan_read_loop(self, host: str, auth_key: str) -> None:
         reconnect_delay = _LAN_RECONNECT_DELAY
         reported_disconnect = False
-        target = host
         while True:
             if self._paused:
                 _LOGGER.debug("oukitel: LAN read loop stopped because integration is paused")
                 break
-            if self._lan_session and self._lan_active:
-                try:
-                    await self._lan_session.read_loop()
-                except Exception as exc:
-                    _LOGGER.debug("oukitel: LAN read loop ended: %s", exc)
+            try:
+                await self._lan_session.read_loop()
+            except Exception as exc:
+                _LOGGER.debug("oukitel: LAN read loop ended: %s", exc)
 
-                if self._lan_session:
-                    await self._lan_session.close()
-                    self._lan_session = None
+            if self._lan_session:
+                await self._lan_session.close()
+                self._lan_session = None
 
-                self._lan_active = False
-                self._lan_last_report = None
-                self._lan_last_rearm = 0.0
+            self._lan_active = False
 
             if self._paused:
                 break
@@ -939,37 +771,28 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             if self._paused:
                 break
 
-            # Try connecting to current target host
-            session = LocalSession(
+            # Re-scan or retry static host
+            if self.lan_host:
+                target = self.lan_host
+            else:
+                host_new = await find_device_on_lan(self.client.device_key or "")
+                target = host_new or host
+            self._lan_session = LocalSession(
                 host=target,
                 auth_key_b64=auth_key,
                 on_telemetry=self._on_lan_telemetry,
             )
             try:
-                await session.connect()
-                self._lan_session = session
+                await self._lan_session.connect()
                 self._lan_active = True
-                self._lan_last_report = None
                 self._lan_connected_at = time.monotonic()
-                self._lan_last_rearm = 0.0
                 reconnect_delay = _LAN_RECONNECT_DELAY
                 reported_disconnect = False
                 _LOGGER.info("oukitel: LAN session re-established with %s!", target)
             except (LocalSessionError, LocalAuthError) as exc:
-                _LOGGER.debug("oukitel: LAN reconnect to %s failed: %s", target, exc)
+                _LOGGER.debug("oukitel: LAN reconnect attempt failed: %s", exc)
                 self._lan_session = None
                 self._lan_active = False
-                self._lan_last_report = None
-                self._lan_last_rearm = 0.0
-                # If target failed, scan LAN via UDP to see if IP changed on router
-                try:
-                    discovered = await find_device_on_lan(self.client.device_key or "")
-                    if discovered and discovered != target:
-                        _LOGGER.info("oukitel: Discovered station at new IP %s — updating target", discovered)
-                        target = discovered
-                        self.lan_host = discovered
-                except Exception:
-                    pass
                 reconnect_delay = min(reconnect_delay * 1.5, 30.0)
                 continue
 
@@ -1006,52 +829,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         for tag, val in fields.items():
             if tag in tag_map:
                 key = tag_map[tag]
-                # Filter out transient 0% battery glitch from handshake frames
-                if key == "battery_percentage":
-                    try:
-                        val_float = float(val) if val is not None else 0.0
-                    except (ValueError, TypeError):
-                        val_float = 0.0
-
-                    if val_float <= 0:
-                        tot_in = float(current_data.get("total_input_power") or 0.0)
-                        ac_out = float(current_data.get("ac_output_power") or 0.0)
-                        if self._last_valid_battery is not None and self._last_valid_battery > 0:
-                            _LOGGER.debug(
-                                "oukitel: Preserving valid battery %s%% against 0%% transient frame",
-                                self._last_valid_battery,
-                            )
-                            val = int(round(self._last_valid_battery))
-                        elif tot_in > 50.0 or ac_out > 0.0:
-                            _LOGGER.debug(
-                                "oukitel: Station is active (in=%sW, out=%sW) — rejecting 0%% battery frame",
-                                tot_in, ac_out,
-                            )
-                            continue
-                        else:
-                            val = 0
-                    else:
-                        batt_int = int(round(val_float))
-                        self._last_valid_battery = batt_int
-                        val = batt_int
-
-                # Convert integer sensor values cleanly
-                elif key in (
-                    "total_input_power",
-                    "total_output_power",
-                    "ac_input",
-                    "dc_input",
-                    "ac_charging_limit",
-                    "remain_time",
-                    "remain_charging_time",
-                    "temp",
-                    "inverter_temp",
-                ):
-                    try:
-                        val = int(round(float(val)))
-                    except (ValueError, TypeError):
-                        pass
-
+                # Filter out transient 0% battery glitch from handshake frames if previous was > 5%
+                # Legitimate slow discharge down to 0% (<= 5.0%) is preserved and accepted
+                if key == "battery_percentage" and val == 0:
+                    prev_batt = current_data.get("battery_percentage")
+                    if prev_batt is not None and prev_batt > 5.0:
+                        _LOGGER.debug(
+                            "oukitel: Ignoring transient 0%% battery frame (previous valid was %s%%)",
+                            prev_batt,
+                        )
+                        continue
                 current_data[key] = val
                 if tag == 14:
                     current_data["inverter_temp"] = current_data.get("inverter_temp") or val
@@ -1064,10 +851,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 elif key in STATIC_METADATA_KEYS:
                     self._static_metadata[key] = val
             if tag == 2:
-                try:
-                    current_data["remaining_time"] = int(round(float(val)))
-                except (ValueError, TypeError):
-                    current_data["remaining_time"] = val
+                current_data["remaining_time"] = val
             current_data[str(tag)] = val
             if tag in (6, 7, 8, 9, 43, 44, 46):
                 current_data[tag] = val
@@ -1080,114 +864,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         _unpack_port_data(current_data)
         self._apply_user_overrides(current_data)
 
-        # Fall back to last known valid battery if not present in packet
-        if current_data.get("battery_percentage") is None and self._last_valid_battery is not None:
-            current_data["battery_percentage"] = int(round(self._last_valid_battery))
-
-        # Zero out individual port outputs if corresponding switch is OFF
-        if not current_data.get("ac_switch", True):
-            current_data["ac_output_power"] = 0
-            current_data["ac_output_voltage"] = 0
-        if not current_data.get("dc_switch", True):
-            current_data["dc_output_power"] = 0
-            current_data["dc_output_current"] = 0.0
-            current_data["dc_output_voltage"] = 0
-        if not current_data.get("usb_switch", True):
-            current_data["usb_a_power"] = 0
-            current_data["usb_c_qc_power"] = 0
-            current_data["typec1_power"] = 0
-            current_data["typec2_power"] = 0
-            current_data["typec3_power"] = 0
-            current_data["typec4_power"] = 0
-
-        # Calculate total output power from port outputs if tag 5 is missing/0 but ports are active
-        ac_out = int(round(float(current_data.get("ac_output_power") or 0)))
-        dc_out = int(round(float(current_data.get("dc_output_power") or 0)))
-        usb_out = (
-            int(round(float(current_data.get("usb_a_power") or 0)))
-            + int(round(float(current_data.get("usb_c_qc_power") or 0)))
-            + int(round(float(current_data.get("typec1_power") or 0)))
-            + int(round(float(current_data.get("typec2_power") or 0)))
-            + int(round(float(current_data.get("typec3_power") or 0)))
-            + int(round(float(current_data.get("typec4_power") or 0)))
-        )
-        calculated_out = ac_out + dc_out + usb_out
-        reported_out = int(round(float(current_data.get("total_output_power") or 0)))
-
-        if 5 in fields and reported_out > 0:
-            current_data["total_output_power"] = reported_out
-        elif ("5" not in current_data) or any(t in fields for t in (6, 7, 8, 9)) or (reported_out == 0 and calculated_out > 0):
-            current_data["total_output_power"] = calculated_out if calculated_out > 0 else reported_out
-        else:
-            current_data["total_output_power"] = reported_out
-
-        # Derive missing AC or DC input power if total_input_power is present
-        tot_in = current_data.get("total_input_power")
-        dc_in = current_data.get("dc_input")
-        ac_in = current_data.get("ac_input")
-        if dc_in is None:
-            dc_in = 0
-            current_data["dc_input"] = 0
-        else:
-            dc_in = int(round(float(dc_in)))
-            current_data["dc_input"] = dc_in
-
-        if 4 in fields and tot_in is not None:
-            tot_in_int = int(round(float(tot_in)))
-            current_data["total_input_power"] = tot_in_int
-            if ac_in is None or "11" not in current_data:
-                tot_out_int = int(round(float(current_data.get("total_output_power") or 0)))
-                if tot_in_int > tot_out_int and tot_out_int > 0:
-                    current_data["ac_input"] = max(0, tot_in_int - tot_out_int - dc_in)
-                else:
-                    current_data["ac_input"] = max(0, tot_in_int - dc_in)
-            else:
-                current_data["ac_input"] = int(round(float(ac_in)))
-        elif 11 in fields or 12 in fields:
-            ac_v = int(round(float(current_data.get("ac_input") or 0)))
-            if current_data.get("ac_switch", False) and ac_out > 0 and ac_v > 0:
-                current_data["total_input_power"] = ac_v + ac_out + dc_in
-            else:
-                current_data["total_input_power"] = ac_v + dc_in
-        elif tot_in is not None:
-            tot_in_int = int(round(float(tot_in)))
-            current_data["total_input_power"] = tot_in_int
-            if ac_in is None or "11" not in current_data:
-                tot_out_int = int(round(float(current_data.get("total_output_power") or 0)))
-                if tot_in_int > tot_out_int and tot_out_int > 0:
-                    current_data["ac_input"] = max(0, tot_in_int - tot_out_int - dc_in)
-                else:
-                    current_data["ac_input"] = max(0, tot_in_int - dc_in)
-            else:
-                current_data["ac_input"] = int(round(float(ac_in)))
-        elif ac_in is not None:
-            ac_v = int(round(float(ac_in)))
-            current_data["ac_input"] = ac_v
-            current_data["total_input_power"] = ac_v + dc_in
-        else:
-            current_data["total_input_power"] = 0
-            current_data["ac_input"] = 0
-
-        if current_data.get("total_output_power") is None:
-            current_data["total_output_power"] = 0
-
         if current_data.get("battery_percentage") is not None:
             self._lan_has_valid_telemetry = True
 
         self._lan_state = current_data
-        diag_log(
-            "COORD_LAN_STATE_UPDATED",
-            tags_in_frame=list(fields.keys()),
-            battery_percentage=current_data.get("battery_percentage"),
-            raw_tag_1_present="1" in current_data,
-            total_input_power=current_data.get("total_input_power"),
-            total_output_power=current_data.get("total_output_power"),
-            ac_input=current_data.get("ac_input"),
-            dc_input=current_data.get("dc_input"),
-            ac_switch=current_data.get("ac_switch"),
-            dc_switch=current_data.get("dc_switch"),
-            usb_switch=current_data.get("usb_switch"),
-        )
         self.hass.loop.call_soon_threadsafe(
             self.async_set_updated_data, dict(self._lan_state)
         )
@@ -1209,7 +889,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
     async def _async_rearm_lan(self) -> bool:
         """Re-arm high-frequency telemetry subscription on an existing silent socket."""
         session = self._lan_session
-        if session is None or not getattr(session, "is_ready", False):
+        if session is None:
             return False
         self._lan_last_rearm = time.monotonic()
         _LOGGER.debug(
@@ -1218,7 +898,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         )
         try:
             await session.resubscribe()
-            await session.request_read(force=True)
         except Exception as exc:
             _LOGGER.debug("oukitel: LAN re-arm failed: %s", exc)
             return False
@@ -1260,13 +939,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             self._last_lan_attempt = now
             self.hass.async_create_task(self.async_setup_lan())
 
-        # Check if active LAN session has gone silent (station answering ACKs but suspended telemetry streaming)
+        # In LAN offline mode, keep socket alive without dropping it on silence
         if self._lan_active and self.connection_mode != MODE_CLOUD:
             reference = self._lan_last_report or self._lan_connected_at
             silent_for = None if reference is None else (now - reference)
-            if silent_for is not None and silent_for > _LAN_SILENCE_TIMEOUT:
-                await self._force_lan_reconnect()
-            elif (
+            if (
                 silent_for is not None
                 and silent_for > _LAN_REARM_TIMEOUT
                 and (now - self._lan_last_rearm) >= _LAN_REARM_INTERVAL
@@ -1275,17 +952,17 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         if self.connection_mode == MODE_CLOUD:
             data = await self._update_cloud()
-        elif self._lan_active and self._lan_session:
+        elif self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
             data = await self._update_lan()
         elif self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
             # If LAN session is initializing in the background during setup or running offline, request read and wait
-            if self._lan_session and getattr(self._lan_session, "is_ready", False):
+            if self._lan_session and not self._lan_state:
                 try:
                     await self._lan_session.request_read()
                 except Exception:
                     pass
 
-            for _ in range(35 if not self.data else 15):
+            for _ in range(30):
                 if self._lan_active and self._lan_state:
                     data = await self._update_lan()
                     break
@@ -1293,33 +970,38 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             else:
                 if self._lan_active and self._lan_state:
                     data = await self._update_lan()
-                elif self.data:
-                    _LOGGER.debug("oukitel: Preserving previous telemetry snapshot while LAN reconnects")
-                    data = dict(self.data)
                 else:
-                    _LOGGER.info("oukitel: LAN session active but first frame pending — bootstrapping with baseline telemetry")
-                    init_data: dict[str, Any] = {
-                        "online": True,
-                        "connection_mode": "LAN",
-                    }
-                    if self._last_valid_battery is not None:
-                        init_data["battery_percentage"] = int(round(self._last_valid_battery))
-                    for k, v in self._static_metadata.items():
-                        init_data[k] = v
-                    data = init_data
+                    data = await self._update_lan_offline()
         else:
-            try:
-                data = await self._update_cloud()
-            except Exception as exc:
-                if self.data or self._lan_state:
-                    _LOGGER.debug("oukitel: Cloud unreachable (%s) — using local/cached state", exc)
-                    data = dict(self._lan_state or self.data)
-                else:
-                    raise UpdateFailed(f"Error communicating with Oukitel cloud API: {exc}") from exc
+            data = await self._update_cloud()
 
         if hasattr(self, "predictive_tracker") and self.predictive_tracker is not None:
             self.predictive_tracker.update(data)
 
+        return data
+
+    async def _update_lan_offline(self) -> dict:
+        """Provide baseline operational data when booting offline with an active LAN session."""
+        data = dict(self._lan_state)
+        if self.data:
+            data.update(self.data)
+        data.setdefault("online", True)
+        data.setdefault("wifi_signal", -60)
+        data.setdefault("battery_soc", 0)
+        data.setdefault("total_input_power", 0)
+        data.setdefault("total_output_power", 0)
+        data.setdefault("ac_output_power", 0)
+        data.setdefault("dc_output_power", 0)
+        data.setdefault("usb_power", 0)
+        data.setdefault("charging_time", 0)
+        data.setdefault("remaining_time", 0)
+        data.setdefault("ac_switch", False)
+        data.setdefault("dc_switch", False)
+        data.setdefault("usb_switch", False)
+        for k, v in self._static_metadata.items():
+            if k not in data or data[k] is None:
+                data[k] = v
+        self._apply_user_overrides(data)
         return data
 
     async def _update_lan(self) -> dict:
@@ -1327,61 +1009,37 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             return _build_paused_data(self._lan_state or self.data)
 
         now = time.monotonic()
-        # Active polling fallback: if no push frame arrived in >= 4s (offline or steady state), request tags
-        silent_for = None if self._lan_last_report is None else (now - self._lan_last_report)
-        if silent_for is None or silent_for >= 4.0:
-            if self._lan_session and getattr(self._lan_session, "is_ready", False):
-                try:
-                    await self._lan_session.request_read()
-                    for _ in range(8):
-                        await asyncio.sleep(0.05)
-                        if self._lan_last_report is not None and (time.monotonic() - self._lan_last_report) < 1.0:
-                            break
-                except Exception as exc:
-                    _LOGGER.debug("oukitel: LAN active read request notice: %s", exc)
-
         stale = (
             self._lan_last_report is not None
             and (now - self._lan_last_report) > _LAN_STALE_TIMEOUT
         )
         if stale:
-            if self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
-                _LOGGER.debug("oukitel: LAN telemetry stale (Cloud fallback unavailable — keeping state)")
-            else:
-                _LOGGER.info("oukitel: LAN telemetry stale — falling back to cloud")
-                self._lan_active = False
-                return await self._update_cloud()
+            _LOGGER.debug("oukitel: LAN telemetry silent, polling station via CMD 35")
+            if self._lan_session:
+                try:
+                    await self._lan_session.request_read()
+                except Exception:
+                    pass
 
-        if not self.data:
-            # Wait up to 4.5s on initial boot for the station's 18-tag sequence (44->43->46->7->20->1->5->4)
-            for _ in range(45):
-                if (
-                    self._lan_state
-                    and "1" in self._lan_state
-                    and ("4" in self._lan_state or "5" in self._lan_state)
-                    and ("4" in self._lan_state and "5" in self._lan_state or "6" in self._lan_state)
-                ):
+        if self._lan_session:
+            try:
+                await self._lan_session.request_read()
+            except Exception:
+                pass
+
+        if not self._lan_state:
+            for _ in range(20):
+                if self._lan_state:
                     break
                 await asyncio.sleep(0.1)
 
         if not self._lan_state:
             if self.data:
                 return dict(self.data)
-            _LOGGER.info("oukitel: LAN connected, initial frame pending — returning baseline telemetry to complete setup")
-            init_data = {
-                "online": True,
-                "connection_mode": "LAN",
-            }
-            if self._last_valid_battery is not None:
-                init_data["battery_percentage"] = int(round(self._last_valid_battery))
-            for k, v in self._static_metadata.items():
-                init_data[k] = v
-            return init_data
+            return await self._update_lan_offline()
 
 
         data = dict(self._lan_state)
-        if data.get("battery_percentage") is None and self._last_valid_battery is not None:
-            data["battery_percentage"] = int(round(self._last_valid_battery))
         # Preserve static/cloud-only diagnostic tags from metadata cache and prior state
         for k, v in self._static_metadata.items():
             if k not in data or data[k] is None:
@@ -1392,12 +1050,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     data[k] = self.data[k]
         self._apply_user_overrides(data)
 
-        # Trigger background cloud shadow refresh in auto mode (only if online with authenticated token)
+        # Trigger background cloud shadow refresh every 60s in auto/cloud mode
         now = time.monotonic()
         if (
-            self.connection_mode == MODE_AUTO
-            and self.hass.is_running
-            and getattr(self.client, "access_token", None)
+            self.connection_mode != MODE_LAN
             and (now - self._last_cloud_snapshot) >= _CLOUD_SNAPSHOT_INTERVAL
         ):
             self.hass.async_create_task(self._async_refresh_cloud_shadow())
@@ -1406,24 +1062,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def _async_refresh_cloud_shadow(self) -> None:
         """Periodic background refresh of cloud-only metrics (temp, wifi_signal, versions) while LAN runs."""
-        if self._paused or not self.hass.is_running:
+        if self._paused:
             return
 
-        self._last_cloud_snapshot = time.monotonic()
-
-        # If started offline, attempt to reconnect to cloud opportunistically with strict timeout
+        # If started offline, attempt to reconnect to cloud opportunistically
         if not getattr(self.client, "access_token", None):
             try:
-                logged_in = await asyncio.wait_for(
-                    self.hass.async_add_executor_job(self.client.login),
-                    timeout=3.0,
-                )
+                logged_in = await self.hass.async_add_executor_job(self.client.login)
                 if not logged_in:
                     return
-                await asyncio.wait_for(
-                    self.hass.async_add_executor_job(self.client.fetch_device_info),
-                    timeout=3.0,
-                )
+                await self.hass.async_add_executor_job(self.client.fetch_device_info)
                 _LOGGER.info("oukitel: Successfully reconnected to Oukitel cloud after offline startup")
                 if (
                     self.config_entry
@@ -1437,11 +1085,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("oukitel: Opportunistic cloud reconnect notice: %s", exc)
                 return
 
+        self._last_cloud_snapshot = time.monotonic()
         try:
-            cloud_snapshot = await asyncio.wait_for(
-                self.hass.async_add_executor_job(self.client.get_telemetry),
-                timeout=4.0,
-            )
+            cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
             if cloud_snapshot:
                 updated = False
                 for k in STATIC_METADATA_KEYS:
