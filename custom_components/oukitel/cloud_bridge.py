@@ -347,9 +347,8 @@ class CloudBridge:
         base = self._down_base
         if writer is None or base is None or writer.is_closing():
             return
-        topic = f"{base}/rw".encode()
-        pkt = self._pacchetto_publish(topic, frame, qos=0)
-        writer.write(pkt)
+        writer.write(self._pacchetto_publish(f"{base}/bus_".encode(), frame, qos=0))
+        writer.write(self._pacchetto_publish(f"{base}/rw".encode(), frame, qos=0))
         await writer.drain()
 
     async def _stimulate(self, rumoroso: bool = True) -> None:
