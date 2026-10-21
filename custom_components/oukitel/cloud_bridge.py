@@ -357,13 +357,24 @@ class CloudBridge:
         if self._writer is None or self._down_base is None:
             return
         try:
-            # 0. Quectel Login OK / Activation (CMD 28725 with result=0)
+            # 0. Quectel Login OK / Activation (CMD 28725 with tag 1=0, tag 3=0)
             self._pid += 1
-            await self._send_downlink("sys_", build_frame(self._pid, 28725, ttlv_encode([(1, "num", 0)])), qos=1)
-            await self._send_downlink("bus_", build_frame(self._pid, 28725, ttlv_encode([(1, "num", 0)])), qos=1)
-            await self._send_downlink("sys", build_frame(self._pid, 28725, ttlv_encode([(1, "num", 0)])), qos=1)
+            login_payload = ttlv_encode([(1, "num", 0), (3, "num", 0)])
+            await self._send_downlink("sys_", build_frame(self._pid, 28725, login_payload), qos=1)
+            await self._send_downlink("bus_", build_frame(self._pid, 28725, login_payload), qos=1)
+            await self._send_downlink("sys", build_frame(self._pid, 28725, login_payload), qos=1)
             await self._send_downlink("sys", b'{"cmd":28725,"code":200,"result":0,"msg":"success"}', qos=1)
             await self._send_downlink("sys", b'{"code":200,"msg":"success"}', qos=1)
+
+            # 0b. Quectel Pairing / Binding Success (CMD 28692 / 0x7014 with status 0x60 = 96)
+            self._pid += 1
+            bind_payload = ttlv_encode([(10, "num", 0), (11, "num", 96)])
+            await self._send_downlink("sys_", build_frame(self._pid, 28692, bind_payload), qos=1)
+            await self._send_downlink("bus_", build_frame(self._pid, 28692, bind_payload), qos=1)
+            bind_payload2 = ttlv_encode([(1, "num", 0), (2, "num", 96)])
+            await self._send_downlink("sys_", build_frame(self._pid, 28692, bind_payload2), qos=1)
+            await self._send_downlink("sys", b'{"cmd":28692,"code":200,"result":0,"data":{"status":96,"statusCode":96},"msg":"success"}', qos=1)
+            await self._send_downlink("sys", b'{"cmd":"bind","code":200,"result":0,"data":{"subtype":"USER-BIND","isBind":true,"bindStatus":1}}', qos=1)
 
             # 1. Quectel Heartbeat / Keepalive (CMD 28729 & CMD 28727)
             self._pid += 1
