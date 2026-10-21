@@ -247,8 +247,20 @@ async def point_station(
                 try:
                     fields = ttlv_decode(payload)
                     _LOGGER.info("oukitel: Station joining Wi-Fi network (0x7014 progress notification: %s)", fields)
+                    if isinstance(fields, dict) and fields.get(11) == 0:
+                        _LOGGER.info("oukitel: Station confirmed successful pairing on BLE (status 0)")
+                        confirmed = True
+                        break
                 except Exception:
                     _LOGGER.info("oukitel: Station joining Wi-Fi network (0x7014 progress notification)")
+
+                # Reply with 0x7014 success (tag 10 = 0, tag 11 = 0) so the station knows cloud binding is approved
+                try:
+                    success_frame = build_frame(1001, CMD_PROGRESS, ttlv_encode([(10, "num", 0), (11, "num", 0), (1, "num", 0)]))
+                    await client.write_gatt_char(target_char, success_frame, response=False)
+                    _LOGGER.info("oukitel: Sent 0x7014 success confirmation over BLE to station")
+                except Exception as exc:
+                    _LOGGER.debug("oukitel: Could not send 0x7014 success over BLE: %s", exc)
 
         try:
             await client.stop_notify(target_char)

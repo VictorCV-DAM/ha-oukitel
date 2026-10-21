@@ -337,7 +337,7 @@ class CloudBridge:
         topic = f"{base}/{sub}".encode()
         self._mqtt_pid = (getattr(self, "_mqtt_pid", 0) % 65535) + 1
         pkt = self._pacchetto_publish(topic, frame, qos=qos, pid=self._mqtt_pid)
-        _LOGGER.debug(
+        _LOGGER.info(
             "oukitel: sending downlink (qos=%d pid=%04x) to %s (%d bytes): %s",
             qos, self._mqtt_pid if qos > 0 else 0, topic.decode(), len(frame), frame[:32].hex()
         )
@@ -359,18 +359,34 @@ class CloudBridge:
         if self._writer is None or self._down_base is None:
             return
         try:
-            # 1. Cloud Login / Activation Ack (CMD 28725 with code 0)
+            # 1. Cloud Login / Activation Ack (CMD 28725 / 0x7035 with code 0)
             self._pid += 1
             login_ack = ttlv_encode([(1, "num", 0), (3, "num", 0)])
-            await self._manda_frame(build_frame(self._pid, 28725, login_ack))
+            frame_login = build_frame(self._pid, 28725, login_ack)
 
-            # 2. SmartConfig Pairing / Binding Success (CMD 28692 / 0x7014 with status 0 = Success)
+            # 2. SmartConfig Pairing / Binding Success (CMD 28692 / 0x7014 with status 0 = Success, errorCode = 0)
             self._pid += 1
-            success_ack = ttlv_encode([(1, "num", 0), (2, "num", 0)])
-            await self._manda_frame(build_frame(self._pid, 28692, success_ack))
-            _LOGGER.info("oukitel: cloud binding and activation confirmation sent to station")
+            success_ack = ttlv_encode([(10, "num", 0), (11, "num", 0), (1, "num", 0), (2, "num", 0)])
+            frame_success = build_frame(self._pid, 28692, success_ack)
+
+            # Send TTLV confirmations with QoS 1 to sys_, bus_, and rw
+            for sub in ("sys_", "bus_", "rw"):
+                await self._send_downlink(sub, frame_login, qos=1)
+                await self._send_downlink(sub, frame_success, qos=1)
+
+            # Send JSON confirmations to sys and bus
+            json_bind = b'{"cmd":"bind","code":200,"result":0,"data":{"subtype":"USER-BIND","isBind":true,"bindStatus":1}}'
+            json_login = b'{"cmd":28725,"code":200,"result":0,"msg":"success"}'
+            json_status = b'{"cmd":28692,"code":200,"result":0,"data":{"status":0,"statusCode":0,"errorCode":0}}'
+            json_device_bind = b'{"cmd":"deviceBind","code":200,"result":0,"data":{"isBind":true,"bindStatus":1}}'
+
+            for sub in ("sys", "bus"):
+                for payload in (json_bind, json_login, json_status, json_device_bind):
+                    await self._send_downlink(sub, payload, qos=1)
+
+            _LOGGER.info("oukitel: cloud binding and activation confirmation sent across sys_, bus_, rw, sys, and bus")
         except Exception as exc:  # noqa: BLE001
-            _LOGGER.debug("oukitel: confirm_binding failed: %s", exc)
+            _LOGGER.warning("oukitel: confirm_binding failed: %s", exc)
 
     async def _stimulate(self, rumoroso: bool = True) -> None:
         """High-frequency mode + read of every id, like the real cloud does."""
