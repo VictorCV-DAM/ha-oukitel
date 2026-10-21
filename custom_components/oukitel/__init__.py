@@ -186,9 +186,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if use_bridge:
         coordinator.use_bridge = True
         await coordinator.async_setup_bridge()
-    
-    # Setup LAN mode if not using bridge and not forced to Cloud
-    if connection_mode != MODE_CLOUD:
+    elif connection_mode != MODE_CLOUD:
         if not cloud_connected and not use_bridge:
             _LOGGER.info("oukitel: Offline boot — establishing LAN session before first coordinator refresh...")
             for attempt in range(1, 4):

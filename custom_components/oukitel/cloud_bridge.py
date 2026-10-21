@@ -188,12 +188,13 @@ class CloudBridge:
         except (asyncio.CancelledError, ConnectionResetError):
             pass
         except Exception as exc:  # noqa: BLE001
-            _LOGGER.debug("oukitel: connection %s ended: %s", eti, exc)
+            _LOGGER.info("oukitel: connection %s ended: %s", eti, exc)
         finally:
             self._connections.discard(writer)
             if self._writer is writer:
                 self._writer = None
                 self._down_base = None
+                _LOGGER.info("oukitel: station %s disconnected from fake cloud", eti)
                 if self._on_conn:
                     self._on_conn(False)
             elif era_lei and self._on_conn:
@@ -220,29 +221,16 @@ class CloudBridge:
 
         if tipo == _SUBSCRIBE:
             pid = body[0:2]
-            tl = int.from_bytes(body[2:4], "big")
-            topic = body[4 : 4 + tl].decode("utf-8", "replace")
-            req_qos = body[4 + tl] if len(body) > 4 + tl else 0
-            # Grant requested QoS (0 or 1) so Quectel client sees subscription accepted
-            writer.write(b"\x90\x03" + pid + bytes([req_qos]))
+            # Grant QoS 0 in SUBACK
+            writer.write(b"\x90\x03" + pid + b"\x00")
             await writer.drain()
             try:
+                tl = int.from_bytes(body[2:4], "big")
+                topic = body[4 : 4 + tl].decode("utf-8", "replace")
                 self._down_base = topic[:-2] if topic.endswith("/+") else topic.rsplit("/", 1)[0]
-                _LOGGER.info("oukitel: subscribed to %s (req_qos=%d, granted_qos=%d, downlink %s)", topic, req_qos, req_qos, self._down_base)
+                _LOGGER.info("oukitel: subscribed to %s (downlink %s)", topic, self._down_base)
             except Exception:  # noqa: BLE001
                 pass
-            # Send initial USER-BIND confirmation to acknowledge binding and turn Wi-Fi icon solid
-            import json
-            user_bind = json.dumps({
-                "data": {"subtype": "USER-BIND", "isBind": True, "bindStatus": 1},
-                "content": {"data": {"subtype": "USER-BIND", "isBind": True, "bindStatus": 1}},
-                "cmd": "bind",
-                "code": 200,
-                "result": 0,
-                "msg": "success"
-            }).encode("utf-8")
-            await self._send_downlink("sys", user_bind, qos=1)
-            await self._send_downlink("sys_", user_bind, qos=1)
 
             # Without the SUBACK the station will not publish; without a
             # stimulus it publishes only once. The two together open the tap.
@@ -355,15 +343,14 @@ class CloudBridge:
         await asyncio.sleep(0.04)
 
     async def _manda_frame(self, frame: bytes) -> None:
-        # Quectel official TTLV bus topic: <base>/bus_ with QoS 1
-        await self._send_downlink("bus_", frame, qos=1)
-        # Quectel official TTLV sys topic: <base>/sys_ with QoS 1
-        await self._send_downlink("sys_", frame, qos=1)
-        # Quectel JSON bus topic: <base>/bus with QoS 1
-        await self._send_downlink("bus", frame, qos=1)
-        # Legacy Cash83 topic: <base>/rw with QoS 0 and QoS 1
-        await self._send_downlink("rw", frame, qos=0)
-        await self._send_downlink("rw", frame, qos=1)
+        writer = self._writer
+        base = self._down_base
+        if writer is None or base is None or writer.is_closing():
+            return
+        topic = f"{base}/rw".encode()
+        pkt = self._pacchetto_publish(topic, frame, qos=0)
+        writer.write(pkt)
+        await writer.drain()
 
     async def _stimulate(self, rumoroso: bool = True) -> None:
         """High-frequency mode + read of every id, like the real cloud does."""

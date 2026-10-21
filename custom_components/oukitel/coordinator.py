@@ -658,6 +658,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             _LOGGER.error("oukitel: fake cloud did not start: %s", exc)
             return False
         self._bridge = bridge
+        self._lan_session = bridge
+        self._lan_active = True
+        self._lan_connected_at = time.monotonic()
         self._bridge_absent_since = time.monotonic()
         self._bridge_never_seen = True
         return True
