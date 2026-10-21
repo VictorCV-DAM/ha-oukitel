@@ -94,14 +94,24 @@ def _build_calculated_device_info(coordinator: OukitelDataCoordinator, client) -
     if coordinator.hass and hasattr(coordinator.hass, "config") and getattr(coordinator.hass.config, "language", None):
         is_es = str(coordinator.hass.config.language).lower().startswith("es")
 
-    return DeviceInfo(
-        identifiers={(DOMAIN, f"{client.device_key}_calculated")},
-        via_device=(DOMAIN, client.device_key),
-        name=f"{client.device_name} Sensores Calculados" if is_es else f"{client.device_name} Calculated Sensors",
-        manufacturer="OUKITEL",
-        model="Métricas Energéticas y Económicas Calculadas" if is_es else "Calculated Energy & Financial Metrics",
-        sw_version=f"Cloud+LAN {VERSION}",
-    )
+    via_id = None
+    if coordinator.hass:
+        dev_reg = dr.async_get(coordinator.hass)
+        parent_dev = dev_reg.async_get_device(identifiers={(DOMAIN, client.device_key)})
+        if parent_dev:
+            via_id = parent_dev.id
+
+    info = {
+        "identifiers": {(DOMAIN, f"{client.device_key}_calculated")},
+        "name": f"{client.device_name} Sensores Calculados" if is_es else f"{client.device_name} Calculated Sensors",
+        "manufacturer": "OUKITEL",
+        "model": "Métricas Energéticas y Económicas Calculadas" if is_es else "Calculated Energy & Financial Metrics",
+        "sw_version": f"Cloud+LAN {VERSION}",
+    }
+    if via_id:
+        info["via_device_id"] = via_id
+
+    return DeviceInfo(**info)
 
 
 FAULT_STATUS_OPTIONS = [
