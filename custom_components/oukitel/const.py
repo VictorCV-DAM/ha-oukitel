@@ -27,11 +27,15 @@ CURRENCY_OPTIONS = ["€", "$", "£", "CHF", "kr", "¥", "zł", "R$", "MX$"]
 MODE_AUTO = "auto"
 MODE_LAN = "lan"
 MODE_CLOUD = "cloud"
+MODE_ZERO_CLOUD = "zero_cloud"
+CONF_CLOUD_BRIDGE = "cloud_bridge"
+DEFAULT_BRIDGE_PORT = 8886
 
 CONNECTION_MODES = {
     MODE_AUTO: "Automático (LAN preferente + Cloud)",
     MODE_LAN: "Solo LAN (Tiempo real directo)",
     MODE_CLOUD: "Solo Cloud (Nube / Polling)",
+    MODE_ZERO_CLOUD: "Zero-Cloud / Broker Local (100% Sin Nube)",
 }
 
 DEFAULT_REGION = "EU"

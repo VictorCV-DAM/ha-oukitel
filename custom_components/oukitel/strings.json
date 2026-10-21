@@ -83,7 +83,8 @@
       "options": {
         "auto": "Automatic (LAN preferred + Cloud)",
         "lan": "LAN Only (Direct local real-time)",
-        "cloud": "Cloud Only (Polling)"
+        "cloud": "Cloud Only (Polling)",
+          "zero_cloud": "Zero-Cloud / Local Broker (100% No Cloud)"
       }
     }
   },

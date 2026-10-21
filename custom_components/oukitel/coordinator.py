@@ -44,6 +44,8 @@ _LAN_RETRY_INTERVAL = 20.0
 _LAN_SILENCE_TIMEOUT = 45.0
 _LAN_REARM_TIMEOUT = 25.0
 _LAN_REARM_INTERVAL = 5.0
+_BRIDGE_ABSENCE_MAX = 90.0
+_BRIDGE_SILENCE_MAX = 30.0
 
 STATIC_METADATA_KEYS = (
     "temp",
@@ -383,6 +385,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         self._lan_session: LocalSession | None = None
         self._lan_listen_task: asyncio.Task | None = None
+        self.use_bridge: bool = False
+        self._bridge = None
+        self._bridge_absent_since: float | None = None
+        self._bridge_first_pass: bool = True
+        self._bridge_never_seen: bool = True
         self._lan_state: dict[int, Any] = {}
         self._lan_last_report: float | None = None
         self._lan_connected_at: float | None = None
@@ -612,6 +619,36 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
     # LAN lifecycle
     # ------------------------------------------------------------------
 
+    async def async_setup_bridge(self) -> bool:
+        """Start the local fake cloud and put it in place of the LAN session."""
+        if self._bridge is not None:
+            return True
+        from .cloud_bridge import CloudBridge
+
+        bridge = CloudBridge(self.hass, self._on_lan_telemetry, self._on_bridge_conn)
+        try:
+            await bridge.start()
+        except OSError as exc:
+            _LOGGER.error("oukitel: fake cloud did not start: %s", exc)
+            return False
+        self._bridge = bridge
+        self._lan_session = bridge
+        self._lan_active = True
+        self._lan_connected_at = time.monotonic()
+        self._bridge_absent_since = time.monotonic()
+        self._bridge_never_seen = True
+        return True
+
+    def _on_bridge_conn(self, connected: bool) -> None:
+        """The station has connected to (or dropped off) the fake cloud."""
+        if connected:
+            self._lan_connected_at = time.monotonic()
+            self._bridge_never_seen = False
+        else:
+            self._lan_has_valid_telemetry = False
+            if self._bridge_absent_since is None:
+                self._bridge_absent_since = time.monotonic()
+
     async def async_setup_lan(self) -> None:
         """Try to start LAN mode; silently skips if device not found on LAN or paused."""
         if self._paused:
@@ -801,6 +838,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if self._paused:
             return
         self._lan_last_report = time.monotonic()
+        self._bridge_absent_since = None
         
         # Base LAN tag mapping to HA sensor keys
         tag_map = {
@@ -881,6 +919,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             self.async_set_updated_data(dict(self._lan_state))
 
     async def async_shutdown_lan(self) -> None:
+        if self._bridge is not None:
+            await self._bridge.close()
+            self._bridge = None
         if self._lan_flush_handle is not None:
             self._lan_flush_handle.cancel()
             self._lan_flush_handle = None
@@ -938,6 +979,48 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if self._paused:
             _LOGGER.debug("oukitel: Polling skipped — integration is paused (returning zeroed power metrics)")
             return _build_paused_data(self.data or self._lan_state)
+
+        if self.use_bridge:
+            first_pass = self._bridge_first_pass
+            self._bridge_first_pass = False
+
+            last_word = self._lan_last_report
+            if (
+                self._lan_has_valid_telemetry
+                and last_word is not None
+                and (time.monotonic() - last_word) > _BRIDGE_SILENCE_MAX
+            ):
+                self._lan_has_valid_telemetry = False
+                if self._bridge_absent_since is None:
+                    self._bridge_absent_since = last_word
+                _LOGGER.warning(
+                    "oukitel: connection open but not a word from the "
+                    "station for %.0f seconds: treating it as absent",
+                    time.monotonic() - last_word,
+                )
+
+            if self._lan_has_valid_telemetry and self._lan_state:
+                data = await self._update_lan()
+            else:
+                grace = 0.0 if self._bridge_never_seen else _BRIDGE_ABSENCE_MAX
+                if self._bridge_absent_since is None:
+                    self._bridge_absent_since = time.monotonic()
+                absent_since = self._bridge_absent_since
+                if (
+                    not first_pass
+                    and absent_since is not None
+                    and (time.monotonic() - absent_since) >= grace
+                ):
+                    raise UpdateFailed(
+                        "the station never connected to the fake cloud"
+                        if self._bridge_never_seen
+                        else "the station is not connected to the local fake cloud"
+                    )
+                data = dict(self.data or {})
+
+            if hasattr(self, "predictive_tracker") and self.predictive_tracker is not None:
+                self.predictive_tracker.update(data)
+            return data
 
         # In Auto mode, if LAN session is dead or never started, periodically retry starting LAN
         now = time.monotonic()

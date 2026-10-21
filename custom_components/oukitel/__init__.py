@@ -10,6 +10,9 @@ from homeassistant.exceptions import ConfigEntryNotReady
 
 from .api import AcceleronixCloudClient
 from .const import (
+    CONF_CLOUD_BRIDGE,
+    DEFAULT_BRIDGE_PORT,
+    MODE_ZERO_CLOUD,
     CONF_AUTH_KEY,
     CONF_CONNECTION_MODE,
     CONF_EMAIL,
@@ -91,16 +94,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     device_key = entry.data.get("device_key")
 
+    use_bridge = (
+        connection_mode == MODE_ZERO_CLOUD
+        or bool(entry.options.get(CONF_CLOUD_BRIDGE, entry.data.get(CONF_CLOUD_BRIDGE, False)))
+        or (not email and not password)
+    )
+
     _LOGGER.debug(
-        "oukitel: Setting up entry for %s (device_key=%s, mode=%s, host=%s)",
-        email, device_key, connection_mode, host,
+        "oukitel: Setting up entry for %s (device_key=%s, mode=%s, host=%s, use_bridge=%s)",
+        email, device_key, connection_mode, host, use_bridge,
     )
-    client = AcceleronixCloudClient(
-        email=email,
-        password=password,
-        region=region,
-        device_key=device_key,
-    )
+    if use_bridge:
+        from .local_client import LocalOnlyClient
+        client = LocalOnlyClient(
+            device_key=device_key,
+            product_key=entry.data.get("product_key"),
+            device_name=entry.data.get("device_name", "Oukitel Station"),
+        )
+        cloud_connected = True
+    else:
+        client = AcceleronixCloudClient(
+            email=email,
+            password=password,
+            region=region,
+            device_key=device_key,
+        )
 
     cloud_connected = False
     try:
@@ -164,6 +182,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         host=host,
         config_entry=entry,
     )
+
+    if use_bridge:
+        coordinator.use_bridge = True
+        await coordinator.async_setup_bridge()
     
     # Setup LAN mode if not forced to Cloud
     if connection_mode != MODE_CLOUD:

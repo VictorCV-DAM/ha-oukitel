@@ -56,6 +56,7 @@ from .const import (
     MODE_AUTO,
     MODE_CLOUD,
     MODE_LAN,
+    MODE_ZERO_CLOUD,
     REGION_SERVERS,
 )
 
@@ -266,7 +267,7 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Required(
                     CONF_BLE_ENDPOINT,
-                    default="mqtt://iot-south.acceleronix.io:8883",
+                    default=self._config_entry.options.get(CONF_BLE_ENDPOINT, "mqtt://192.168.1.219:8886"),
                 ): cv.string,
                 vol.Optional(CONF_BLE_SOURCE, default="auto"): SelectSelector(
                     SelectSelectorConfig(
@@ -361,7 +362,8 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                     default=current_mode,
                 ): SelectSelector(
                     SelectSelectorConfig(
-                        options=[MODE_AUTO, MODE_LAN, MODE_CLOUD],
+                        options=[MODE_AUTO, MODE_LAN,
+    MODE_ZERO_CLOUD, MODE_CLOUD],
                         translation_key="connection_mode",
                         mode=SelectSelectorMode.LIST,
                     )
@@ -463,6 +465,10 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                 _LOGGER.info("oukitel: BLE provisioning succeeded: %s", msg)
                 updated_options = dict(self._config_entry.options)
                 updated_options[CONF_BLE_SSID] = ssid
+                updated_options[CONF_BLE_ENDPOINT] = endpoint
+                if "8886" in endpoint or "192.168." in endpoint:
+                    updated_options[CONF_CONNECTION_MODE] = MODE_ZERO_CLOUD
+                    updated_options["cloud_bridge"] = True
                 return self.async_create_entry(
                     title="",
                     data=updated_options,
@@ -492,7 +498,7 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                 ),
                 vol.Required(
                     CONF_BLE_ENDPOINT,
-                    default="mqtt://iot-south.acceleronix.io:8883",
+                    default=self._config_entry.options.get(CONF_BLE_ENDPOINT, "mqtt://192.168.1.219:8886"),
                 ): cv.string,
                 vol.Optional(CONF_BLE_SOURCE, default="auto"): SelectSelector(
                     SelectSelectorConfig(
