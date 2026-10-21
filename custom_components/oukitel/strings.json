@@ -17,12 +17,23 @@
         "data": {
           "device_key": "Oukitel Station"
         }
+      },
+      "bluetooth_confirm": {
+        "title": "Oukitel Station Discovered via Bluetooth",
+        "description": "Discovered {name} ({mac}) in pairing mode. Enter your Wi-Fi credentials to pair the station with your network:",
+        "data": {
+          "ble_ssid": "Wi-Fi Network Name (SSID)",
+          "ble_password": "Wi-Fi Password",
+          "ble_endpoint": "Target Endpoint / Broker",
+          "ble_source": "Bluetooth Adapter / Proxy"
+        }
       }
     },
     "error": {
       "invalid_auth": "Invalid email or password.",
       "no_devices": "No bound Oukitel devices found in this account.",
-      "cannot_connect": "Failed to connect to Oukitel cloud servers."
+      "cannot_connect": "Failed to connect to Oukitel cloud servers.",
+      "ble_provision_failed": "Failed to provision station via Bluetooth. Make sure the Wi-Fi icon is blinking and try again."
     },
     "abort": {
       "already_configured": "This Oukitel device is already configured."
@@ -39,7 +50,8 @@
           "poll_interval": "Cloud Update Interval (seconds, 3-120s)",
           "price_sensor": "Dynamic Electricity Price Sensor (Optional)",
           "currency": "Currency Symbol / Code",
-          "fixed_price": "Fixed Tariff or Fallback Price"
+          "fixed_price": "Fixed Tariff or Fallback Price",
+          "reconfigure_ble": "Provision Wi-Fi / Change Endpoint via Bluetooth"
         },
         "data_description": {
           "host": "Optional: leave empty for automatic network discovery. Recommended if your station has a static IP to improve and accelerate connection.",
@@ -48,7 +60,22 @@
           "currency": "Currency symbol or code (e.g. €, $, £, CHF).",
           "fixed_price": "Fixed price per kWh used when no dynamic sensor is configured."
         }
+      },
+      "ble_provision": {
+        "title": "Bluetooth Provisioning (BLE)",
+        "description": "Ensure the station is powered on and in pairing mode (Wi-Fi icon blinking). Select the device and enter your Wi-Fi credentials:",
+        "data": {
+          "discovered_device": "Discovered Bluetooth Station",
+          "ble_mac": "Bluetooth MAC Address (if Manual)",
+          "ble_ssid": "Wi-Fi Network Name (SSID)",
+          "ble_password": "Wi-Fi Password",
+          "ble_endpoint": "Target Endpoint / Broker",
+          "ble_source": "Bluetooth Adapter / Proxy"
+        }
       }
+    },
+    "error": {
+      "ble_provision_failed": "Failed to provision station via Bluetooth. Make sure the Wi-Fi icon is blinking and try again."
     }
   },
   "selector": {

@@ -17,12 +17,23 @@
         "data": {
           "device_key": "Estación Oukitel"
         }
+      },
+      "bluetooth_confirm": {
+        "title": "Estación Oukitel Descubierta por Bluetooth",
+        "description": "Se ha detectado {name} ({mac}) en modo emparejamiento. Introduce las credenciales Wi-Fi para vincular la estación a tu red:",
+        "data": {
+          "ble_ssid": "Nombre de la Red Wi-Fi (SSID)",
+          "ble_password": "Contraseña Wi-Fi",
+          "ble_endpoint": "Endpoint / Servidor de Destino",
+          "ble_source": "Adaptador Bluetooth / Proxy"
+        }
       }
     },
     "error": {
       "invalid_auth": "Correo o contraseña no válidos.",
       "no_devices": "No se encontraron baterías Oukitel vinculadas a esta cuenta.",
-      "cannot_connect": "Error al conectar con los servidores cloud de Oukitel."
+      "cannot_connect": "Error al conectar con los servidores cloud de Oukitel.",
+      "ble_provision_failed": "Error al aprovisionar la estación por Bluetooth. Asegúrate de que el icono Wi-Fi parpadee y vuelve a intentarlo."
     },
     "abort": {
       "already_configured": "Esta batería Oukitel ya está configurada."
@@ -40,7 +51,8 @@
           "poll_interval": "Intervalo de actualización Cloud (segundos, 3-120s)",
           "price_sensor": "Sensor de precio de la luz dinámico (Opcional)",
           "currency": "Divisa o Símbolo Monetario",
-          "fixed_price": "Tarifa fija o precio de reserva"
+          "fixed_price": "Tarifa fija o precio de reserva",
+          "reconfigure_ble": "Aprovisionar Wi-Fi / Cambiar Endpoint por Bluetooth"
         },
         "data_description": {
           "host": "Opcional: déjalo vacío para detección automática en la red local. Recomendable si tiene IP estática para agilizar y mejorar la conexión.",
@@ -50,7 +62,22 @@
           "currency": "Símbolo o código de la divisa (ej. €, $, £, CHF).",
           "fixed_price": "Tarifa fija por kWh a utilizar en caso de no configurar un sensor dinámico."
         }
+      },
+      "ble_provision": {
+        "title": "Aprovisionamiento Bluetooth (BLE)",
+        "description": "Asegúrate de que la estación esté encendida y en modo emparejamiento (icono Wi-Fi parpadeando). Selecciona el dispositivo e introduce tus credenciales Wi-Fi:",
+        "data": {
+          "discovered_device": "Estación Bluetooth Detectada",
+          "ble_mac": "Dirección MAC Bluetooth (si es Manual)",
+          "ble_ssid": "Nombre de la Red Wi-Fi (SSID)",
+          "ble_password": "Contraseña Wi-Fi",
+          "ble_endpoint": "Endpoint / Servidor de Destino",
+          "ble_source": "Adaptador Bluetooth / Proxy"
+        }
       }
+    },
+    "error": {
+      "ble_provision_failed": "Error al aprovisionar la estación por Bluetooth. Asegúrate de que el icono Wi-Fi parpadee y vuelve a intentarlo."
     }
   },
   "selector": {

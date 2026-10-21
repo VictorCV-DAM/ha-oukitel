@@ -14,6 +14,13 @@ CONF_PRICE_SENSOR = "price_sensor"
 CONF_FIXED_PRICE = "fixed_price"
 DEFAULT_FIXED_PRICE = 0.15
 CONF_CURRENCY = "currency"
+
+CONF_BLE_MAC = "ble_mac"
+CONF_BLE_SSID = "ble_ssid"
+CONF_BLE_PASSWORD = "ble_password"
+CONF_BLE_ENDPOINT = "ble_endpoint"
+CONF_BLE_SOURCE = "ble_source"
+DEFAULT_BLE_MAC = ""
 DEFAULT_CURRENCY = "€"
 CURRENCY_OPTIONS = ["€", "$", "£", "CHF", "kr", "¥", "zł", "R$", "MX$"]
 
