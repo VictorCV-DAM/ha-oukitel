@@ -223,12 +223,12 @@ class CloudBridge:
             tl = int.from_bytes(body[2:4], "big")
             topic = body[4 : 4 + tl].decode("utf-8", "replace")
             req_qos = body[4 + tl] if len(body) > 4 + tl else 0
-            suback_qos = req_qos if req_qos <= 1 else 1
-            writer.write(b"\x90\x03" + pid + bytes([suback_qos]))
+            # Cash83 documented: grant QoS 0 in SUBACK (90 03 <pid> 00)
+            writer.write(b"\x90\x03" + pid + b"\x00")
             await writer.drain()
             try:
                 self._down_base = topic[:-2] if topic.endswith("/+") else topic.rsplit("/", 1)[0]
-                _LOGGER.info("oukitel: subscribed to %s (req_qos=%d, downlink %s)", topic, req_qos, self._down_base)
+                _LOGGER.info("oukitel: subscribed to %s (req_qos=%d, granted_qos=0, downlink %s)", topic, req_qos, self._down_base)
             except Exception:  # noqa: BLE001
                 pass
             # Without the SUBACK the station will not publish; without a
@@ -263,6 +263,15 @@ class CloudBridge:
                 topic, qos, pid_hex, len(payload), payload[:48].hex(),
             )
             frames = asm.feed(payload)
+            if not frames and payload:
+                # Fallback: check if payload is raw TTLV without 0xAAAA framing
+                try:
+                    direct_tags = ttlv_decode(payload)
+                    if direct_tags:
+                        _LOGGER.info("oukitel: decoded raw TTLV without 0xAAAA header: %s", direct_tags)
+                        frames = [(0, 20, payload)]
+                except Exception:
+                    pass
             if not frames:
                 _LOGGER.info(
                     "oukitel: asm.feed did not yield a frame yet (payload len %d, asm_buf %d)",
@@ -316,36 +325,71 @@ class CloudBridge:
             + frame
         )
 
-    async def _manda_frame(self, frame: bytes) -> None:
+    async def _send_downlink(self, sub: str, frame: bytes, qos: int = 0) -> None:
         writer = self._writer
         base = self._down_base
-        if writer is None or base is None:
-            raise RuntimeError("no station connected to the fake cloud")
+        if writer is None or base is None or writer.is_closing():
+            return
+        topic = f"{base}/{sub}".encode()
         self._mqtt_pid = (getattr(self, "_mqtt_pid", 0) % 65535) + 1
-        for sub in ("bus", "rw"):
-            topic = f"{base}/{sub}".encode()
-            pkt1 = self._pacchetto_publish(topic, frame, qos=1, pid=self._mqtt_pid)
-            pkt0 = self._pacchetto_publish(topic, frame, qos=0)
-            _LOGGER.info("oukitel: sending downlink to %s (%d bytes): %s", topic.decode(), len(frame), frame[:32].hex())
-            writer.write(pkt1)
-            writer.write(pkt0)
+        pkt = self._pacchetto_publish(topic, frame, qos=qos, pid=self._mqtt_pid)
+        _LOGGER.info(
+            "oukitel: sending downlink (qos=%d pid=%04x) to %s (%d bytes): %s",
+            qos, self._mqtt_pid if qos > 0 else 0, topic.decode(), len(frame), frame[:32].hex()
+        )
+        writer.write(pkt)
         await writer.drain()
+        await asyncio.sleep(0.04)
+
+    async def _manda_frame(self, frame: bytes) -> None:
+        # Cash83 documented: publish to <base>/rw with QoS 0
+        await self._send_downlink("rw", frame, qos=0)
+        # Quectel standard bus: <base>/bus with QoS 1
+        await self._send_downlink("bus", frame, qos=1)
+        # Also try <base>/rw with QoS 1
+        await self._send_downlink("rw", frame, qos=1)
 
     async def _stimulate(self, rumoroso: bool = True) -> None:
-        """High-frequency mode + read of every id, like the real cloud does."""
+        """High-frequency mode + telemetry query, covering both cash83 and Oukitel LAN patterns."""
         if self._writer is None or self._down_base is None:
             return
         try:
+            # 1. Cash83 HFR mode (cmd 19, tag 100 = 3)
             self._pid += 1
             await self._manda_frame(
                 build_frame(self._pid, 19, ttlv_encode([(HFR_TAG, "num", HFR_VALUE)]))
             )
+            # 2. Oukitel LAN HFR mode (cmd 19, tag 100 = 1)
             self._pid += 1
             await self._manda_frame(
-                build_frame(self._pid, 17, b"".join(i.to_bytes(2, "big") for i in KNOWN_TAG_IDS))
+                build_frame(self._pid, 19, ttlv_encode([(HFR_TAG, "num", 1)]))
             )
+            # 3. Oukitel Telemetry Query (cmd 35, empty)
+            self._pid += 1
+            await self._manda_frame(
+                build_frame(self._pid, 35, b"")
+            )
+            # 4. Oukitel Telemetry Query (cmd 35, tags)
+            self._pid += 1
+            tag_bytes = b"".join(i.to_bytes(2, "big") for i in KNOWN_TAG_IDS)
+            await self._manda_frame(
+                build_frame(self._pid, 35, tag_bytes)
+            )
+            # 5. Cash83 Read (cmd 17, tags)
+            self._pid += 1
+            await self._manda_frame(
+                build_frame(self._pid, 17, tag_bytes)
+            )
+            # 6. Quectel Heartbeat Ping (cmd 28727)
+            self._pid += 1
+            await self._manda_frame(
+                build_frame(self._pid, 28727, b"")
+            )
+            # 7. Also ping the system topic <base>/sys
+            await self._send_downlink("sys", build_frame(self._pid, 28727, b""), qos=0)
+
             if rumoroso:
-                _LOGGER.info("oukitel: stimulus sent (high frequency + read)")
+                _LOGGER.info("oukitel: comprehensive stimulus sent (cmds 19[m3/m1], 35[empty/tags], 17, 28727)")
         except Exception as exc:  # noqa: BLE001
             _LOGGER.debug("oukitel: stimulus failed: %s", exc)
 
