@@ -30,6 +30,7 @@ from .const import (
     MODE_AUTO,
     MODE_CLOUD,
     MODE_LAN,
+    MODE_ZERO_CLOUD,
     get_battery_capacity_wh,
 )
 from .local_scan import find_device_on_lan
@@ -529,7 +530,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
             # 2. Cloud shadow synchronization (always sync unless in Solo LAN mode or offline)
             cloud_ok = False
-            if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
+            if self.connection_mode not in (MODE_LAN, MODE_ZERO_CLOUD) and getattr(self.client, "access_token", None):
                 try:
                     if is_struct:
                         cloud_struct_map = {
@@ -557,7 +558,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
             # State readback verification: if Cloud control returned failure (e.g. timeout / code 5340),
             # check whether the station physically applied the command before reporting failure
-            if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
+            if self.connection_mode not in (MODE_LAN, MODE_ZERO_CLOUD) and getattr(self.client, "access_token", None):
                 try:
                     await asyncio.sleep(1.0)
                     verification_data = await self.hass.async_add_executor_job(self.client.get_telemetry)
@@ -711,7 +712,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
             # In Auto mode, if cloud confirms the station is powered off / offline, defer LAN setup
             if (
-                self.connection_mode != MODE_LAN
+                self.connection_mode not in (MODE_LAN, MODE_ZERO_CLOUD)
                 and getattr(self.client, "access_token", None)
                 and not getattr(self.client, "is_online", True)
             ):
@@ -759,7 +760,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
 
             # Seed initial state and static diagnostics (temp, BMS_Version, AC_Version, etc.) from Cloud shadow
-            if getattr(self.client, "access_token", None):
+            if self.connection_mode not in (MODE_LAN, MODE_ZERO_CLOUD) and getattr(self.client, "access_token", None):
                 try:
                     cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
                     if cloud_snapshot:
@@ -794,7 +795,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         try:
             await session.connect()
         except (LocalSessionError, LocalAuthError) as exc:
-            if self.connection_mode == MODE_LAN:
+            if self.connection_mode in (MODE_LAN, MODE_ZERO_CLOUD):
                 _LOGGER.error(
                     "oukitel: LAN session failed to connect to %s: %s (Solo LAN mode — Cloud fallback disabled)",
                     host, exc,
@@ -1089,7 +1090,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             data = await self._update_cloud()
         elif self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
             data = await self._update_lan()
-        elif self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
+        elif self.connection_mode in (MODE_LAN, MODE_ZERO_CLOUD) or not getattr(self.client, "access_token", None):
             # If LAN session is initializing in the background during setup or running offline, request read and wait
             if self._lan_session and not self._lan_state:
                 try:
@@ -1190,7 +1191,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         now = time.monotonic()
         if (
             not self.use_bridge
-            and self.connection_mode != MODE_LAN
+            and self.connection_mode not in (MODE_LAN, MODE_ZERO_CLOUD)
             and (now - self._last_cloud_snapshot) >= _CLOUD_SNAPSHOT_INTERVAL
         ):
             self.hass.async_create_task(self._async_refresh_cloud_shadow())

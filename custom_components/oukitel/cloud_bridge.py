@@ -333,7 +333,7 @@ class CloudBridge:
         topic = f"{base}/{sub}".encode()
         self._mqtt_pid = (getattr(self, "_mqtt_pid", 0) % 65535) + 1
         pkt = self._pacchetto_publish(topic, frame, qos=qos, pid=self._mqtt_pid)
-        _LOGGER.info(
+        _LOGGER.debug(
             "oukitel: sending downlink (qos=%d pid=%04x) to %s (%d bytes): %s",
             qos, self._mqtt_pid if qos > 0 else 0, topic.decode(), len(frame), frame[:32].hex()
         )
@@ -415,7 +415,7 @@ class CloudBridge:
             )
 
             if rumoroso:
-                _LOGGER.info("oukitel: comprehensive stimulus sent to bus_, sys_, bus, rw (cmds 28725, 28729, 28727, 19[m3/m1/m2], 35, 17)")
+                _LOGGER.debug("oukitel: comprehensive stimulus sent to bus_, sys_, bus, rw (cmds 28725, 28729, 28727, 19[m3/m1/m2], 35, 17)")
         except Exception as exc:  # noqa: BLE001
             _LOGGER.debug("oukitel: stimulus failed: %s", exc)
 

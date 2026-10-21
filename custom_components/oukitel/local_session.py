@@ -143,12 +143,13 @@ class LocalSession:
     async def request_read(self) -> None:
         if not self._writer or self._writer.is_closing():
             return
-        # CMD 35: Real Quectel telemetry query command
-        cipher_empty = aes_encrypt(self._key, self._iv, b"")
-        self._writer.write(build_frame(self._next_pid(), 35, cipher_empty))
-
         body_tags = b"".join(struct.pack(">H", t) for t in self._read_tags)
         cipher_tags = aes_encrypt(self._key, self._iv, body_tags)
+        self._writer.write(build_frame(self._next_pid(), _CMD_READ, cipher_tags))
+
+        # CMD 35: Extended telemetry query command
+        cipher_empty = aes_encrypt(self._key, self._iv, b"")
+        self._writer.write(build_frame(self._next_pid(), 35, cipher_empty))
         self._writer.write(build_frame(self._next_pid(), 35, cipher_tags))
         await self._writer.drain()
 
@@ -215,7 +216,7 @@ class LocalSession:
 
     async def _subscribe(self) -> None:
         # 1. Mode high-frequency LAN (cmd 19): tag 100 = 1 (局域网高频上报 - LAN high frequency report)
-        body = ttlv_encode([(_TAG_REPORT_MODE, "num", 1)])
+        body = ttlv_encode([(_TAG_REPORT_MODE, "num", _REPORT_MODE_LAN)])
         ciphertext = aes_encrypt(self._key, self._iv, body)
         self._writer.write(build_frame(self._next_pid(), _CMD_WRITE, ciphertext))
         await self._writer.drain()
