@@ -34,6 +34,7 @@ from .const import (
     get_battery_capacity_wh,
 )
 from .local_scan import find_device_on_lan
+from .diag_logger import diag_log
 from .local_session import LocalSession, LocalAuthError, LocalSessionError
 
 _LOGGER = logging.getLogger(__name__)
@@ -880,6 +881,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 continue
 
     def _on_lan_telemetry(self, fields: dict[int, Any]) -> None:
+        diag_log("COORD_ON_TELEMETRY", tags=list(fields.keys()))
         if self._paused:
             return
         self._lan_last_report = time.monotonic()

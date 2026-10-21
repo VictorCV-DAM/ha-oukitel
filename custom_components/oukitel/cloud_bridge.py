@@ -30,6 +30,7 @@ from typing import Any, Callable
 # local_scan.py, so the bridge borrows it instead of inventing its own.
 from .local_scan import _DEFAULT_READ_TAGS as KNOWN_TAG_IDS
 from .local_frame import FrameAssembler, build_frame, ttlv_decode, ttlv_encode
+from .diag_logger import diag_log
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -159,6 +160,7 @@ class CloudBridge:
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
         eti = f"{peer[0]}:{peer[1]}" if peer else "?"
+        diag_log("BRIDGE_CONNECT_RAW", peer=eti)
         asm = FrameAssembler()
         buf = bytearray()
         era_lei = False
@@ -210,6 +212,7 @@ class CloudBridge:
         """Answer one MQTT packet. Returns True if it is the station."""
         _LOGGER.debug("oukitel: fake cloud packet from %s: tipo=%d flags=%d len=%d", eti, tipo, flags, len(body))
 
+        diag_log("BRIDGE_MQTT_PACKET", peer=eti, type=tipo, length=len(body))
         if tipo == _CONNECT:
             self._writer = writer
             writer.write(b"\x20\x02\x00\x00")  # CONNACK ok
