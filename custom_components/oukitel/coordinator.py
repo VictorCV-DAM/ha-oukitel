@@ -835,7 +835,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             auth_key_b64=auth_key,
             on_telemetry=self._on_lan_telemetry,
         )
-        max_attempts = 3
+        max_attempts = 5
         last_exc = None
         for attempt in range(1, max_attempts + 1):
             try:
@@ -877,8 +877,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         if last_exc:
             if self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
-                _LOGGER.error(
-                    "oukitel: LAN session failed to connect to %s: %s (Offline/LAN mode — scheduling persistent reconnect)",
+                _LOGGER.info(
+                    "oukitel: LAN connect to %s waiting for network ready (%s) — persistent background loop active",
                     host, last_exc,
                 )
             else:

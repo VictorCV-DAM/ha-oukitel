@@ -195,9 +195,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("oukitel: Offline boot — establishing LAN session before first coordinator refresh...")
             await coordinator.async_setup_lan()
             if not coordinator._lan_active:
-                diag_log("SETUP_ABORT", reason="lan_unreachable_during_offline_boot", host=host)
-                raise ConfigEntryNotReady(
-                    f"Oukitel station '{host or 'auto-discovery'}' unreachable on LAN and cloud is offline. Retrying automatically..."
+                _LOGGER.info(
+                    "oukitel: Station '%s' not reached immediately on offline boot — proceeding with cached/baseline telemetry while background loop connects",
+                    host or "auto-discovery",
                 )
         else:
             _LOGGER.debug("oukitel: Creating background task for LAN setup")
