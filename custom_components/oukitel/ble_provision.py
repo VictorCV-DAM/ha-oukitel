@@ -246,7 +246,10 @@ async def point_station(
                 # Keep BLE link alive while station connects to Wi-Fi
                 _LOGGER.info("oukitel: Station joining Wi-Fi network (0x7014 progress notification)")
 
-        await client.stop_notify(target_char)
+        try:
+            await client.stop_notify(target_char)
+        except Exception:
+            pass
 
         if confirmed:
             return True, (
