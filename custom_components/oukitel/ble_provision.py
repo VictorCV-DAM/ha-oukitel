@@ -205,16 +205,24 @@ async def point_station(
         if target_char is None:
             return False, f"Característica {CHARACTERISTIC_SHORT} no encontrada en los servicios GATT de la estación."
 
-        await client.start_notify(target_char, on_notify)
+        try:
+            await client.start_notify(target_char, on_notify)
+        except Exception as exc:
+            _LOGGER.debug("oukitel: start_notify not supported or skipped on %s: %s", target_char.uuid, exc)
+
         try:
             await client.write_gatt_char(target_char, frame, response=True)
         except Exception as exc:  # noqa: BLE001
-            if "Authorization" in str(exc) or "133" in str(exc):
-                return False, (
-                    "La estación rechazó la orden (Autorización insuficiente). "
-                    "Verifica que esté en modo emparejamiento con el icono Wi-Fi parpadeando."
-                )
-            raise
+            _LOGGER.warning("oukitel: write_gatt_char with response failed (%s), retrying without response", exc)
+            try:
+                await client.write_gatt_char(target_char, frame, response=False)
+            except Exception as exc2:
+                if "Authorization" in str(exc2) or "133" in str(exc2):
+                    return False, (
+                        "La estación rechazó la orden (Autorización insuficiente). "
+                        "Verifica que esté en modo emparejamiento con el icono Wi-Fi parpadeando."
+                    )
+                return False, f"Error al escribir en BLE ({target_char.uuid}): {exc2}"
 
         _LOGGER.info("oukitel: BLE provisioning frame 0x7010 sent, awaiting 0x7011 confirmation")
 

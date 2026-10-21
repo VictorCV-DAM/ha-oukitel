@@ -442,23 +442,30 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
             endpoint = user_input.get(CONF_BLE_ENDPOINT, "mqtt://iot-south.acceleronix.io:8883").strip()
             source = user_input.get(CONF_BLE_SOURCE, "auto")
 
-            success, msg = await point_station(
-                self.hass,
-                ssid=ssid,
-                password=pwd,
-                endpoint=endpoint,
-                mac=target_mac,
-                source=source,
-            )
+            try:
+                success, msg = await point_station(
+                    self.hass,
+                    ssid=ssid,
+                    password=pwd,
+                    endpoint=endpoint,
+                    mac=target_mac,
+                    source=source,
+                )
+            except Exception as exc:
+                _LOGGER.exception("oukitel: BLE provisioning unexpected error: %s", exc)
+                success = False
+                msg = str(exc)
 
             if not success:
                 errors["base"] = "ble_provision_failed"
                 _LOGGER.warning("oukitel: BLE provisioning failed: %s", msg)
             else:
                 _LOGGER.info("oukitel: BLE provisioning succeeded: %s", msg)
+                updated_options = dict(self._config_entry.options)
+                updated_options[CONF_BLE_SSID] = ssid
                 return self.async_create_entry(
                     title="",
-                    data=dict(self._config_entry.options),
+                    data=updated_options,
                 )
 
         discovered = async_discover_oukitel_ble(self.hass)
@@ -470,12 +477,16 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
 
         default_mac = next(iter(discovered_options.keys())) if discovered else "manual"
         sources = async_get_bluetooth_sources(self.hass)
+        suggested_ssid = self._config_entry.options.get(
+            CONF_BLE_SSID,
+            self._config_entry.data.get(CONF_BLE_SSID, "OUKITEL"),
+        )
 
         schema = vol.Schema(
             {
                 vol.Required("discovered_device", default=default_mac): vol.In(discovered_options),
                 vol.Optional(CONF_BLE_MAC, default=self._config_entry.data.get(CONF_BLE_MAC, "")): cv.string,
-                vol.Required(CONF_BLE_SSID): cv.string,
+                vol.Required(CONF_BLE_SSID, default=suggested_ssid): cv.string,
                 vol.Required(CONF_BLE_PASSWORD): TextSelector(
                     TextSelectorConfig(type=TextSelectorType.PASSWORD)
                 ),
