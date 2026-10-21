@@ -232,6 +232,9 @@ class CloudBridge:
             except Exception:  # noqa: BLE001
                 pass
 
+            # Confirm pairing/binding so station solidifies Wi-Fi icon and exits pairing mode
+            await self._confirm_binding()
+
             # Without the SUBACK the station will not publish; without a
             # stimulus it publishes only once. The two together open the tap.
             await self._stimulate()
@@ -350,6 +353,24 @@ class CloudBridge:
         writer.write(self._pacchetto_publish(f"{base}/bus_".encode(), frame, qos=0))
         writer.write(self._pacchetto_publish(f"{base}/rw".encode(), frame, qos=0))
         await writer.drain()
+
+    async def _confirm_binding(self) -> None:
+        """Confirm to the station that cloud activation and device binding succeeded."""
+        if self._writer is None or self._down_base is None:
+            return
+        try:
+            # 1. Cloud Login / Activation Ack (CMD 28725 with code 0)
+            self._pid += 1
+            login_ack = ttlv_encode([(1, "num", 0), (3, "num", 0)])
+            await self._manda_frame(build_frame(self._pid, 28725, login_ack))
+
+            # 2. SmartConfig Pairing / Binding Success (CMD 28692 / 0x7014 with status 0 = Success)
+            self._pid += 1
+            success_ack = ttlv_encode([(1, "num", 0), (2, "num", 0)])
+            await self._manda_frame(build_frame(self._pid, 28692, success_ack))
+            _LOGGER.info("oukitel: cloud binding and activation confirmation sent to station")
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.debug("oukitel: confirm_binding failed: %s", exc)
 
     async def _stimulate(self, rumoroso: bool = True) -> None:
         """High-frequency mode + read of every id, like the real cloud does."""

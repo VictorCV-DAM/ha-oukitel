@@ -1044,6 +1044,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     time.monotonic() - last_word,
                 )
 
+            if (self._bridge and self._bridge.connected) and self._lan_session:
+                try:
+                    await self._lan_session.request_read()
+                except Exception:
+                    pass
+
             if self._lan_has_valid_telemetry and self._lan_state:
                 data = await self._update_lan()
             elif (self._bridge and self._bridge.connected) or self._lan_active:
