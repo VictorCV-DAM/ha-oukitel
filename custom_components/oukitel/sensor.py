@@ -97,7 +97,18 @@ def _build_calculated_device_info(coordinator: OukitelDataCoordinator, client) -
     via_id = None
     if coordinator.hass:
         dev_reg = dr.async_get(coordinator.hass)
-        parent_dev = dev_reg.async_get_device(identifiers={(DOMAIN, client.device_key)})
+        identifier = (DOMAIN, client.device_key)
+        entry_id = getattr(coordinator.config_entry, "entry_id", None) if getattr(coordinator, "config_entry", None) else None
+        parent_dev = None
+        if hasattr(dev_reg, "async_get_device_by_identifier") and entry_id:
+            parent_dev = dev_reg.async_get_device_by_identifier(identifier, entry_id)
+        elif hasattr(dev_reg, "async_get_devices"):
+            devs = dev_reg.async_get_devices(identifiers={identifier})
+            if devs:
+                parent_dev = devs[0]
+        else:
+            parent_dev = dev_reg.async_get_device(identifiers={identifier})
+
         if parent_dev:
             via_id = parent_dev.id
 
