@@ -194,7 +194,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("oukitel: Offline boot — establishing LAN session before first coordinator refresh...")
             for attempt in range(1, 4):
                 await coordinator.async_setup_lan()
-                if coordinator._lan_active:
+                if coordinator._lan_session and coordinator._lan_active:
                     break
                 _LOGGER.info("oukitel: LAN setup attempt %s/3 failed, waiting 3s to retry...", attempt)
                 await asyncio.sleep(3.0)

@@ -393,6 +393,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._bridge_first_pass: bool = True
         self._bridge_never_seen: bool = True
         self._lan_state: dict[int, Any] = {}
+        if config_entry:
+            cached_snapshot = config_entry.data.get("last_telemetry_snapshot")
+            if cached_snapshot and isinstance(cached_snapshot, dict):
+                self._lan_state = dict(cached_snapshot)
+                self.data = dict(cached_snapshot)
+                self._lan_has_valid_telemetry = True
         self._lan_last_report: float | None = None
         self._lan_connected_at: float | None = None
         self._lan_active = False
@@ -659,7 +665,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             _LOGGER.error("oukitel: fake cloud did not start: %s", exc)
             return False
         self._bridge = bridge
-        self._lan_session = bridge
         self._lan_active = True
         self._lan_connected_at = time.monotonic()
         self._bridge_absent_since = time.monotonic()
@@ -1048,6 +1053,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     "station for %.0f seconds: treating it as absent",
                     time.monotonic() - last_word,
                 )
+
+            if self._bridge and self._bridge.connected:
+                try:
+                    await self._bridge.request_read()
+                except Exception:
+                    pass
 
             if self._lan_session:
                 try:

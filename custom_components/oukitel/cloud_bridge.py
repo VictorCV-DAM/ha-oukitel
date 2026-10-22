@@ -40,7 +40,7 @@ BROKER_PORT = 8886
 # this it reports once, on request. Same tag the LAN side uses.
 HFR_TAG = 100
 HFR_VALUE = 3
-STIMULUS_SECONDS = 20.0
+STIMULUS_SECONDS = 5.0
 
 # The MQTT packet types we care about
 _CONNECT, _PUBLISH, _SUBSCRIBE, _PINGREQ = 1, 3, 8, 12
@@ -225,7 +225,7 @@ class CloudBridge:
         if tipo == _SUBSCRIBE:
             pid = body[0:2]
             # Grant QoS 0 in SUBACK
-            writer.write(b"\x90\x03" + pid + b"\x00")
+            writer.write(b"\x90\x03" + pid + b"\x01")
             await writer.drain()
             try:
                 tl = int.from_bytes(body[2:4], "big")
@@ -353,8 +353,8 @@ class CloudBridge:
         base = self._down_base
         if writer is None or base is None or writer.is_closing():
             return
-        writer.write(self._pacchetto_publish(f"{base}/bus_".encode(), frame, qos=0))
-        writer.write(self._pacchetto_publish(f"{base}/rw".encode(), frame, qos=0))
+        await self._send_downlink("bus_", frame, qos=1)
+        await self._send_downlink("rw", frame, qos=1)
         await writer.drain()
 
     async def _confirm_binding(self) -> None:
