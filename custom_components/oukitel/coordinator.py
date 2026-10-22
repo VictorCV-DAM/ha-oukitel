@@ -1046,16 +1046,18 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     time.monotonic() - last_word,
                 )
 
-            if (self._bridge and self._bridge.connected) and self._lan_session:
+            if self._lan_session:
                 try:
                     await self._lan_session.request_read()
                 except Exception:
                     pass
+            elif not self._lan_setup_in_flight and (self.lan_host or getattr(self.client, "device_key", None)):
+                self.hass.async_create_task(self.async_setup_lan())
 
-            if self._lan_has_valid_telemetry and self._lan_state:
+            if (self._lan_has_valid_telemetry and self._lan_state) or (self._lan_state and self._lan_state.get("battery_percentage") is not None):
                 data = await self._update_lan()
             elif (self._bridge and self._bridge.connected) or self._lan_active:
-                data = await self._update_lan_offline()
+                data = await self._update_lan() if self._lan_state else await self._update_lan_offline()
             else:
                 grace = 60.0 if self._bridge_never_seen else _BRIDGE_ABSENCE_MAX
                 if self._bridge_absent_since is None:

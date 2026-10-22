@@ -146,11 +146,6 @@ class LocalSession:
         body_tags = b"".join(struct.pack(">H", t) for t in self._read_tags)
         cipher_tags = aes_encrypt(self._key, self._iv, body_tags)
         self._writer.write(build_frame(self._next_pid(), _CMD_READ, cipher_tags))
-
-        # CMD 35: Extended telemetry query command
-        cipher_empty = aes_encrypt(self._key, self._iv, b"")
-        self._writer.write(build_frame(self._next_pid(), 35, cipher_empty))
-        self._writer.write(build_frame(self._next_pid(), 35, cipher_tags))
         await self._writer.drain()
 
     # ------------------------------------------------------------------
@@ -215,7 +210,7 @@ class LocalSession:
         raise LocalAuthError(f"Station rejected login (result={result}, fields={result_fields})")
 
     async def _subscribe(self) -> None:
-        # 1. Mode high-frequency LAN (cmd 19): tag 100 = 1 (局域网高频上报 - LAN high frequency report)
+        # 1. Mode high-frequency LAN (cmd 19): tag 100 = 3 (LAN high frequency report)
         body = ttlv_encode([(_TAG_REPORT_MODE, "num", _REPORT_MODE_LAN)])
         ciphertext = aes_encrypt(self._key, self._iv, body)
         self._writer.write(build_frame(self._next_pid(), _CMD_WRITE, ciphertext))
@@ -224,11 +219,12 @@ class LocalSession:
         # 2. Snapshot read all tags
         await self.request_read()
 
-        # 3. Real Heartbeat (cmd 28727 / _CMD_PING)
-        hb_cipher = aes_encrypt(self._key, self._iv, b"")
+        # 3. Real Heartbeat (cmd 28727 / _CMD_PING) with tag 1=30, tag 2=1
+        hb_payload = ttlv_encode([(1, "num", 30), (2, "num", 1)])
+        hb_cipher = aes_encrypt(self._key, self._iv, hb_payload)
         self._writer.write(build_frame(self._next_pid(), _CMD_PING, hb_cipher))
         await self._writer.drain()
-        _LOGGER.debug("oukitel: LAN subscription (mode 1) and heartbeat (cmd 28727) armed")
+        _LOGGER.debug("oukitel: LAN subscription (mode 3) and heartbeat (cmd 28727) armed")
 
     async def resubscribe(self) -> None:
         """Re-arm high-frequency reporting on an existing socket."""
