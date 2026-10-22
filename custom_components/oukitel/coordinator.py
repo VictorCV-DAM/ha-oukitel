@@ -790,6 +790,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             self._lan_setup_in_flight = False
 
     async def _start_lan_session(self, host: str, auth_key: str) -> None:
+        diag_log("COORD_START_LAN_SESSION", host=host, has_auth_key=bool(auth_key))
         session = LocalSession(
             host=host,
             auth_key_b64=auth_key,
@@ -798,7 +799,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_session = session
         try:
             await session.connect()
+            diag_log("COORD_LAN_CONNECTED_OK", host=host)
         except (LocalSessionError, LocalAuthError) as exc:
+            diag_log("COORD_LAN_CONNECT_FAIL", host=host, error=str(exc))
             if self.connection_mode in (MODE_LAN, MODE_ZERO_CLOUD):
                 _LOGGER.error(
                     "oukitel: LAN session failed to connect to %s: %s (Solo LAN mode — Cloud fallback disabled)",

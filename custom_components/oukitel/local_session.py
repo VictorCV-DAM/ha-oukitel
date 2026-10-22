@@ -13,6 +13,7 @@ import struct
 from collections.abc import Callable
 from typing import Any
 
+from .diag_logger import diag_log
 from .local_frame import (
     FrameAssembler,
     auth_key_bytes,
@@ -89,18 +90,23 @@ class LocalSession:
 
     async def connect(self) -> None:
         _LOGGER.debug("oukitel: LAN connecting to %s:%s", self._host, _TCP_PORT)
+        diag_log("LAN_CONNECT_START", host=self._host, port=_TCP_PORT)
         try:
             self._reader, self._writer = await asyncio.wait_for(
                 asyncio.open_connection(self._host, _TCP_PORT),
                 timeout=_CONNECT_TIMEOUT,
             )
         except (OSError, asyncio.TimeoutError) as exc:
+            diag_log("LAN_TCP_FAIL", host=self._host, error=str(exc))
             raise LocalSessionError(f"Cannot reach {self._host}:{_TCP_PORT}") from exc
 
+        diag_log("LAN_TCP_CONNECTED", host=self._host)
         _LOGGER.debug("oukitel: LAN TCP socket open, starting handshake")
         await self._handshake()
+        diag_log("LAN_HANDSHAKE_DONE", host=self._host)
         _LOGGER.debug("oukitel: LAN subscribing to telemetry")
         await self._subscribe()
+        diag_log("LAN_SUBSCRIBE_DONE", host=self._host)
         self._keepalive_task = asyncio.ensure_future(self._keepalive_loop())
 
     async def close(self) -> None:
@@ -247,6 +253,7 @@ class LocalSession:
                     break
 
     async def _handle(self, cmd: int, payload: bytes) -> None:
+        diag_log("LAN_RX_RAW_FRAME", cmd=cmd, len=len(payload))
         if cmd in (_CMD_PING, _CMD_PONG, _CMD_KEEPALIVE):
             if cmd == _CMD_PING:
                 await self._send_raw(_CMD_PONG)

@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .api import AcceleronixCloudClient
+from .diag_logger import diag_log
 from .const import (
     CONF_CLOUD_BRIDGE,
     DEFAULT_BRIDGE_PORT,
@@ -42,6 +43,7 @@ PLATFORMS: list[Platform] = [
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Oukitel Power Station from a config entry."""
+    diag_log("SETUP_ENTRY_CALLED", entry_id=entry.entry_id, mode=entry.options.get(CONF_CONNECTION_MODE, entry.data.get(CONF_CONNECTION_MODE)))
     hass.data.setdefault(DOMAIN, {})
 
     # Register frontend Lovelace cards
