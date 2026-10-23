@@ -191,6 +191,10 @@ You can configure the active connection mode at any time directly in Home Assist
 > - **Defensa Técnica de la Limitación de Firmware del Fabricante**: Tras rigurosas pruebas empíricas y de ingeniería inversa, se ha demostrado que el microcontrolador Wi-Fi Quectel de fábrica suspende la lectura del bus serie UART hacia el BMS tras ~120 segundos sin enlace MQTT hacia el servidor cloud del fabricante (`iot-south.acceleronix.io`). El socket LAN local de la estación se mantiene 100% vivo respondiendo a los latidos Quectel (`CMD 28727 <-> 28728`), las entidades no caen en error de "No disponible", y el flujo de telemetría se restablece de forma totalmente autónoma a los 30 segundos de recuperar la fibra.
 > - **Informe Completo y Hoja de Ruta Abierta**: Para ver el desglose técnico de códigos binarios, modelo TSL, cronogramas de prueba y posibles líneas de investigación futura para la comunidad, consulte [docs/OFFLINE_LAN_RESEARCH.md](docs/OFFLINE_LAN_RESEARCH.md).
 
+> [!NOTE]
+> **Two "starting LAN session" log lines in a row are not a bug.**
+> In `auto` mode the integration makes a new LAN connection attempt when the previous socket has dropped and no listen task is active. The first line is the initial setup; the second is the `_async_update_data` retry after `_LAN_RETRY_INTERVAL` (20 s). It is a new attempt, not a duplicated log entry, and not a second simultaneous session: the `_lan_setup_in_flight` guard prevents two setups at the same time. If you want to confirm it, look for the previous session's disconnect before the second line.
+
 > [!TIP]
 > The **Connection Mode** diagnostic sensor on the device page always reports whether the station is actively communicating via `LAN` or `Cloud`.
 
