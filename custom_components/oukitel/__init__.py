@@ -100,6 +100,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         password=password,
         region=region,
         device_key=device_key,
+        device_name=entry.data.get("device_name"),
     )
 
     cloud_connected = False

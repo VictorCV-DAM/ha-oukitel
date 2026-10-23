@@ -13,6 +13,7 @@ from Crypto.Util.Padding import pad
 import requests
 
 from .const import REGION_SERVERS
+from .device_selection import select_device
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class AcceleronixCloudClient:
         password: str,
         region: str = "EU",
         device_key: str | None = None,
+        device_name: str | None = None,
     ):
         self.email = email
         self.password = password
@@ -43,7 +45,7 @@ class AcceleronixCloudClient:
         self.token_expiry = 0
         self.device_key = device_key
         self.product_key = None
-        self.device_name = None
+        self.device_name = device_name
         self.product_name = None
         self.auth_key = None
         self.is_online: bool = True
@@ -153,15 +155,14 @@ class AcceleronixCloudClient:
             _LOGGER.error("oukitel: No bound devices found in account.")
             return False
 
-        dev = None
-        if self.device_key:
-            for d in devices:
-                if d.get("deviceKey") == self.device_key:
-                    dev = d
-                    break
-
-        if not dev:
-            dev = devices[0]
+        dev = select_device(devices, self.device_key, self.device_name)
+        if dev is None:
+            _LOGGER.error(
+                "oukitel: Configured device %s is not in the account list; "
+                "refusing to switch to another station",
+                self.device_key,
+            )
+            return False
 
         self.device_key = dev["deviceKey"]
         self.product_key = dev["productKey"]
