@@ -157,6 +157,9 @@ def ttlv_encode(fields: list[tuple[int, str, Any]]) -> bytes:
         elif kind == "num":
             out += struct.pack(">H", (tag << 3) | 2)
             out += _encode_int(int(value))
+        elif kind == "str":
+            data = value.encode("utf-8") if isinstance(value, str) else bytes(value)
+            out += struct.pack(">HH", (tag << 3) | 3, len(data)) + data
         elif kind == "struct":
             out += struct.pack(">HH", (tag << 3) | 4, len(value))
             out += ttlv_encode(value)
@@ -199,10 +202,13 @@ def ttlv_decode(buf: bytes) -> dict[int, Any]:
             i += 2
             val = buf[i: i + ln]
             i += ln
-            try:
+            if typ == 3:
+                try:
+                    out[tag] = val.decode("utf-8")
+                except UnicodeDecodeError:
+                    out[tag] = val
+            else:
                 out[tag] = val.decode("ascii") if val.isascii() else val
-            except Exception:
-                out[tag] = val
         elif typ == 4:
             if i + 2 > n:
                 break
@@ -222,8 +228,15 @@ def ttlv_decode(buf: bytes) -> dict[int, Any]:
                 elif ty2 in (3, 5):
                     ln = struct.unpack_from(">H", buf, i)[0]
                     i += 2
-                    sub[t2] = buf[i: i + ln]
+                    val = buf[i: i + ln]
                     i += ln
+                    if ty2 == 3:
+                        try:
+                            sub[t2] = val.decode("utf-8")
+                        except UnicodeDecodeError:
+                            sub[t2] = val
+                    else:
+                        sub[t2] = val
             out[tag] = sub
         else:
             break

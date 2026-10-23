@@ -197,6 +197,15 @@ You can configure the active connection mode at any time directly in Home Assist
 
 ---
 
+## 🚀 What's New in v1.5.8: Resilient LAN Authentication & TTLV String Support
+
+- **🔑 Automatic `authKey` refresh:** if the LAN login is rejected after a factory reset or rebind, the integration fetches the new `authKey` from the cloud, updates the config entry (`data` and `options`) and retries once. Verified on a real Home Assistant instance: stale key → `result=-1` → refresh → reconnect.
+- **🔤 TTLV string support:** `ttlv_encode` now supports type 3 UTF-8 strings, and `ttlv_decode` decodes type 3 as UTF-8 (type 5 behaviour unchanged). Round-trip tests included.
+- **🧪 Tests:** 17 unit tests covering TTLV strings and the `authKey` refresh decision logic.
+- **📌 Scope:** BLE provisioning and the optional MCC field remain in `feature/zero-cloud-broker`; this release only changes the LAN/auth path.
+
+---
+
 ## 🚀 What's New in v1.5.7: Official Quectel Heartbeat, Offline LAN Control & Firmware Resilience
 
 - **💓 Official Quectel LAN Heartbeat (`CMD 28727 <-> 28728`):** Implemented the authentic Quectel binary heartbeat discovered through bytecode reverse engineering. The station acknowledges every ping immediately, preventing TCP socket teardowns on silence.

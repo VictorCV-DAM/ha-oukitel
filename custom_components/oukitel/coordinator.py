@@ -34,6 +34,7 @@ from .const import (
 )
 from .local_scan import find_device_on_lan
 from .local_session import LocalSession, LocalAuthError, LocalSessionError
+from .auth_refresh import try_refresh_auth_key
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -396,6 +397,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             or (config_entry.options.get(CONF_AUTH_KEY) if config_entry else None)
             or (config_entry.data.get(CONF_AUTH_KEY) if config_entry else None)
         )
+        self._last_auth_refresh: float = 0.0
         self._paused: bool = False
         self._user_overrides: dict[str, tuple] = {}
         self._last_device_list_check: float = 0.0
@@ -716,6 +718,29 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         try:
             await session.connect()
         except (LocalSessionError, LocalAuthError) as exc:
+            if isinstance(exc, LocalAuthError):
+                refreshed, new_key, last = await try_refresh_auth_key(
+                    self.client,
+                    auth_key,
+                    self._last_auth_refresh,
+                    time.monotonic(),
+                    self.hass.async_add_executor_job,
+                )
+                self._last_auth_refresh = last
+                if refreshed and new_key:
+                    self._cached_auth_key = new_key
+                    if self.config_entry:
+                        new_data = dict(self.config_entry.data)
+                        new_data[CONF_AUTH_KEY] = new_key
+                        new_options = dict(self.config_entry.options)
+                        new_options[CONF_AUTH_KEY] = new_key
+                        self.hass.config_entries.async_update_entry(
+                            self.config_entry, data=new_data, options=new_options
+                        )
+                    if self._lan_session is session:
+                        self._lan_session = None
+                    await self._start_lan_session(host, new_key)
+                    return
             if self.connection_mode == MODE_LAN:
                 _LOGGER.error(
                     "oukitel: LAN session failed to connect to %s: %s (Solo LAN mode — Cloud fallback disabled)",
@@ -792,6 +817,26 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.info("oukitel: LAN session re-established with %s!", target)
             except (LocalSessionError, LocalAuthError) as exc:
                 _LOGGER.debug("oukitel: LAN reconnect attempt failed: %s", exc)
+                if isinstance(exc, LocalAuthError):
+                    refreshed, new_key, last = await try_refresh_auth_key(
+                        self.client,
+                        auth_key,
+                        self._last_auth_refresh,
+                        time.monotonic(),
+                        self.hass.async_add_executor_job,
+                    )
+                    self._last_auth_refresh = last
+                    if refreshed and new_key:
+                        auth_key = new_key
+                        self._cached_auth_key = new_key
+                        if self.config_entry:
+                            new_data = dict(self.config_entry.data)
+                            new_data[CONF_AUTH_KEY] = new_key
+                            new_options = dict(self.config_entry.options)
+                            new_options[CONF_AUTH_KEY] = new_key
+                            self.hass.config_entries.async_update_entry(
+                                self.config_entry, data=new_data, options=new_options
+                            )
                 self._lan_session = None
                 self._lan_active = False
                 reconnect_delay = min(reconnect_delay * 1.5, 30.0)
