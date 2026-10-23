@@ -1,5 +1,6 @@
 """The Oukitel Power Station integration."""
 
+import asyncio
 from datetime import timedelta
 import logging
 import os
@@ -46,6 +47,68 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     diag_log("SETUP_ENTRY_CALLED", entry_id=entry.entry_id, mode=entry.options.get(CONF_CONNECTION_MODE, entry.data.get(CONF_CONNECTION_MODE)))
     hass.data.setdefault(DOMAIN, {})
 
+    # Diagnostic helper: drop the provisioning BLE link without touching MQTT,
+    # so we can tell whether the MCU keeps streaming on its own.
+    if not hass.data[DOMAIN].get("ble_disconnect_service"):
+        async def _async_disconnect_ble(call):
+            client = hass.data.get(DOMAIN, {}).pop("ble_client", None)
+            if client is None:
+                diag_log("SERVICE_BLE_DISCONNECT", result="no_client")
+                return
+            diag_log("SERVICE_BLE_DISCONNECT", result="disconnecting")
+            try:
+                await client.disconnect()
+                diag_log("SERVICE_BLE_DISCONNECT", result="disconnected")
+            except Exception as exc:  # noqa: BLE001
+                diag_log("SERVICE_BLE_DISCONNECT", result="error", error=str(exc))
+
+        hass.services.async_register(DOMAIN, "ble_disconnect", _async_disconnect_ble)
+        hass.data[DOMAIN]["ble_disconnect_service"] = True
+
+    # Diagnostic/experimental helper: publish an arbitrary payload on one of the
+    # station downlink channels without restarting Home Assistant.
+    if not hass.data[DOMAIN].get("bridge_send_service"):
+        async def _async_bridge_send(call):
+            bridge = hass.data.get(DOMAIN, {}).get("bridge")
+            if bridge is None or not bridge.connected:
+                diag_log("SERVICE_BRIDGE_SEND", result="no_bridge")
+                return
+            sub = str(call.data.get("topic", "sys"))
+            raw = str(call.data.get("payload", ""))
+            qos = int(call.data.get("qos", 1))
+            if raw.startswith("hex:"):
+                payload = bytes.fromhex(raw[4:].strip())
+            else:
+                payload = raw.encode("utf-8")
+            diag_log("SERVICE_BRIDGE_SEND", topic=sub, qos=qos, hex=payload.hex())
+            await bridge._send_downlink(sub, payload, qos=qos)
+
+        hass.services.async_register(DOMAIN, "bridge_send", _async_bridge_send)
+        hass.data[DOMAIN]["bridge_send_service"] = True
+
+    # Diagnostic: capture the first bytes of a TLS attempt on 18883, to learn
+    # whether the module validates the cloud certificate or uses PSK.
+    if not hass.data[DOMAIN].get("tls_probe"):
+        async def _handle_tls_probe(reader, writer):
+            peer = writer.get_extra_info("peername")
+            try:
+                data = await asyncio.wait_for(reader.read(2048), timeout=10)
+                diag_log("TLS_PROBE", peer=str(peer), len=len(data), hex=data.hex())
+            except Exception as exc:  # noqa: BLE001
+                diag_log("TLS_PROBE_ERROR", peer=str(peer), error=str(exc))
+            finally:
+                try:
+                    writer.close()
+                except Exception:
+                    pass
+
+        try:
+            server = await asyncio.start_server(_handle_tls_probe, "0.0.0.0", 18883)
+            hass.data[DOMAIN]["tls_probe"] = server
+            diag_log("TLS_PROBE_LISTENING", port=18883)
+        except Exception as exc:  # noqa: BLE001
+            diag_log("TLS_PROBE_LISTEN_FAILED", error=str(exc))
+
     # Register frontend Lovelace cards
     if not hass.data[DOMAIN].get("frontend_registered"):
         frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
@@ -77,8 +140,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.debug("oukitel: Frontend extra JS notice: %s", err)
 
     region = entry.data.get(CONF_REGION, DEFAULT_REGION)
-    email = entry.data[CONF_EMAIL]
-    password = entry.data[CONF_PASSWORD]
+    email = entry.data.get(CONF_EMAIL, "")
+    password = entry.data.get(CONF_PASSWORD, "")
 
     # Poll interval priority: options -> data -> default
     poll_interval = entry.options.get(

@@ -21,7 +21,9 @@ with no special cases.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import time
 from typing import Any, Callable
 
 # The ids this station is known to report. A frame carrying anything else
@@ -35,6 +37,11 @@ from .diag_logger import diag_log
 _LOGGER = logging.getLogger(__name__)
 
 BROKER_PORT = 8886
+
+# Capture mode: answer MQTT keepalive/subscribe/publish, but do NOT send the
+# unsolicited bind confirmations or the high-frequency stimulus. Used to observe
+# what an unbound station asks for on its own after a cold boot.
+PASSIVE_CAPTURE = False
 
 # The station only publishes continuously in "high frequency" mode: without
 # this it reports once, on request. Same tag the LAN side uses.
@@ -106,6 +113,19 @@ class CloudBridge:
         # once, to find out whether the station is sending something useful
         # that we currently throw away without even looking at it.
         self._unknown_ids: set[int] = set()
+        self._has_telemetry: bool = False
+        self._last_telemetry_at: float | None = None
+        self._silence_logged: bool = False
+
+    def update_callbacks(
+        self,
+        on_telemetry: Callable[[dict[int, Any]], None],
+        on_conn: Callable[[bool], None] | None = None,
+    ) -> None:
+        self._on_telemetry = on_telemetry
+        self._on_conn = on_conn
+        if self._writer is not None and on_conn:
+            on_conn(True)
 
     # -------------------------------------------------------------- startup
 
@@ -196,6 +216,7 @@ class CloudBridge:
             if self._writer is writer:
                 self._writer = None
                 self._down_base = None
+                diag_log("BRIDGE_DISCONNECT", peer=eti)
                 _LOGGER.info("oukitel: station %s disconnected from fake cloud", eti)
                 if self._on_conn:
                     self._on_conn(False)
@@ -215,6 +236,7 @@ class CloudBridge:
         diag_log("BRIDGE_MQTT_PACKET", peer=eti, type=tipo, length=len(body))
         if tipo == _CONNECT:
             self._writer = writer
+            diag_log("BRIDGE_CONNECT", peer=eti, hex=body.hex(), len=len(body))
             writer.write(b"\x20\x02\x00\x00")  # CONNACK ok
             await writer.drain()
             _LOGGER.info("oukitel: station connected to the fake cloud (%s) - CONNACK sent", eti)
@@ -225,22 +247,34 @@ class CloudBridge:
         if tipo == _SUBSCRIBE:
             pid = body[0:2]
             # Grant QoS 0 in SUBACK
-            writer.write(b"\x90\x03" + pid + b"\x01")
+            # Match requested QoS (default QoS 0 or 1)
+            req_qos = bytes([body[32]]) if len(body) > 32 and body[32] in (0, 1) else b"\x01"
+            writer.write(b"\x90\x03" + pid + req_qos)
             await writer.drain()
             try:
                 tl = int.from_bytes(body[2:4], "big")
                 topic = body[4 : 4 + tl].decode("utf-8", "replace")
                 self._down_base = topic[:-2] if topic.endswith("/+") else topic.rsplit("/", 1)[0]
+                diag_log(
+                    "BRIDGE_SUBSCRIBE",
+                    topic=topic,
+                    down_base=self._down_base,
+                    granted=req_qos.hex(),
+                    body=body.hex(),
+                )
                 _LOGGER.info("oukitel: subscribed to %s (downlink %s)", topic, self._down_base)
             except Exception:  # noqa: BLE001
                 pass
 
-            # Confirm pairing/binding so station solidifies Wi-Fi icon and exits pairing mode
-            await self._confirm_binding()
+            if PASSIVE_CAPTURE:
+                diag_log("BRIDGE_PASSIVE_CAPTURE_SUBSCRIBE", topic=topic)
+            else:
+                # Confirm pairing/binding so station solidifies Wi-Fi icon and exits pairing mode
+                await self._confirm_binding()
 
-            # Without the SUBACK the station will not publish; without a
-            # stimulus it publishes only once. The two together open the tap.
-            await self._stimulate()
+                # Without the SUBACK the station will not publish; without a
+                # stimulus it publishes only once. The two together open the tap.
+                await self._stimulate()
             return True
 
         if tipo == 4:  # PUBACK
@@ -269,6 +303,7 @@ class CloudBridge:
                 "oukitel: fake cloud PUBLISH on '%s' (qos=%d pid=%s len=%d): %s",
                 topic, qos, pid_hex, len(payload), payload[:48].hex(),
             )
+            diag_log("BRIDGE_MQTT_PUBLISH", topic=topic, len=len(payload), hex=payload.hex()[:2000])
             frames = asm.feed(payload)
             if not frames and payload:
                 # Fallback: check if payload is raw TTLV without 0xAAAA framing
@@ -285,10 +320,31 @@ class CloudBridge:
                     len(payload), len(asm._buf),
                 )
             for _p, _c, frame_body in frames:
+                diag_log(
+                    "BRIDGE_FRAME",
+                    cmd=_c,
+                    cmd_hex=f"0x{_c:04X}" if isinstance(_c, int) else str(_c),
+                    pid=_p,
+                    len=len(frame_body),
+                    hex=frame_body.hex(),
+                )
                 _LOGGER.info("oukitel: frame in PUBLISH cmd=0x%04X pid=%d payload_len=%d", _c, _p, len(frame_body))
+                if _c == 28725:
+                    _LOGGER.info("oukitel: Station requested login (0x7035), sending login ack (0x7065)")
+                    await self._send_downlink("bus", build_frame(_p, 28773, ttlv_encode([(1, "num", 0), (2, "num", 0), (10, "num", 65534)])), qos=1)
+                elif _c == 28726:
+                    _LOGGER.info("oukitel: Station requested bind (0x7036), sending bind ack (0x7066)")
+                    await self._send_downlink("bus", build_frame(_p, 28774, ttlv_encode([(1, "num", 0), (2, "num", 0), (10, "num", 65534)])), qos=1)
+                elif _c in (28753, 28755):
+                    _LOGGER.info("oukitel: Station requested status (0x%04X), sending status ack (0x7054)", _c)
+                    await self._send_downlink("bus", build_frame(_p, 28756, ttlv_encode([(1, "num", 0), (2, "num", 0)])), qos=1)
                 try:
                     campi = ttlv_decode(frame_body)
                     _LOGGER.info("oukitel: received telemetry tags: %s", campi)
+                    diag_log("BRIDGE_TELEMETRY_DECODED", tags=list(campi.keys()), battery=campi.get(1))
+                    self._has_telemetry = True
+                    self._last_telemetry_at = time.monotonic()
+                    self._silence_logged = False
                 except Exception as exc:  # noqa: BLE001
                     _LOGGER.warning("oukitel: bus frame ttlv_decode error: %s", exc)
                     continue
@@ -344,6 +400,13 @@ class CloudBridge:
             "oukitel: sending downlink (qos=%d pid=%04x) to %s (%d bytes): %s",
             qos, self._mqtt_pid if qos > 0 else 0, topic.decode(), len(frame), frame[:32].hex()
         )
+        diag_log(
+            "BRIDGE_DOWNLINK",
+            topic=topic.decode(),
+            qos=qos,
+            pid=self._mqtt_pid if qos > 0 else 0,
+            hex=frame.hex(),
+        )
         writer.write(pkt)
         await writer.drain()
         await asyncio.sleep(0.04)
@@ -353,41 +416,113 @@ class CloudBridge:
         base = self._down_base
         if writer is None or base is None or writer.is_closing():
             return
-        await self._send_downlink("bus_", frame, qos=1)
-        await self._send_downlink("rw", frame, qos=1)
+        # The station publishes its TTLV frames on `<...>/bus` and subscribes
+        # to `q/1/d/qd<pk><dk>/+`: the real QuecThing cloud answers on the
+        # same `bus` channel (no underscore; `bus_`/`rw` are app-side keys).
+        await self._send_downlink("bus", frame, qos=1)
         await writer.drain()
 
     async def _confirm_binding(self) -> None:
         """Confirm to the station that cloud activation and device binding succeeded."""
         if self._writer is None or self._down_base is None:
             return
+        diag_log("BRIDGE_CONFIRM_BINDING_START", down_base=self._down_base)
         try:
-            # 1. Cloud Login / Activation Ack (CMD 28725 / 0x7035 with code 0)
+            # 1. Cloud Login Ack (CMD 28773 / 0x7065 - Quectel Cloud Ack)
             self._pid += 1
-            login_ack = ttlv_encode([(1, "num", 0), (3, "num", 0)])
-            frame_login = build_frame(self._pid, 28725, login_ack)
+            login_ack = ttlv_encode([(1, "num", 0), (2, "num", 0), (10, "num", 65534)])
+            frame_login_ack = build_frame(self._pid, 28773, login_ack)
 
-            # 2. SmartConfig Pairing / Binding Success (CMD 28692 / 0x7014 with status 0 = Success, errorCode = 0)
+            # 2. Cloud Binding Ack (CMD 28774 / 0x7066 - Quectel Cloud Ack)
             self._pid += 1
-            success_ack = ttlv_encode([(10, "num", 0), (11, "num", 0), (1, "num", 0), (2, "num", 0)])
-            frame_success = build_frame(self._pid, 28692, success_ack)
+            bind_ack = ttlv_encode([(1, "num", 0), (2, "num", 0), (10, "num", 65534)])
+            frame_bind_ack = build_frame(self._pid, 28774, bind_ack)
 
-            # Send TTLV confirmations with QoS 1 to sys_, bus_, and rw
-            for sub in ("sys_", "bus_", "rw"):
-                await self._send_downlink(sub, frame_login, qos=1)
-                await self._send_downlink(sub, frame_success, qos=1)
+            # 3. Device Status Ack (CMD 28756 / 0x7054)
+            self._pid += 1
+            status_ack = ttlv_encode([(1, "num", 0), (2, "num", 0)])
+            frame_status_ack = build_frame(self._pid, 28756, status_ack)
 
-            # Send JSON confirmations to sys and bus
-            json_bind = b'{"cmd":"bind","code":200,"result":0,"data":{"subtype":"USER-BIND","isBind":true,"bindStatus":1}}'
-            json_login = b'{"cmd":28725,"code":200,"result":0,"msg":"success"}'
-            json_status = b'{"cmd":28692,"code":200,"result":0,"data":{"status":0,"statusCode":0,"errorCode":0}}'
-            json_device_bind = b'{"cmd":"deviceBind","code":200,"result":0,"data":{"isBind":true,"bindStatus":1}}'
+            # 4. SmartConfig Pairing / Binding Success (CMD 28692 / 0x7014)
+            # Status 0xFFFE (65534) is the Quectel TTLV Success code; status 2 and 0 are alternates.
+            self._pid += 1
+            success_ack_fe = build_frame(self._pid, 28692, ttlv_encode([(10, "num", 65534), (11, "num", 0), (1, "num", 0)]))
+            self._pid += 1
+            success_ack_2 = build_frame(self._pid, 28692, ttlv_encode([(10, "num", 2), (11, "num", 0), (1, "num", 0), (2, "num", 0)]))
+            self._pid += 1
+            success_ack_0 = build_frame(self._pid, 28692, ttlv_encode([(10, "num", 0), (11, "num", 0), (1, "num", 0)]))
 
-            for sub in ("sys", "bus"):
-                for payload in (json_bind, json_login, json_status, json_device_bind):
-                    await self._send_downlink(sub, payload, qos=1)
+            # 5. Device Requests (CMD 28725 / 0x7035 and 28726 / 0x7036) & Heartbeat (28727)
+            self._pid += 1
+            frame_login = build_frame(self._pid, 28725, ttlv_encode([(1, "num", 0), (2, "num", 0), (3, "num", 0)]))
+            self._pid += 1
+            frame_bind = build_frame(self._pid, 28726, ttlv_encode([(1, "num", 0), (2, "num", 0)]))
+            self._pid += 1
+            hb_ack = ttlv_encode([(1, "num", 30), (2, "num", 1)])
+            frame_hb = build_frame(self._pid, 28727, hb_ack)
 
-            _LOGGER.info("oukitel: cloud binding and activation confirmation sent across sys_, bus_, rw, sys, and bus")
+            # Quectel IoT Cloud JSON Binding Payloads
+            qd = self._down_base.split("/")[-1]
+            raw = qd[2:] if qd.startswith("qd") else qd
+            pk = raw[:6] if len(raw) >= 6 else "p11wN7"
+            dk = raw[6:] if len(raw) > 6 else "ecb50a34ab76"
+
+            json_user_bind = json.dumps({
+                "type": "ENDUSER",
+                "subtype": "USER-BIND",
+                "data": {
+                    "invalidCause": 0,
+                    "productKey": pk,
+                    "deviceKey": dk,
+                }
+            }).encode("utf-8")
+
+            json_bind_resp = json.dumps({
+                "cmd": "bind",
+                "code": 200,
+                "data": {
+                    "status": "success",
+                    "productKey": pk,
+                    "deviceKey": dk,
+                }
+            }).encode("utf-8")
+
+            json_online = json.dumps({
+                "type": "ONLINE",
+                "data": {
+                    "status": 1,
+                    "productKey": pk,
+                    "deviceKey": dk,
+                }
+            }).encode("utf-8")
+
+            json_status_dev = json.dumps({
+                "type": "STATUS",
+                "subtype": "STATUS-DEVICE",
+                "data": {
+                    "status": 1,
+                    "bindStatus": 1,
+                }
+            }).encode("utf-8")
+
+            # Send JSON binding messages to standard sys_ and bus_ topics (QuecThing JSON channels)
+            for sub in ("bus_", "sys_"):
+                await self._send_downlink(sub, json_bind_resp, qos=1)
+                await self._send_downlink(sub, json_online, qos=1)
+                await self._send_downlink(sub, json_user_bind, qos=1)
+                await self._send_downlink(sub, json_status_dev, qos=1)
+
+            # Send binary TTLV frames to bus and sys (QuecThing binary channels)
+            for sub in ("bus", "sys"):
+                await self._send_downlink(sub, frame_login_ack, qos=1)
+                await self._send_downlink(sub, frame_bind_ack, qos=1)
+                await self._send_downlink(sub, frame_status_ack, qos=1)
+                await self._send_downlink(sub, success_ack_fe, qos=1)
+                await self._send_downlink(sub, success_ack_2, qos=1)
+                await self._send_downlink(sub, frame_hb, qos=1)
+
+            _LOGGER.info("oukitel: binding confirmation sent on %s (0x7014/0x7035/0x7036/0x7037)", self._down_base)
+            diag_log("BRIDGE_CONFIRM_BINDING_SENT", down_base=self._down_base, status="all_success_codes")
         except Exception as exc:  # noqa: BLE001
             _LOGGER.warning("oukitel: confirm_binding failed: %s", exc)
 
@@ -396,6 +531,7 @@ class CloudBridge:
         if self._writer is None or self._down_base is None:
             return
         try:
+            diag_log("BRIDGE_STIMULUS", tags=len(KNOWN_TAG_IDS), hfr=HFR_VALUE)
             self._pid += 1
             await self._manda_frame(
                 build_frame(self._pid, 19, ttlv_encode([(HFR_TAG, "num", HFR_VALUE)]))
@@ -411,11 +547,24 @@ class CloudBridge:
             _LOGGER.debug("oukitel: stimulus failed: %s", exc)
 
     async def _stimulus_loop(self) -> None:
-        """Re-arm high-frequency mode now and then, if the station loses it."""
+        """Re-arm high-frequency mode and confirm binding periodically."""
+        if PASSIVE_CAPTURE:
+            diag_log("BRIDGE_PASSIVE_CAPTURE", note="stimulus and unsolicited bind acks disabled")
+            return
         try:
+            loop_count = 0
             while True:
                 await asyncio.sleep(STIMULUS_SECONDS)
                 if self._writer is not None:
+                    loop_count += 1
+                    if self._last_telemetry_at is not None:
+                        silent = time.monotonic() - self._last_telemetry_at
+                        if silent > 20 and not self._silence_logged:
+                            diag_log("BRIDGE_TELEMETRY_SILENT", seconds=round(silent, 1))
+                            self._silence_logged = True
+                    # Refresh binding confirmation periodically (every 30s)
+                    if loop_count % 6 == 0:
+                        await self._confirm_binding()
                     await self._stimulate(rumoroso=False)
         except asyncio.CancelledError:
             raise

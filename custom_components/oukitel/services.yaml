@@ -1,0 +1,28 @@
+ble_disconnect:
+  name: Desconectar BLE
+  description: Cierra la conexión BLE de aprovisionamiento.
+bridge_send:
+  name: Enviar trama al broker
+  description: Publica una trama TLV (prefijo hex:) o un JSON en bus/sys/bus_/sys_.
+  fields:
+    topic:
+      required: true
+      selector:
+        select:
+          options:
+            - bus
+            - sys
+            - bus_
+            - sys_
+    payload:
+      required: true
+      selector:
+        text:
+          multiline: true
+    qos:
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 1

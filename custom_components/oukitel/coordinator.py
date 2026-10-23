@@ -658,17 +658,24 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             return True
         from .cloud_bridge import CloudBridge
 
-        bridge = CloudBridge(self.hass, self._on_lan_telemetry, self._on_bridge_conn)
-        try:
-            await bridge.start()
-        except OSError as exc:
-            _LOGGER.error("oukitel: fake cloud did not start: %s", exc)
-            return False
+        if "bridge" in self.hass.data[DOMAIN]:
+            bridge = self.hass.data[DOMAIN]["bridge"]
+            bridge.update_callbacks(self._on_lan_telemetry, self._on_bridge_conn)
+            _LOGGER.info("oukitel: Reusing existing active fake cloud bridge on %s", bridge._port)
+        else:
+            bridge = CloudBridge(self.hass, self._on_lan_telemetry, self._on_bridge_conn)
+            try:
+                await bridge.start()
+            except OSError as exc:
+                _LOGGER.error("oukitel: fake cloud did not start: %s", exc)
+                return False
+            self.hass.data[DOMAIN]["bridge"] = bridge
         self._bridge = bridge
+        self._lan_session = bridge
         self._lan_active = True
         self._lan_connected_at = time.monotonic()
         self._bridge_absent_since = time.monotonic()
-        self._bridge_never_seen = True
+        self._bridge_never_seen = not bridge.connected
         return True
 
     def _on_bridge_conn(self, connected: bool) -> None:
@@ -704,6 +711,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         """Try to start LAN mode; silently skips if device not found on LAN or paused."""
         if self._paused:
             _LOGGER.debug("oukitel: Skipping LAN setup — integration is paused")
+            return
+
+        if self.use_bridge:
+            _LOGGER.debug("oukitel: Bridge mode active — skipping direct LAN TCP dial")
             return
 
         if self.connection_mode == MODE_CLOUD:
@@ -975,7 +986,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def async_shutdown_lan(self) -> None:
         if self._bridge is not None:
-            await self._bridge.close()
+            if self._lan_session is self._bridge:
+                self._lan_session = None
             self._bridge = None
         if self._lan_flush_handle is not None:
             self._lan_flush_handle.cancel()

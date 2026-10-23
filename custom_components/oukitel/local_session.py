@@ -259,9 +259,10 @@ class LocalSession:
                 await self._send_raw(_CMD_PONG)
             _LOGGER.debug("oukitel: LAN heartbeat frame received: cmd=%s (%#06x)", cmd, cmd)
             return
-        if cmd == 28726: # WRITE_ACK
+        if cmd == 28726: # WRITE_ACK / bind request
             try:
                 data = aes_decrypt(self._key, self._iv, payload)
+                diag_log("LAN_BIND_FRAME", hex=data.hex(), fields=ttlv_decode(data))
                 _LOGGER.debug("oukitel: LAN WRITE_ACK: %s", ttlv_decode(data))
             except Exception as exc:
                 _LOGGER.debug("oukitel: ACK decrypt error: %s", exc)
@@ -279,4 +280,16 @@ class LocalSession:
             except Exception as exc:
                 _LOGGER.debug("oukitel: Could not decode frame cmd=%s: %s", cmd, exc)
         else:
+            try:
+                decrypted = aes_decrypt(self._key, self._iv, payload)
+                fields = ttlv_decode(decrypted)
+                diag_log(
+                    "LAN_UNKNOWN_FRAME",
+                    cmd=cmd,
+                    cmd_hex=f"0x{cmd:04X}" if isinstance(cmd, int) else str(cmd),
+                    hex=decrypted.hex(),
+                    fields=fields,
+                )
+            except Exception as exc:  # noqa: BLE001
+                diag_log("LAN_UNKNOWN_FRAME_ERR", cmd=cmd, error=str(exc))
             _LOGGER.debug("oukitel: Unknown LAN frame received: cmd=%s (%#06x), len=%s", cmd, cmd, len(payload))
