@@ -57,7 +57,7 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 
 - **Dual Connection Mode**: Automatically connects via **local LAN** (TCP, real-time push) when the station is on the same network. Falls back to **Cloud API** (polling) if LAN is unavailable — switching is transparent and requires no user action.
 - **Connection Mode Indicator**: Diagnostic entity in the device card shows whether the active connection is `LAN` or `Cloud` at all times.
-- **100% Standalone**: No smartphone, emulator, or ADB required.
+- **No Phone, Emulator or ADB Required**: setup uses the cloud account once; after that, Home Assistant ↔ station traffic is local. The station itself must keep internet access to emit telemetry — see **Connection Modes** below.
 - **Interactive Bidirectional Switches**: Toggle AC, DC 12V, and USB directly from Home Assistant UI and automations with optimistic latching.
 - **Dynamic Energy Icons**: Automatic real-time animated battery status icons showing charging vs discharging states at 10% steps.
 - **Real-Time Telemetry**: Battery %, input power (Total, AC, Solar DC), output power, temperature, estimated times, Wi-Fi signal.
@@ -172,23 +172,27 @@ To guarantee flawless operation across all 58 entities, native Riemann sum energ
 You can configure the active connection mode at any time directly in Home Assistant (**Settings** ➔ **Devices & Services** ➔ **Oukitel Power Station** ➔ **Configure ⚙️**):
 
 1. **Automatic (LAN preferred + Cloud)** *(Default)*: Automatically connects via local LAN (TCP port 6607, binary AES-128 push) when the station is on your home Wi-Fi network. If the station goes offline, drops Wi-Fi, or is outside the local network, it seamlessly falls back to Cloud API polling without missing data.
-2. **LAN Only (Direct real-time)**: Pure local communication with 0 cloud latency. Does not make requests to the cloud servers.
+2. **LAN Only (Direct real-time)**: Home Assistant talks to the station locally over TCP 6607 with 0 cloud polling. HA makes no requests to the cloud; **the station still needs internet access to emit telemetry** (see the important note below).
 3. **Cloud Only (Cloud / Polling)**: Standard cloud polling via the official Acceleronix/Quectel servers (ideal when Home Assistant and the power station are on separate networks or behind isolated VLANs).
+
+> [!IMPORTANT]
+> **LAN is local from Home Assistant to the station, but the station itself needs internet to emit telemetry.**
+> With the WAN blocked, the `p2`–`p5` handshake completes, local writes are acknowledged and the relays still respond, but **no `cmd20` telemetry reports arrive** (`cmd17` reads go unanswered) until the station regains its vendor-cloud link. This is firmware behaviour, not an integration bug. See [docs/OFFLINE_LAN_RESEARCH.md](docs/OFFLINE_LAN_RESEARCH.md) and the note below.
 
 | Feature | **LAN Mode** | **Cloud Mode** |
 |---|---|---|
 | **Protocol** | TCP port 6607 (binary, AES-128 push) | Acceleronix REST API (JSON) |
 | **Latency** | Real-time push (~1 s) | Polling interval (min. 3 s) |
-| **Internet Required** | Only during initial account binding | Always |
-| **Switch Control Offline** | ✅ Yes (Instant local control) | ❌ No |
-| **Works Offline / Cloud Down** | ✅ Yes (Resilient) | ❌ No |
+| **Internet Required** | Yes — the station must keep its vendor-cloud link for telemetry (HA↔station traffic stays local) | Always |
+| **Switch Control Offline** | ✅ Yes (writes are acknowledged locally) | ❌ No |
+| **Works Offline / Cloud Down** | ⚠️ Partial — handshake and writes work; **telemetry stops** | ❌ No |
 | **Works Outside Local Network** | ❌ (requires VPN) | ✅ Yes |
 
 > [!NOTE]
 > **Comportamiento Offline y Limitación de Fabricante: "Caso de corte externo / Corte de red de proveedor"**:
 > - **¿Qué es el "Caso de corte externo / Corte de red de proveedor"?**: Es el escenario real donde la vivienda o instalación pierde la conexión a internet/fibra con el operador exterior (ISP), pero el router y la Wi-Fi local siguen encendidos (típicamente alimentados por la propia estación de energía Oukitel como SAI/UPS).
-> - **Control de Relés 100% Offline y Milimétrico**: Los interruptores de hardware (inversor AC 230V, tomas 12V DC, puertos USB) y selectores de potencia operan de manera puramente local a través del puerto TCP 6607 con latencia cero y fiabilidad absoluta, sin necesidad de conexión externa.
-> - **Defensa Técnica de la Limitación de Firmware del Fabricante**: Tras rigurosas pruebas empíricas y de ingeniería inversa, se ha demostrado que el microcontrolador Wi-Fi Quectel de fábrica suspende la lectura del bus serie UART hacia el BMS tras ~120 segundos sin enlace MQTT hacia el servidor cloud del fabricante (`iot-south.acceleronix.io`). El socket LAN local de la estación se mantiene 100% vivo respondiendo a los latidos Quectel (`CMD 28727 <-> 28728`), las entidades no caen en error de "No disponible", y el flujo de telemetría se restablece de forma totalmente autónoma a los 30 segundos de recuperar la fibra.
+> - **Control de Relés Offline**: Los interruptores de hardware (inversor AC 230V, tomas 12V DC, puertos USB) y selectores de potencia se escriben por el puerto TCP 6607 y la estación los confirma (`p6`) incluso sin conexión externa. El control local sí funciona sin WAN.
+> - **Telemetría Offline: NO**: la estación necesita un enlace vivo con su nube para emitir los informes `cmd20`. Sin WAN, el handshake `p2`–`p5` termina, los writes se confirman, pero **no llega telemetría** y los `cmd17` no se responden. Al recuperar internet, el flujo se reanuda en segundos sin reconectar. Es comportamiento del firmware: la integración detecta el estancamiento y recupera la sesión, pero no puede hacer que la estación reporte sin su nube.
 > - **Informe Completo y Hoja de Ruta Abierta**: Para ver el desglose técnico de códigos binarios, modelo TSL, cronogramas de prueba y posibles líneas de investigación futura para la comunidad, consulte [docs/OFFLINE_LAN_RESEARCH.md](docs/OFFLINE_LAN_RESEARCH.md).
 
 > [!NOTE]
