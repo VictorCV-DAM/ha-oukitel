@@ -391,6 +391,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_has_valid_telemetry: bool = False
         self._last_lan_attempt: float = time.monotonic()
         self._lan_setup_in_flight: bool = False
+        self._lan_setup_attempts: int = 0
         self._lan_last_rearm: float = 0.0
         self._cached_auth_key: str | None = (
             getattr(client, "auth_key", None)
@@ -607,14 +608,14 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 "oukitel: Resuming integration — re-establishing connection and requesting refresh"
             )
             if self.connection_mode != MODE_CLOUD:
-                self.hass.async_create_task(self.async_setup_lan())
+                self.hass.async_create_task(self.async_setup_lan(reason="resume"))
             await self.async_request_refresh()
 
     # ------------------------------------------------------------------
     # LAN lifecycle
     # ------------------------------------------------------------------
 
-    async def async_setup_lan(self) -> None:
+    async def async_setup_lan(self, reason: str = "startup") -> None:
         """Try to start LAN mode; silently skips if device not found on LAN or paused."""
         if self._paused:
             _LOGGER.debug("oukitel: Skipping LAN setup — integration is paused")
@@ -629,6 +630,14 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             return
 
         self._lan_setup_in_flight = True
+        self._lan_setup_attempts += 1
+        attempt = self._lan_setup_attempts
+        _LOGGER.info(
+            "oukitel: LAN setup attempt #%s (%s)%s",
+            attempt,
+            reason,
+            " — previous session inactive" if reason == "auto_retry" else "",
+        )
         try:
             if not self.client.device_key and getattr(self.client, "access_token", None):
                 await self.hass.async_add_executor_job(self.client.fetch_device_info)
@@ -993,7 +1002,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             and (now - self._last_lan_attempt >= _LAN_RETRY_INTERVAL)
         ):
             self._last_lan_attempt = now
-            self.hass.async_create_task(self.async_setup_lan())
+            self.hass.async_create_task(self.async_setup_lan(reason="auto_retry"))
 
         # In LAN offline mode, keep socket alive without dropping it on silence
         if self._lan_active and self.connection_mode != MODE_CLOUD:

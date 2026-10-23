@@ -193,7 +193,7 @@ You can configure the active connection mode at any time directly in Home Assist
 
 > [!NOTE]
 > **Two "starting LAN session" log lines in a row are not a bug.**
-> In `auto` mode the integration makes a new LAN connection attempt when the previous socket has dropped and no listen task is active. The first line is the initial setup; the second is the `_async_update_data` retry after `_LAN_RETRY_INTERVAL` (20 s). It is a new attempt, not a duplicated log entry, and not a second simultaneous session: the `_lan_setup_in_flight` guard prevents two setups at the same time. If you want to confirm it, look for the previous session's disconnect before the second line.
+> In `auto` mode the integration makes a new LAN connection attempt when the previous socket has dropped and no listen task is active. The first line is the initial setup; the second is the `_async_update_data` retry after `_LAN_RETRY_INTERVAL` (20 s). It is a new attempt, not a duplicated log entry, and not a second simultaneous session: the `_lan_setup_in_flight` guard prevents two setups at the same time. Current builds label each call explicitly: `oukitel: LAN setup attempt #2 (auto_retry) — previous session inactive`. If you want to confirm it, look for the previous session's disconnect before the second line.
 
 > [!TIP]
 > The **Connection Mode** diagnostic sensor on the device page always reports whether the station is actively communicating via `LAN` or `Cloud`.

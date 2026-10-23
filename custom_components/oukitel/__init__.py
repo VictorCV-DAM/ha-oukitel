@@ -170,7 +170,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not cloud_connected:
             _LOGGER.info("oukitel: Offline boot — establishing LAN session before first coordinator refresh...")
             for attempt in range(1, 4):
-                await coordinator.async_setup_lan()
+                await coordinator.async_setup_lan(reason="startup")
                 if coordinator._lan_active:
                     break
                 _LOGGER.info("oukitel: LAN setup attempt %s/3 failed, waiting 3s to retry...", attempt)
@@ -181,7 +181,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
         else:
             _LOGGER.debug("oukitel: Creating background task for LAN setup")
-            hass.async_create_task(coordinator.async_setup_lan())
+            hass.async_create_task(coordinator.async_setup_lan(reason="startup"))
 
     _LOGGER.debug("oukitel: Awaiting initial coordinator refresh")
     try:
