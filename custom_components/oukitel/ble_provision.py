@@ -126,7 +126,7 @@ def build_provisioning_frame(ssid: str, password: str, endpoint: str) -> bytes:
 
     Tag 2: Password (str)
 
-    Tag 11: Port (num - default 8886 / 8883)
+    Tag 11: Provisioning timeout in seconds (num)
 
     Tag 13: Endpoint URI (str - e.g. mqtt://192.168.1.219:8886)
 
@@ -190,7 +190,7 @@ def build_provisioning_frame(ssid: str, password: str, endpoint: str) -> bytes:
 
         + _ttlv_str(2, password)
 
-        + _ttlv_num(11, port)
+        + _ttlv_num(11, 60)  # tag 11 is a timeout; the port is in tag 13 URL
 
         + _ttlv_str(13, url)
 

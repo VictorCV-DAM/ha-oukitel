@@ -37,7 +37,7 @@ Command `28688`, packet id `1000`, characteristic `9c40`.
 |---|---|---|---|
 | 1 | string | Wi-Fi SSID | |
 | 2 | string | Wi-Fi password | |
-| 11 | number | Port | The app builder calls this parameter `time`; on this unit the port value worked (8886/8883), 60 did not |
+| 11 | number | Timeout (seconds) | The port belongs to the tag 13 URL; the APK builders confirm tag 11 is `time` |
 | 12 | number | MCC | 460 in the original code; 214 tested in Spain |
 | 13 | string | Endpoint URL | `mqtt://host:8886`, `mqtts://host:8883` |
 
@@ -52,7 +52,7 @@ and opens LAN `6607`.
 AA AA 00 xx CS PP PP 70 10
   00 0B 00 07 "OUKITEL"
   00 13 00 0C "<password>"
-  00 5A 01 22 B3            # tag 11, port 8883
+  00 5A 00 3C               # tag 11, timeout 60
   00 6B 00 25 "mqtts://iot-south.acceleronix.io:8883"
   00 62 00 D6               # tag 12, MCC 214
 ```
@@ -223,8 +223,8 @@ Observed response for this device:
 
 ## 12. Notes
 
-- Tag 11 is ambiguous between port and `time`; see
-  [PITFALLS.md](PITFALLS.md).
+- Tag 11 is the provisioning timeout; the port belongs to the tag 13 URL.
+  Older notes that called it a port were wrong; see [PITFALLS.md](PITFALLS.md).
 - MCC 460 vs 214 was not isolated; the stale Wi-Fi password was the confirmed
   blocker.
 - The `bindingCode` is not the PSK.

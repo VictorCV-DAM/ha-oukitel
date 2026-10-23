@@ -53,7 +53,7 @@ characteristic.
 - TTLV body:
   - tag 1: SSID (string)
   - tag 2: Wi-Fi password (string)
-  - tag 11: port (number; the app calls the same parameter `time`, see pitfalls)
+  - tag 11: provisioning timeout in seconds (number; confirmed by the APK builder)
   - tag 12: MCC (number)
   - tag 13: endpoint URL (string)
 - The builder parses `mqtt://host:8886`, `mqtts://host:8883`, `host:port` and

@@ -3,18 +3,18 @@
 This is the list of traps found while bringing up the zero-cloud branch. Each
 entry describes the symptom, the cause and what to do.
 
-## 1. Tag 11: port or timeout?
+## 1. Tag 11 is a timeout, not the port
 
 **Symptom:** `0x7010` is accepted but the station never connects, or it stays
 at `0x7014` 49.
 
-**Cause:** the app builder names tag 11 `time` and its callers pass a timeout.
-On this firmware, the value that made the station connect was the **port**
-(`8886`/`8883`); sending `60` did not.
+**Cause:** older analysis left this ambiguous. The APK builders
+(`k82.jlyqWyBuLB` in 2.18.11, 3.3.0, 3.5.0 and 3.8.0) confirm that tag 11 is
+the provisioning **time**, not the port. The port belongs to the tag 13 URL.
+Sending `8883` worked as a very long timeout, not as a port.
 
-**What to do:** try the port value first. If a future firmware behaves
-differently, log `0x7011`/`0x7014` and compare. Do not treat either meaning as
-universal.
+**What to do:** send a sane timeout (60 s) and put the port in the URL
+(`mqtt://host:8886`). Log `0x7011`/`0x7014` when comparing firmware.
 
 ## 2. MCC is not the confirmed blocker
 
