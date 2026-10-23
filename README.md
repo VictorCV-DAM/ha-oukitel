@@ -27,6 +27,9 @@
 - **Do not switch to `main`/HACS while the station points at the local broker.** `main` does not include `cloud_bridge.py`; the station would keep a dead `:8886` endpoint and drop off the network. Factory reset + Wonderfree rebind first.
 - **Do not blind-fuzz `9c40`**: it is the provisioning/OTA channel, not a debug port.
 
+> [!IMPORTANT]
+> **FAKE CLOUD WITH THE PSK: THE STATION WOULD BELIEVE IT IS TALKING TO OUKITEL AND WOULD KEEP EMITTING. THIS REQUIRES EXTRACTING THE PSK VIA UART / JTAG / BKFIL. TODAY IT IS NOT SOLVED.**
+
 ---
 
 ## What “zero cloud” means

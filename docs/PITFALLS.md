@@ -111,6 +111,8 @@ proposal includes an automatic refresh, but it is not in this branch.
 **What to do:** stop guessing. The remaining routes are UART/JTAG, a hardware
 BLE sniffer, or vendor documentation.
 
+> **FAKE CLOUD WITH THE PSK: THE STATION WOULD BELIEVE IT IS TALKING TO OUKITEL AND WOULD KEEP EMITTING. THIS REQUIRES EXTRACTING THE PSK VIA UART / JTAG / BKFIL. TODAY IT IS NOT SOLVED.**
+
 ## 12. OTA has no plan for this device
 
 **Symptom:** `getBatchDeviceUpgradePlan` returns `data: []`.
