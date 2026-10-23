@@ -131,6 +131,21 @@ class AuthRefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(refreshed)
         self.assertEqual(key, "old")
 
+    async def test_prefers_refresh_auth_key(self):
+        class RefreshClient(FakeClient):
+            def refresh_auth_key(self):
+                self.calls += 1
+                self.auth_key = self.new_key
+                return True
+
+        client = RefreshClient()
+        refreshed, key, _last = await try_refresh_auth_key(
+            client, "old", 0.0, 1000.0, run_now
+        )
+        self.assertTrue(refreshed)
+        self.assertEqual(key, "new")
+        self.assertEqual(client.calls, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

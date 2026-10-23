@@ -15,7 +15,7 @@ async def try_refresh_auth_key(
     run_in_executor: Callable[..., Awaitable[Any]],
     min_interval: float = DEFAULT_REFRESH_INTERVAL,
 ) -> tuple[bool, str | None, float]:
-    """Try to refresh a stale LAN authKey from the cloud device list.
+    """Try to refresh a stale LAN authKey from the cloud.
 
     Returns ``(refreshed, key, last_attempt)``.  ``last_attempt`` is moved to
     ``now`` on every attempted refresh (successful or not) so a broken cloud
@@ -33,8 +33,9 @@ async def try_refresh_auth_key(
 
     expected_device_key = getattr(client, "device_key", None)
 
+    refresh = getattr(client, "refresh_auth_key", None) or client.fetch_device_info
     try:
-        ok = await run_in_executor(client.fetch_device_info)
+        ok = await run_in_executor(refresh)
     except Exception:  # noqa: BLE001 - cloud/transport failure is not fatal
         return False, stale_key, now
 

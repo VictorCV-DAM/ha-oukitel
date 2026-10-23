@@ -179,6 +179,45 @@ class AcceleronixCloudClient:
         )
         return True
 
+    def regenerate_auth_key(self) -> str | None:
+        """Fetch the CURRENT LAN authKey from the vendor cloud.
+
+        This is the app's own authKey fetch. Unlike the copy embedded in
+        ``userDeviceList``, it is not frozen at binding time on shared accounts.
+        Repeated calls return the same key and do not disturb the vendor app.
+        """
+        self.ensure_authenticated()
+        if not (self.product_key and self.device_key):
+            return None
+        url = f"{self.base_url}/v2/binding/enduserapi/regenerateAuthKey"
+        try:
+            response = requests.post(
+                url,
+                headers=self.get_auth_headers(),
+                data={"pk": self.product_key, "dk": self.device_key},
+                timeout=15,
+            )
+            payload = response.json()
+        except Exception as err:  # noqa: BLE001 - cloud/transport failure is not fatal
+            _LOGGER.warning("oukitel: regenerateAuthKey request failed: %s", err)
+            return None
+        if payload.get("code") != 200:
+            _LOGGER.warning(
+                "oukitel: regenerateAuthKey rejected: %s", payload.get("msg")
+            )
+            return None
+        key = (payload.get("data") or {}).get("authKey")
+        if not key:
+            return None
+        self.auth_key = key
+        return key
+
+    def refresh_auth_key(self) -> bool:
+        """Refresh the LAN authKey, falling back to the device list."""
+        if self.regenerate_auth_key():
+            return True
+        return self.fetch_device_info()
+
     def control_device(self, properties_list: list) -> bool:
         """Send hardware control commands via batchControlDevice."""
         self.ensure_authenticated()
