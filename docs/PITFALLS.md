@@ -177,3 +177,45 @@ high voltage.
 
 **What to do:** use a bench unit, isolate the DC/AC inputs, and never probe a
 live roof installation without a safety plan.
+
+## 19. Two “starting LAN session” log lines in a row
+
+**Symptom:** the log shows the same block twice, a few seconds apart:
+
+```text
+oukitel: Using configured static host 192.168.1.15 for LAN connection
+oukitel: Device found at 192.168.1.15 — starting LAN session
+oukitel: LAN login OK! Handshake succeeded with 192.168.1.15
+oukitel: LAN session established and active with 192.168.1.15!
+```
+
+**Cause:** these are two **separate** `async_setup_lan()` calls, not a
+duplicated log line:
+
+1. The first comes from `__init__.py` during setup (offline boot loop or a
+   background task).
+2. The second comes from `_async_update_data` in `auto` mode. When the previous
+   socket has dropped, `_lan_active` is `False`, the listen task is done, and
+   `_LAN_RETRY_INTERVAL` (20 s) has elapsed, the coordinator starts a new
+   attempt.
+
+The previous socket is usually dropped because the station closes its LAN
+service when it cannot complete the vendor cloud bind. The disconnect is logged
+at `DEBUG`, so it is not visible at the default level and the second block looks
+like a duplicate.
+
+**Is it a bug?** No, as long as the first session is gone before the second
+starts. The `_lan_setup_in_flight` guard prevents two setups at the same time.
+A real bug would be two **simultaneous active** LAN sessions; you can rule that
+out by checking for a disconnect or a new `LAN_HANDSHAKE` before the second
+block.
+
+**What to do:**
+
+- Nothing, if the second attempt connects and telemetry works.
+- To reduce noise, use `connection_mode = lan` (the `_async_update_data` retry
+  block only applies to `MODE_AUTO`), or fix the vendor bind so the station
+  keeps the LAN socket alive.
+- When reporting a problem, include both blocks and the lines between them; the
+  disconnect is the important part.
+
