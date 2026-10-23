@@ -24,6 +24,7 @@
 - LAN mode is **gated by the vendor cloud session**.
 - The bind and the PSK are secrets of the Quectel module; they are not in the app, the cloud API or the OTA image.
 - This branch exposes **test services** and a **TLS probe**; it is not production-ready.
+- **Do not switch to `main`/HACS while the station points at the local broker.** `main` does not include `cloud_bridge.py`; the station would keep a dead `:8886` endpoint and drop off the network. Factory reset + Wonderfree rebind first.
 - **Do not blind-fuzz `9c40`**: it is the provisioning/OTA channel, not a debug port.
 
 ---

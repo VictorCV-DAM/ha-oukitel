@@ -219,3 +219,24 @@ block.
 - When reporting a problem, include both blocks and the lines between them; the
   disconnect is the important part.
 
+## 20. Switching back to main/HACS while the station points at the local broker
+
+**Symptom:** the station works while the zero-cloud branch is deployed. After
+installing `main` or the HACS release, it disappears: no ping, no `6607`,
+Wonderfree offline, battery shows `0` or stale values.
+
+**Cause:** the branch provisioned the station to
+`mqtt://<HA_IP>:8886` and `cloud_bridge.py` served that endpoint. `main` and the
+HACS release **do not include `cloud_bridge.py`**, so the broker disappears. A
+later `0x7010` to the vendor cloud is ignored while the station is bound, so the
+station keeps the dead local endpoint, cannot reach the cloud and eventually
+drops Wi-Fi/LAN.
+
+**What to do:** before removing the branch, either:
+
+- keep `cloud_bridge` running, or
+- factory reset the station and rebind it in Wonderfree so it gets the vendor
+  cloud endpoint again.
+
+If it is already orphaned, factory reset + Wonderfree rebind is the recovery.
+
