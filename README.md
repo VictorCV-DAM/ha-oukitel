@@ -205,6 +205,17 @@ You can configure the active connection mode at any time directly in Home Assist
 
 ---
 
+## 🚀 What's New in v1.5.9: Auth-Key Reliability & Multi-Station Safety
+
+- **🔑 `authKey` refresh via `regenerateAuthKey`:** the app's own endpoint is now used to fetch the live LAN key instead of relying only on the copy frozen in `userDeviceList`. Verified on a real Home Assistant instance: stale key → `result=-1` → `regenerateAuthKey` → `data`/`options` updated → LAN reconnects. A forced 15 s timeout returns safely, without a loop or a blocked instance, and falls back to `userDeviceList`.
+- **🛡️ Multi-station safety:** if the configured `device_key` is not present and the account has several stations, the integration now fails instead of silently switching to `devices[0]`. Single-station accounts still recover from a changed key; legacy entries can match by `device_name`.
+- **🧾 LAN attempt logging:** `oukitel: LAN setup attempt #N (startup|resume|auto_retry)` makes retries self-explanatory.
+- **📡 Documentation:** LAN control and writes work with the WAN blocked, but the station needs internet to emit telemetry. The README now says so.
+- **🧪 Tests:** 25 unit tests, plus live success and timeout tests for the auth-key path.
+- **📌 Issue #1:** the `battery_powered_inferred` flapping is still under investigation and is **not** fixed in this release.
+
+---
+
 ## 🚀 What's New in v1.5.8: Resilient LAN Authentication & TTLV String Support
 
 - **🔑 Automatic `authKey` refresh:** if the LAN login is rejected after a factory reset or rebind, the integration fetches the new `authKey` from the cloud, updates the config entry (`data` and `options`) and retries once. Verified on a real Home Assistant instance: stale key → `result=-1` → refresh → reconnect.
