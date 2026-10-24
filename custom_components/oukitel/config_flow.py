@@ -2,8 +2,11 @@
 
 import logging
 import voluptuous as vol
+from collections.abc import Mapping
+from typing import Any
 from homeassistant import config_entries
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import FlowResult
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.selector import (
     EntitySelector,
@@ -19,7 +22,7 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from .api import AcceleronixCloudClient
+from .api import AcceleronixCloudClient, OukitelAuthError, OukitelConnectionError
 from .const import (
     CONF_AUTH_KEY,
     CONF_CONNECTION_MODE,
@@ -79,6 +82,7 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize config flow state."""
         self._discovered_devices: list[dict] = []
         self._user_credentials: dict = {}
+        self._reauth_entry: config_entries.ConfigEntry | None = None
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
@@ -91,11 +95,24 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 region=user_input[CONF_REGION],
             )
 
-            success = await self.hass.async_add_executor_job(client.login)
-            if not success:
+            try:
+                success = await self.hass.async_add_executor_job(client.login)
+                if not success:
+                    errors["base"] = "invalid_auth"
+            except OukitelAuthError:
                 errors["base"] = "invalid_auth"
-            else:
-                devices = await self.hass.async_add_executor_job(client.get_devices_list)
+            except (OukitelConnectionError, Exception):
+                errors["base"] = "cannot_connect"
+
+            if "base" not in errors:
+                try:
+                    devices = await self.hass.async_add_executor_job(client.get_devices_list)
+                except OukitelAuthError:
+                    errors["base"] = "invalid_auth"
+                except Exception:
+                    errors["base"] = "cannot_connect"
+
+            if "base" not in errors:
                 if not devices:
                     errors["base"] = "no_devices"
                 else:
@@ -174,6 +191,60 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(
             title=title,
             data=entry_data,
+        )
+
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> FlowResult:
+        """Handle initiation of re-authentication with new credentials."""
+        self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle credential re-authentication dialog."""
+        errors: dict[str, str] = {}
+        entry = self._reauth_entry or self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        email = entry.data.get(CONF_EMAIL, "")
+        region = entry.data.get(CONF_REGION, DEFAULT_REGION)
+
+        if user_input is not None:
+            new_password = user_input[CONF_PASSWORD]
+            client = AcceleronixCloudClient(
+                email=email,
+                password=new_password,
+                region=region,
+                device_key=entry.data.get("device_key"),
+                device_name=entry.data.get("device_name"),
+            )
+            try:
+                success = await self.hass.async_add_executor_job(client.login)
+                if not success:
+                    errors["base"] = "invalid_auth"
+            except OukitelAuthError:
+                errors["base"] = "invalid_auth"
+            except (OukitelConnectionError, Exception):
+                errors["base"] = "cannot_connect"
+
+            if not errors:
+                try:
+                    await self.hass.async_add_executor_job(client.fetch_device_info)
+                except Exception:
+                    pass
+
+                new_data = dict(entry.data)
+                new_data[CONF_PASSWORD] = new_password
+                if client.auth_key:
+                    new_data[CONF_AUTH_KEY] = client.auth_key
+
+                self.hass.config_entries.async_update_entry(entry, data=new_data)
+                await self.hass.config_entries.async_reload(entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({
+                vol.Required(CONF_PASSWORD): cv.string,
+            }),
+            description_placeholders={"email": email},
+            errors=errors,
         )
 
     @staticmethod

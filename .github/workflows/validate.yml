@@ -21,7 +21,6 @@ jobs:
         uses: hacs/action@main
         with:
           category: integration
-          ignore: license
 
   validate-hassfest:
     name: Hassfest Validation

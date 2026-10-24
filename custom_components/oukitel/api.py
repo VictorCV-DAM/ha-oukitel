@@ -18,6 +18,18 @@ from .device_selection import select_device
 _LOGGER = logging.getLogger(__name__)
 
 
+class OukitelError(Exception):
+    """Base exception for Oukitel integration."""
+
+
+class OukitelAuthError(OukitelError):
+    """Authentication failure (e.g. invalid credentials or expired session)."""
+
+
+class OukitelConnectionError(OukitelError):
+    """Network connection or server communication error."""
+
+
 class AcceleronixCloudClient:
     """Client to authenticate and interact with Acceleronix / Quectel Cloud API."""
 
@@ -101,19 +113,30 @@ class AcceleronixCloudClient:
 
         try:
             r = requests.post(url, headers=headers, data=payload, timeout=15)
-            res = r.json()
-            if res.get("code") == 200:
-                data = res["data"]
-                self.access_token = data["accessToken"]["token"]
-                self.token_expiry = data["accessToken"].get("expirationTime", int(time.time()) + 7000)
-                self.refresh_token = data["refreshToken"]["token"]
-                _LOGGER.debug("oukitel: Session authenticated successfully.")
-                return True
-            _LOGGER.error("oukitel: Login failed: %s (code %s)", res.get("msg"), res.get("code"))
-            return False
+        except requests.RequestException as err:
+            _LOGGER.error("oukitel: Network exception during login: %s", err)
+            raise OukitelConnectionError(f"Connection error during login: {err}") from err
         except Exception as err:
             _LOGGER.error("oukitel: Exception during login: %s", err)
-            return False
+            raise OukitelConnectionError(f"Unexpected error during login: {err}") from err
+
+        try:
+            res = r.json()
+        except Exception as err:
+            _LOGGER.error("oukitel: Failed to decode login response JSON: %s", err)
+            raise OukitelConnectionError(f"Invalid login response JSON: {err}") from err
+
+        code = res.get("code")
+        if code == 200:
+            data = res["data"]
+            self.access_token = data["accessToken"]["token"]
+            self.token_expiry = data["accessToken"].get("expirationTime", int(time.time()) + 7000)
+            self.refresh_token = data["refreshToken"]["token"]
+            _LOGGER.debug("oukitel: Session authenticated successfully.")
+            return True
+
+        _LOGGER.error("oukitel: Login failed: %s (code %s)", res.get("msg"), code)
+        raise OukitelAuthError(f"Login failed: {res.get('msg')} (code {code})")
 
     def ensure_authenticated(self):
         """Ensure token is valid; renew automatically if close to expiration."""
@@ -130,20 +153,31 @@ class AcceleronixCloudClient:
             "User-Agent": "okhttp/4.9.3",
         }
 
-    def get_devices_list(self) -> list[dict]:
+    def get_devices_list(self, retry_on_auth: bool = True) -> list[dict]:
         """Fetch all bound devices in the user account."""
-        self.ensure_authenticated()
+        if retry_on_auth:
+            self.ensure_authenticated()
         url = f"{self.base_url}/v2/binding/enduserapi/userDeviceList"
         try:
             r = requests.get(url, headers=self.get_auth_headers(), timeout=15)
             res = r.json()
-            if res.get("code") == 200:
+            code = res.get("code")
+            if code == 200:
                 return res.get("data", {}).get("list", [])
-            if res.get("code") == 5032:
-                self.login()
-                return self.get_devices_list()
-            _LOGGER.error("oukitel: Error fetching devices list: %s", res.get("msg"))
+            if code == 5032:
+                if retry_on_auth:
+                    _LOGGER.info("oukitel: Token expired (5032), refreshing login session...")
+                    self.access_token = None
+                    self.login()
+                    return self.get_devices_list(retry_on_auth=False)
+                raise OukitelAuthError("Authentication token expired and re-login failed (code 5032)")
+            _LOGGER.error("oukitel: Error fetching devices list: %s (code %s)", res.get("msg"), code)
             return []
+        except (OukitelAuthError, OukitelConnectionError):
+            raise
+        except requests.RequestException as err:
+            _LOGGER.error("oukitel: Network error in get_devices_list: %s", err)
+            raise OukitelConnectionError(f"Network error in get_devices_list: {err}") from err
         except Exception as err:
             _LOGGER.error("oukitel: Exception in get_devices_list: %s", err)
             return []
@@ -218,9 +252,10 @@ class AcceleronixCloudClient:
             return True
         return self.fetch_device_info()
 
-    def control_device(self, properties_list: list) -> bool:
+    def control_device(self, properties_list: list, retry_on_auth: bool = True) -> bool:
         """Send hardware control commands via batchControlDevice."""
-        self.ensure_authenticated()
+        if retry_on_auth:
+            self.ensure_authenticated()
         if not self.device_key or not self.product_key:
             if not self.fetch_device_info():
                 return False
@@ -246,8 +281,12 @@ class AcceleronixCloudClient:
                 _LOGGER.debug("oukitel: Cloud command succeeded: %s", properties_list)
                 return True
             if code == 5032:
-                self.login()
-                return self.control_device(properties_list)
+                if retry_on_auth:
+                    _LOGGER.info("oukitel: Token expired (5032) during control_device, refreshing session...")
+                    self.access_token = None
+                    self.login()
+                    return self.control_device(properties_list, retry_on_auth=False)
+                raise OukitelAuthError("Authentication token expired and re-login failed during device control (code 5032)")
             if code == 5340:
                 _LOGGER.warning(
                     "oukitel: Cloud control transient timeout/batch ACK delay (code 5340): %s — verification needed",
@@ -256,6 +295,11 @@ class AcceleronixCloudClient:
                 return False
             _LOGGER.error("oukitel: Cloud control error: %s (code %s)", res.get("msg"), code)
             return False
+        except (OukitelAuthError, OukitelConnectionError):
+            raise
+        except requests.RequestException as err:
+            _LOGGER.error("oukitel: Network error in control_device: %s", err)
+            raise OukitelConnectionError(f"Network error in control_device: {err}") from err
         except Exception as err:
             _LOGGER.error("oukitel: Exception in control_device: %s", err)
             return False
@@ -264,9 +308,10 @@ class AcceleronixCloudClient:
         """Wake device and maintain high-frequency telemetry reporting."""
         return self.control_device([{"high_frequency_reporting": 3}])
 
-    def get_telemetry(self) -> dict:
+    def get_telemetry(self, retry_on_auth: bool = True) -> dict:
         """Retrieve real-time telemetry from Cloud API."""
-        self.ensure_authenticated()
+        if retry_on_auth:
+            self.ensure_authenticated()
         if not self.device_key or not self.product_key:
             if not self.fetch_device_info():
                 return {}
@@ -277,12 +322,17 @@ class AcceleronixCloudClient:
         try:
             r = requests.get(url, headers=self.get_auth_headers(), params=params, timeout=10)
             res = r.json()
+            code = res.get("code")
 
-            if res.get("code") == 5032:
-                self.login()
-                return self.get_telemetry()
+            if code == 5032:
+                if retry_on_auth:
+                    _LOGGER.info("oukitel: Token expired (5032) during get_telemetry, refreshing session...")
+                    self.access_token = None
+                    self.login()
+                    return self.get_telemetry(retry_on_auth=False)
+                raise OukitelAuthError("Authentication token expired and re-login failed during telemetry fetch (code 5032)")
 
-            if res.get("code") != 200:
+            if code != 200:
                 _LOGGER.warning("oukitel: Telemetry response not OK: %s", res)
                 return {}
 
@@ -343,6 +393,11 @@ class AcceleronixCloudClient:
 
             return metrics
 
+        except (OukitelAuthError, OukitelConnectionError):
+            raise
+        except requests.RequestException as err:
+            _LOGGER.debug("oukitel: Cloud telemetry network error: %s", err)
+            raise OukitelConnectionError(f"Cloud telemetry network error: {err}") from err
         except Exception as err:
             _LOGGER.debug("oukitel: Cloud telemetry unavailable (offline): %s", err)
             return {}

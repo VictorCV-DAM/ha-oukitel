@@ -1,14 +1,15 @@
 """The Oukitel Power Station integration."""
 
+import asyncio
 from datetime import timedelta
 import logging
 import os
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
-from .api import AcceleronixCloudClient
+from .api import AcceleronixCloudClient, OukitelAuthError, OukitelConnectionError
 from .const import (
     CONF_AUTH_KEY,
     CONF_CONNECTION_MODE,
@@ -132,6 +133,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.debug("oukitel: Persisted device credentials to config entry data")
         else:
             _LOGGER.warning("oukitel: Failed to login to Oukitel cloud (unsuccessful credentials or response)")
+    except OukitelAuthError as err:
+        _LOGGER.error("oukitel: Authentication failed for %s: %s", email, err)
+        raise ConfigEntryAuthFailed(f"Authentication failed for {email}: {err}") from err
     except Exception as exc:
         _LOGGER.warning("oukitel: Exception connecting to Oukitel cloud (network/DNS/timeout): %s", exc)
 

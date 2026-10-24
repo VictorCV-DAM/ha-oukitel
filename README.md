@@ -205,6 +205,19 @@ You can configure the active connection mode at any time directly in Home Assist
 
 ---
 
+## 🚀 What's New in v1.5.10: HACS Review Compliance & Auth Flow Hardening
+
+- **⚙️ Asyncio import fix:** added missing `import asyncio` in `custom_components/oukitel/__init__.py` so offline boot cleanly ends in `ConfigEntryNotReady` if the station cannot be reached instead of raising a `NameError`.
+- **🛡️ Authentication loop & recursion protection:** removed unbounded recursion on Cloud 5032 responses in `api.py` (`get_devices_list`, `control_device`, `get_telemetry`). When credentials fail or a password is changed, it halts cleanly after at most one retry and raises `OukitelAuthError`.
+- **🔐 Reauth flow:** implemented `async_step_reauth` and `async_step_reauth_confirm` in `config_flow.py`, allowing users to enter updated credentials when password changes occur.
+- **⏱️ Coordinator auth latch & backoff:** prevented `coordinator.py` from hammering the login endpoint on LAN updates after failed logins. Reconnection now triggers `async_start_reauth` on auth failure and applies exponential backoff on plain network errors.
+- **📋 HACS CI validation:** removed `ignore: license` check suppression in `.github/workflows/validate.yml` to comply with default HACS catalog requirements.
+- **🐍 Sensor typing import:** imported `Any` from `typing` in `sensor.py` ensuring compatibility with Python < 3.14 on Home Assistant 2024.1.0+.
+- **🎨 Offline bundled frontend fonts:** replaced external Google Fonts (`fonts.googleapis.com`) in Lovelace cards with local bundled woff2 fonts (`orbitron.woff2`, `chakra-petch.woff2`, `rajdhani.woff2`) served via `/oukitel_static/fonts/` for complete offline privacy.
+- **🧪 Unit test suite:** expanded unit test coverage to 32 tests covering auth failure handling, single-retry semantics, and recursion guards.
+
+---
+
 ## 🚀 What's New in v1.5.9: Auth-Key Reliability & Multi-Station Safety
 
 - **🔑 `authKey` refresh via `regenerateAuthKey`:** the app's own endpoint is now used to fetch the live LAN key instead of relying only on the copy frozen in `userDeviceList`. Verified on a real Home Assistant instance: stale key → `result=-1` → `regenerateAuthKey` → `data`/`options` updated → LAN reconnects. A forced 15 s timeout returns safely, without a loop or a blocked instance, and falls back to `userDeviceList`.

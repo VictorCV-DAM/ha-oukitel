@@ -17,6 +17,13 @@
         "data": {
           "device_key": "Estación Oukitel"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reautenticar Oukitel Cloud",
+        "description": "Por favor, introduce la contraseña actualizada para {email}.",
+        "data": {
+          "password": "Contraseña"
+        }
       }
     },
     "error": {
@@ -25,7 +32,8 @@
       "cannot_connect": "Error al conectar con los servidores cloud de Oukitel."
     },
     "abort": {
-      "already_configured": "Esta batería Oukitel ya está configurada."
+      "already_configured": "Esta batería Oukitel ya está configurada.",
+      "reauth_successful": "La reautenticación se ha completado correctamente."
     }
   },
   "options": {

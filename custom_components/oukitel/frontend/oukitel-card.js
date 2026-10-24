@@ -15,12 +15,48 @@
  * Repository: https://github.com/VictorCV-DAM/ha-oukitel
  */
 
-// Import modern high-tech LCD and UI fonts
-const fontLink = document.createElement("link");
-fontLink.rel = "stylesheet";
-fontLink.href = "https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Orbitron:wght@500;700;800;900&family=Rajdhani:wght@600;700;800&display=swap";
-if (!document.head.querySelector("link[href*='Orbitron']")) {
-  document.head.appendChild(fontLink);
+// Inject local bundled fonts to avoid external network traffic
+if (!document.head.querySelector("#oukitel-fonts-style")) {
+  const fontStyle = document.createElement("style");
+  fontStyle.id = "oukitel-fonts-style";
+  fontStyle.textContent = `
+    @font-face {
+      font-family: 'Orbitron';
+      font-style: normal;
+      font-weight: 400 900;
+      font-display: swap;
+      src: url('/oukitel_static/fonts/orbitron.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Chakra Petch';
+      font-style: normal;
+      font-weight: 600;
+      font-display: swap;
+      src: url('/oukitel_static/fonts/chakra-petch-600.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Chakra Petch';
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+      src: url('/oukitel_static/fonts/chakra-petch-700.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Rajdhani';
+      font-style: normal;
+      font-weight: 600;
+      font-display: swap;
+      src: url('/oukitel_static/fonts/rajdhani-600.woff2') format('woff2');
+    }
+    @font-face {
+      font-family: 'Rajdhani';
+      font-style: normal;
+      font-weight: 700;
+      font-display: swap;
+      src: url('/oukitel_static/fonts/rajdhani-700.woff2') format('woff2');
+    }
+  `;
+  document.head.appendChild(fontStyle);
 }
 
 // Universal Tooltip Descriptions for Oukitel Entities (Spanish)

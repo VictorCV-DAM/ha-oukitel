@@ -16,10 +16,11 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .api import AcceleronixCloudClient
+from .api import AcceleronixCloudClient, OukitelAuthError, OukitelConnectionError
 from .const import (
     CONF_AUTH_KEY,
     CONF_HOST,
@@ -405,6 +406,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self.last_user_command_time: float = 0.0
         self._static_metadata: dict[str, Any] = {}
         self._last_cloud_snapshot: float = 0.0
+        self._cloud_auth_failed: bool = False
+        self._last_cloud_reconnect_attempt: float = 0.0
+        self._cloud_reconnect_backoff: float = 60.0
         self._use_struct_switch_protocol: bool | None = None
         self._lan_flush_handle = None
 
@@ -1127,15 +1131,21 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def _async_refresh_cloud_shadow(self) -> None:
         """Periodic background refresh of cloud-only metrics (temp, wifi_signal, versions) while LAN runs."""
-        if self._paused:
+        if self._paused or self._cloud_auth_failed:
             return
 
-        # If started offline, attempt to reconnect to cloud opportunistically
+        now = time.monotonic()
+
+        # If started offline, attempt to reconnect to cloud opportunistically with backoff
         if not getattr(self.client, "access_token", None):
+            if (now - self._last_cloud_reconnect_attempt) < self._cloud_reconnect_backoff:
+                return
+            self._last_cloud_reconnect_attempt = now
             try:
                 logged_in = await self.hass.async_add_executor_job(self.client.login)
                 if not logged_in:
                     return
+                self._cloud_reconnect_backoff = 60.0
                 await self.hass.async_add_executor_job(self.client.fetch_device_info)
                 _LOGGER.info("oukitel: Successfully reconnected to Oukitel cloud after offline startup")
                 if (
@@ -1146,11 +1156,22 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                     new_data = dict(self.config_entry.data)
                     new_data[CONF_AUTH_KEY] = self.client.auth_key
                     self.hass.config_entries.async_update_entry(self.config_entry, data=new_data)
-            except Exception as exc:
-                _LOGGER.debug("oukitel: Opportunistic cloud reconnect notice: %s", exc)
+            except OukitelAuthError as exc:
+                _LOGGER.error("oukitel: Cloud authentication failure during reconnect: %s", exc)
+                self._cloud_auth_failed = True
+                if self.config_entry:
+                    self.config_entry.async_start_reauth(self.hass)
+                return
+            except (OukitelConnectionError, Exception) as exc:
+                self._cloud_reconnect_backoff = min(self._cloud_reconnect_backoff * 2, 900.0)
+                _LOGGER.debug(
+                    "oukitel: Opportunistic cloud reconnect failed (backing off for %.0fs): %s",
+                    self._cloud_reconnect_backoff,
+                    exc,
+                )
                 return
 
-        self._last_cloud_snapshot = time.monotonic()
+        self._last_cloud_snapshot = now
         try:
             cloud_snapshot = await self.hass.async_add_executor_job(self.client.get_telemetry)
             if cloud_snapshot:
@@ -1174,6 +1195,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         if k in self._static_metadata:
                             merged[k] = self._static_metadata[k]
                     self.async_set_updated_data(merged)
+        except OukitelAuthError as exc:
+            _LOGGER.error("oukitel: Cloud authentication failed in background refresh: %s", exc)
+            self._cloud_auth_failed = True
+            if self.config_entry:
+                self.config_entry.async_start_reauth(self.hass)
         except Exception as exc:
             _LOGGER.debug("oukitel: Cloud shadow refresh notice: %s", exc)
 
@@ -1185,7 +1211,13 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         # Periodically refresh device list from cloud (every 60s) to keep onlineStatus accurate
         if now - self._last_device_list_check >= 60.0:
             self._last_device_list_check = now
-            await self.hass.async_add_executor_job(self.client.fetch_device_info)
+            try:
+                await self.hass.async_add_executor_job(self.client.fetch_device_info)
+            except OukitelAuthError as err:
+                _LOGGER.error("oukitel: Authentication failed during device info fetch: %s", err)
+                raise ConfigEntryAuthFailed(f"Oukitel Cloud authentication failed: {err}") from err
+            except Exception as exc:
+                _LOGGER.debug("oukitel: Cloud device list check notice: %s", exc)
 
         # If device is reported offline in userDeviceList, do not send keep-alive or expect live telemetry
         if not getattr(self.client, "is_online", True):
@@ -1194,10 +1226,27 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             offline_data["online"] = False
             return offline_data
 
-        data = await self.hass.async_add_executor_job(self.client.get_telemetry)
+        try:
+            data = await self.hass.async_add_executor_job(self.client.get_telemetry)
+        except OukitelAuthError as err:
+            _LOGGER.error("oukitel: Authentication failed during telemetry fetch: %s", err)
+            raise ConfigEntryAuthFailed(f"Oukitel Cloud authentication failed: {err}") from err
+        except OukitelConnectionError as exc:
+            _LOGGER.warning("oukitel: Cloud network communication error: %s", exc)
+            raise UpdateFailed(f"Failed to communicate with Oukitel Cloud: {exc}") from exc
+        except Exception as exc:
+            _LOGGER.warning("oukitel: Unexpected exception fetching cloud telemetry: %s", exc)
+            raise UpdateFailed(f"Failed to communicate with Oukitel Cloud: {exc}") from exc
+
         if not data:
             # Device might have just gone offline, verify immediately via userDeviceList
-            await self.hass.async_add_executor_job(self.client.fetch_device_info)
+            try:
+                await self.hass.async_add_executor_job(self.client.fetch_device_info)
+            except OukitelAuthError as err:
+                raise ConfigEntryAuthFailed(f"Oukitel Cloud authentication failed: {err}") from err
+            except Exception:
+                pass
+
             if not getattr(self.client, "is_online", True):
                 _LOGGER.info("oukitel: Device confirmed offline via userDeviceList")
                 offline_data = _build_paused_data(self.data)
@@ -1206,9 +1255,14 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
             can_wake = (now - self.last_user_command_time) >= 15.0
             if can_wake and (now - self.last_wake_time >= DEFAULT_WAKE_INTERVAL):
-                await self.hass.async_add_executor_job(self.client.wake_device)
-                self.last_wake_time = time.time()
-                data = await self.hass.async_add_executor_job(self.client.get_telemetry)
+                try:
+                    await self.hass.async_add_executor_job(self.client.wake_device)
+                    self.last_wake_time = time.time()
+                    data = await self.hass.async_add_executor_job(self.client.get_telemetry)
+                except OukitelAuthError as err:
+                    raise ConfigEntryAuthFailed(f"Oukitel Cloud authentication failed: {err}") from err
+                except Exception:
+                    pass
 
         if not data:
             raise UpdateFailed("Failed to communicate with Oukitel Cloud")

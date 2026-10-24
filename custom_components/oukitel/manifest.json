@@ -1,13 +1,19 @@
 {
   "domain": "oukitel",
   "name": "Oukitel Power Station",
-  "codeowners": ["@VictorCV-DAM"],
+  "codeowners": [
+    "@VictorCV-DAM"
+  ],
   "config_flow": true,
-  "dependencies": ["http"],
+  "dependencies": [
+    "http"
+  ],
   "documentation": "https://github.com/VictorCV-DAM/ha-oukitel",
   "integration_type": "hub",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/VictorCV-DAM/ha-oukitel/issues",
-  "requirements": ["pycryptodome>=3.18.0"],
-  "version": "1.5.9"
+  "requirements": [
+    "pycryptodome>=3.18.0"
+  ],
+  "version": "1.5.10"
 }

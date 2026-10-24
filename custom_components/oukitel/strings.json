@@ -17,6 +17,13 @@
         "data": {
           "device_key": "Oukitel Station"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Oukitel Cloud",
+        "description": "Please enter the updated password for {email}.",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -25,7 +32,8 @@
       "cannot_connect": "Failed to connect to Oukitel cloud servers."
     },
     "abort": {
-      "already_configured": "This Oukitel device is already configured."
+      "already_configured": "This Oukitel device is already configured.",
+      "reauth_successful": "Re-authentication was successful."
     }
   },
   "options": {
