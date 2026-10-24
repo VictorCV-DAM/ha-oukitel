@@ -295,6 +295,15 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         return _build_device_info(self.coordinator, self.client)
 
     @property
+    def available(self) -> bool:
+        """Hide measurements when the station has stopped reporting."""
+        if not super().available:
+            return False
+        if self.coordinator.data and self.coordinator.data.get("telemetry_stale"):
+            return False
+        return True
+
+    @property
     def icon(self):
         """Return dynamic animated icon for battery depending on level and charging state."""
         if self._key == "battery_percentage":

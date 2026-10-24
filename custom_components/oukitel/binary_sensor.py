@@ -28,6 +28,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     async_add_entities([
         OukitelOnBatteryBinarySensor(coordinator, client),
         OukitelConnectionBinarySensor(coordinator, client),
+        OukitelTelemetryStaleBinarySensor(coordinator, client),
     ])
 
 
@@ -127,3 +128,39 @@ class OukitelConnectionBinarySensor(CoordinatorEntity, BinarySensorEntity):
         if self.coordinator.data and "online" in self.coordinator.data:
             return bool(self.coordinator.data["online"])
         return bool(getattr(self.client, "is_online", True))
+
+
+class OukitelTelemetryStaleBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Problem sensor: the station is reachable but has stopped reporting data."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
+        super().__init__(coordinator)
+        self.client = client
+        self._attr_name = get_entity_name(
+            "telemetry_stale", "Telemetry Stale", coordinator.hass
+        )
+        self._attr_unique_id = f"oukitel_{client.device_key}_telemetry_stale"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return _build_device_info(self.coordinator, self.client)
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self.coordinator.data and self.coordinator.data.get("telemetry_stale"))
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        age = None
+        if self.coordinator.data:
+            age = self.coordinator.data.get("last_telemetry_age")
+        return {
+            "description": get_entity_description("telemetry_stale", self.hass)
+            or "The station is connected but has not produced fresh telemetry. "
+            "Values are frozen and should not be trusted.",
+            "last_telemetry_age_seconds": age,
+        }

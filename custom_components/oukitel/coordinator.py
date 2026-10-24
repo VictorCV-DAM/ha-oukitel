@@ -387,6 +387,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_listen_task: asyncio.Task | None = None
         self._lan_state: dict[int, Any] = {}
         self._lan_last_report: float | None = None
+        self._stale_fingerprint: tuple | None = None
         self._lan_connected_at: float | None = None
         self._lan_active = False
         self._lan_has_valid_telemetry: bool = False
@@ -767,6 +768,9 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         self._lan_active = True
         self._lan_connected_at = time.monotonic()
+        # Count the handshake as the first "report"; if no cmd20 arrives within
+        # the stale window, entities must not keep showing seeded/cloud data.
+        self._lan_last_report = time.monotonic()
         _LOGGER.info("oukitel: LAN session established and active with %s!", host)
         self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
         try:
@@ -855,10 +859,53 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 reconnect_delay = min(reconnect_delay * 1.5, 30.0)
                 continue
 
+    def _telemetry_is_stale(self) -> bool:
+        """Return True when the LAN session is alive but silent for too long."""
+        if self._lan_last_report is None:
+            return False
+        return (time.monotonic() - self._lan_last_report) > _LAN_STALE_TIMEOUT
+
+    def _apply_telemetry_freshness(self, data: dict, cloud: bool = False) -> None:
+        """Annotate data with staleness, preserving it across a cloud fallback.
+
+        A cloud poll can return the same frozen values indefinitely. Once the
+        LAN stream has gone silent, keep the stale flag until the cloud actually
+        reports a different battery/power/temperature fingerprint.
+        """
+        if self._lan_last_report is None:
+            data.setdefault("telemetry_stale", False)
+            data["last_telemetry_age"] = None
+            return
+
+        age = max(0.0, time.monotonic() - self._lan_last_report)
+        stale = age > _LAN_STALE_TIMEOUT
+        if cloud and stale:
+            fingerprint = tuple(
+                data.get(k)
+                for k in (
+                    "battery_percentage",
+                    "total_input_power",
+                    "total_output_power",
+                    "temp",
+                )
+            )
+            if self._stale_fingerprint is None:
+                self._stale_fingerprint = fingerprint
+            elif fingerprint != self._stale_fingerprint:
+                # The cloud has fresh values again: treat this as a new report.
+                self._lan_last_report = time.monotonic()
+                self._stale_fingerprint = None
+                age = 0.0
+                stale = False
+
+        data["telemetry_stale"] = stale
+        data["last_telemetry_age"] = int(age)
+
     def _on_lan_telemetry(self, fields: dict[int, Any]) -> None:
         if self._paused:
             return
         self._lan_last_report = time.monotonic()
+        self._stale_fingerprint = None
         
         # Base LAN tag mapping to HA sensor keys
         tag_map = {
@@ -1109,6 +1156,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
 
         data = dict(self._lan_state)
+        self._apply_telemetry_freshness(data)
         # Preserve static/cloud-only diagnostic tags from metadata cache and prior state
         for k, v in self._static_metadata.items():
             if k not in data or data[k] is None:
@@ -1274,5 +1322,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 self._static_metadata[k] = merged[k]
         _unpack_port_data(merged)
         self._apply_user_overrides(merged)
+        self._apply_telemetry_freshness(merged, cloud=True)
 
         return merged
