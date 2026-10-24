@@ -2,7 +2,7 @@
   <img src="https://raw.githubusercontent.com/VictorCV-DAM/ha-oukitel/main/icon.png" width="140" height="140" alt="Oukitel Power Station Icon" />
   <h1>Oukitel Power Station Integration for Home Assistant</h1>
 
-  [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/default)
+  [![HACS Default](https://img.shields.io/badge/HACS-Default%20Store-41BDF5.svg?logo=homeassistantcommunitystore)](https://github.com/hacs/default)
   [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1.0%20%E2%80%94%202026.9.4%2B-41BDF5.svg?logo=home-assistant)](https://www.home-assistant.io/)
   [![GitHub Release](https://img.shields.io/github/v/release/VictorCV-DAM/ha-oukitel)](https://github.com/VictorCV-DAM/ha-oukitel/releases)
   [![Total Downloads](https://img.shields.io/github/downloads/VictorCV-DAM/ha-oukitel/total.svg?color=brightgreen)](https://github.com/VictorCV-DAM/ha-oukitel/releases)
@@ -13,6 +13,9 @@
 </div>
 
 Custom integration for Home Assistant to monitor and control **Oukitel Power Stations** (P2001 Plus, P2001, P5000, BP2000, etc.). Connects via **local LAN** when the device is on the same network, with automatic fallback to Cloud API — no phone, emulator, or ADB required.
+
+> [!NOTE]
+> **🎉 Official HACS Default Integration**: This integration is officially incorporated into the default [Home Assistant Community Store (HACS)](https://github.com/hacs/default) catalog. You can search and install it directly from HACS without needing to add custom repository URLs!
 
 <table width="100%">
   <tr>
@@ -72,16 +75,18 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
 
 ## 📦 Quick Installation via HACS
 
+🎉 **Officially included in the default HACS store!** No custom repository configuration needed.
+
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=VictorCV-DAM&repository=ha-oukitel&category=integration)
 
 ### ⚡ 1-Click Fast Install
-Click the badge above or use the direct link to open this repository inside your Home Assistant HACS store, then click **Download**.
+Click the My Home Assistant badge above to open this repository directly inside your Home Assistant HACS store, then click **Download**.
 
-### 🛠️ Manual HACS Installation
+### 🔍 Direct Search in HACS (Default Catalog)
 1. Open **HACS** in Home Assistant.
-2. Click the three dots (top right corner) and select **Custom repositories**.
-3. Add repository URL: `https://github.com/VictorCV-DAM/ha-oukitel` with category **Integration**.
-4. Click **Download** and then **Restart Home Assistant**.
+2. Click the **Integrations** tab and then click **Explore & Download Repositories** (or search bar).
+3. Search for **"Oukitel Power Station"**.
+4. Click on it and select **Download**.
 5. Go to **Settings ➔ Devices & Services ➔ Add Integration** ➔ Search for **Oukitel Power Station**.
 6. Enter your account credentials (email, password, and server region `EU` / `US` / `CN`) to automatically discover your station.
 7. **Perform one post-setup restart**: Quick restart via **Settings ➔ System ➔ Restart** to finalize registering all entities and Riemann energy integrators cleanly.
