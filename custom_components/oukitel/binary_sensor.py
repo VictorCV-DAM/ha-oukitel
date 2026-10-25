@@ -151,13 +151,11 @@ class OukitelTelemetryStaleBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool:
-        return bool(self.coordinator.data and self.coordinator.data.get("telemetry_stale"))
+        return bool(getattr(self.coordinator, "telemetry_stale", False))
 
     @property
     def extra_state_attributes(self) -> dict:
-        age = None
-        if self.coordinator.data:
-            age = self.coordinator.data.get("last_telemetry_age")
+        age = getattr(self.coordinator, "last_telemetry_age", None)
         return {
             "description": get_entity_description("telemetry_stale", self.hass)
             or "The station is connected but has not produced fresh telemetry. "

@@ -865,6 +865,18 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             return False
         return (time.monotonic() - self._lan_last_report) > _LAN_STALE_TIMEOUT
 
+    @property
+    def telemetry_stale(self) -> bool:
+        """Live staleness, not a value copied into a coordinator snapshot."""
+        return self._telemetry_is_stale()
+
+    @property
+    def last_telemetry_age(self) -> int | None:
+        """Seconds since the last LAN report, evaluated live."""
+        if self._lan_last_report is None:
+            return None
+        return int(max(0.0, time.monotonic() - self._lan_last_report))
+
     def _apply_telemetry_freshness(self, data: dict, cloud: bool = False) -> None:
         """Annotate data with staleness, preserving it across a cloud fallback.
 
@@ -973,6 +985,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if current_data.get("battery_percentage") is not None:
             self._lan_has_valid_telemetry = True
 
+        # A live frame always clears the stale snapshot; availability also
+        # consults the live property so a late snapshot cannot keep it hidden.
+        current_data["telemetry_stale"] = False
+        current_data["last_telemetry_age"] = 0
         self._lan_state = current_data
         # Debounce coordinator updates to coalesce high-frequency multi-packet TTLV bursts
         if self._lan_flush_handle is None:

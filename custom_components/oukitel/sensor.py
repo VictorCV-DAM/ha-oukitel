@@ -299,7 +299,7 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         """Hide measurements when the station has stopped reporting."""
         if not super().available:
             return False
-        if self.coordinator.data and self.coordinator.data.get("telemetry_stale"):
+        if getattr(self.coordinator, "telemetry_stale", False):
             return False
         return True
 
