@@ -15,7 +15,9 @@ if "homeassistant" not in sys.modules:
     sys.modules["homeassistant.core"] = MagicMock()
     sys.modules["homeassistant.exceptions"] = MagicMock()
     sys.modules["homeassistant.helpers"] = MagicMock()
-    sys.modules["homeassistant.helpers.update_coordinator"] = MagicMock()
+    uc = types.ModuleType("homeassistant.helpers.update_coordinator")
+    uc.DataUpdateCoordinator = type("DataUpdateCoordinator", (), {}); uc.UpdateFailed = type("UpdateFailed", (Exception,), {})
+    sys.modules["homeassistant.helpers.update_coordinator"] = uc
     sys.modules["homeassistant.util"] = MagicMock()
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
