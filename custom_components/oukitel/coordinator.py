@@ -506,7 +506,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         if key in struct_map:
                             tag, subtag = struct_map[key]
                             await self._lan_session.send_write(tag, "struct", [(subtag, "bool", value)])
-                            _LOGGER.debug("oukitel: Instant LAN struct switch write: tag %s subtag %s = %s", tag, subtag, value)
                             return True
                     else:
                         tag_map = {
@@ -517,7 +516,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         tag = tag_map.get(key)
                         if tag is not None:
                             await self._lan_session.send_write(tag, "bool", value)
-                            _LOGGER.debug("oukitel: Instant LAN flat switch write: tag %s = %s", tag, value)
                             return True
                 except Exception as exc:
                     _LOGGER.debug("oukitel: LAN direct write failed (%s), trying fallback: %s", key, exc)

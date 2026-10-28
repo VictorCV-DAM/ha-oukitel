@@ -227,7 +227,6 @@ class LocalSession:
         hb_cipher = aes_encrypt(self._key, self._iv, b"")
         self._writer.write(build_frame(self._next_pid(), _CMD_PING, hb_cipher))
         await self._writer.drain()
-        _LOGGER.debug("oukitel: LAN subscription (mode 1) and heartbeat (cmd 28727) armed")
 
     async def resubscribe(self) -> None:
         """Re-arm high-frequency reporting on an existing socket."""
@@ -253,14 +252,8 @@ class LocalSession:
         if cmd in (_CMD_PING, _CMD_PONG, _CMD_KEEPALIVE):
             if cmd == _CMD_PING:
                 await self._send_raw(_CMD_PONG)
-            _LOGGER.debug("oukitel: LAN heartbeat frame received: cmd=%s (%#06x)", cmd, cmd)
             return
-        if cmd == 28726: # WRITE_ACK
-            try:
-                data = aes_decrypt(self._key, self._iv, payload)
-                _LOGGER.debug("oukitel: LAN WRITE_ACK: %s", ttlv_decode(data))
-            except Exception as exc:
-                _LOGGER.debug("oukitel: ACK decrypt error: %s", exc)
+        if cmd == 28726:
             return
         if cmd in (_CMD_TELEMETRY, _CMD_READ, _CMD_WRITE, 18, 20, 21, 36, 38):
             try:
