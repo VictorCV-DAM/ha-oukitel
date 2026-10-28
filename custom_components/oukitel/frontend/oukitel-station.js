@@ -1246,20 +1246,24 @@ class OukitelCard extends HTMLElement {
         /* SLEEK, DISCREET MINI-SWITCHES GRID */
         .switches-grid {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 8px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 6px;
+          width: 100%;
+          box-sizing: border-box;
           margin-top: 4px;
         }
 
         .switch-btn {
+          min-width: 0;
+          box-sizing: border-box;
           background: rgba(255, 255, 255, 0.03);
           border: 1px solid rgba(255, 255, 255, 0.08);
           border-radius: 10px;
-          padding: 7px 10px;
+          padding: 7px 6px;
           display: flex;
           align-items: center;
           justify-content: space-between;
-          gap: 6px;
+          gap: 4px;
           cursor: pointer;
           user-select: none;
           transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1307,11 +1311,13 @@ class OukitelCard extends HTMLElement {
         .btn-left {
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 4px;
+          min-width: 0;
+          overflow: hidden;
         }
         .btn-icon {
-          width: 17px;
-          height: 17px;
+          width: 16px;
+          height: 16px;
           fill: #94a3b8;
           transition: fill 0.2s ease;
           flex-shrink: 0;
@@ -1322,14 +1328,17 @@ class OukitelCard extends HTMLElement {
           color: #f1f5f9;
           letter-spacing: 0.4px;
           white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         .btn-state {
+          flex-shrink: 0;
           font-size: 9px;
           font-weight: 800;
           letter-spacing: 0.6px;
           color: #64748b;
           text-transform: uppercase;
-          padding: 2px 5px;
+          padding: 2px 4px;
           border-radius: 4px;
           background: rgba(255, 255, 255, 0.04);
           white-space: nowrap;
@@ -1338,15 +1347,19 @@ class OukitelCard extends HTMLElement {
         /* FINANCIAL METRICS GRID */
         .metrics-grid {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 8px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 6px;
+          width: 100%;
+          box-sizing: border-box;
           margin-top: 4px;
         }
         .metric-card {
+          min-width: 0;
+          box-sizing: border-box;
           background: rgba(255, 255, 255, 0.025);
           border: 1px solid rgba(255, 255, 255, 0.05);
           border-radius: 10px;
-          padding: 8px 6px;
+          padding: 8px 4px;
           display: flex;
           flex-direction: column;
           align-items: center;
