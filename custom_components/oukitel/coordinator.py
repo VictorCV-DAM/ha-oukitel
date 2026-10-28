@@ -490,12 +490,39 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         return False
 
     async def async_send_switch_command(self, key: str, value: bool) -> bool:
-        """Send switch command adaptively via Cloud (primary, instant Wonderfree protocol) with LAN fallback."""
+        """Send switch command via instant LAN (sub-millisecond local dispatch) with Cloud fallback."""
         is_struct = self._detect_switch_protocol()
 
         for attempt in range(2):
-            # 1. Cloud control (primary native transport matching official Wonderfree app)
-            cloud_ok = False
+            # 1. Instant direct LAN dispatch (<10ms local socket latency, zero cloud hops)
+            if self._lan_active and self._lan_session:
+                try:
+                    if is_struct:
+                        struct_map = {
+                            "ac_switch": (6, 1),
+                            "usb_switch": (7, 1),
+                            "dc_switch": (9, 1),
+                        }
+                        if key in struct_map:
+                            tag, subtag = struct_map[key]
+                            await self._lan_session.send_write(tag, "struct", [(subtag, "bool", value)])
+                            _LOGGER.debug("oukitel: Instant LAN struct switch write: tag %s subtag %s = %s", tag, subtag, value)
+                            return True
+                    else:
+                        tag_map = {
+                            "ac_switch": 43,
+                            "usb_switch": 44,
+                            "dc_switch": 46,
+                        }
+                        tag = tag_map.get(key)
+                        if tag is not None:
+                            await self._lan_session.send_write(tag, "bool", value)
+                            _LOGGER.debug("oukitel: Instant LAN flat switch write: tag %s = %s", tag, value)
+                            return True
+                except Exception as exc:
+                    _LOGGER.debug("oukitel: LAN direct write failed (%s), trying fallback: %s", key, exc)
+
+            # 2. Cloud control fallback (if LAN is offline, disconnected or write failed)
             if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
                 try:
                     if is_struct:
@@ -514,43 +541,13 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         cloud_payload,
                     )
                     if cloud_ok:
-                        _LOGGER.debug("oukitel: Switch command %s=%s sent successfully via Cloud", key, value)
+                        _LOGGER.debug("oukitel: Switch command %s=%s sent via Cloud fallback", key, value)
+                        return True
                 except Exception as exc:
-                    _LOGGER.debug("oukitel: Cloud switch command failed: %s", exc)
-
-            # 2. LAN write fallback (if Cloud is offline, Solo LAN mode, or Cloud dispatch failed)
-            lan_ok = False
-            if not cloud_ok and self._lan_active and self._lan_session:
-                try:
-                    if is_struct:
-                        struct_map = {
-                            "ac_switch": (6, 1),
-                            "usb_switch": (7, 1),
-                            "dc_switch": (9, 1),
-                        }
-                        if key in struct_map:
-                            tag, subtag = struct_map[key]
-                            await self._lan_session.send_write(tag, "struct", [(subtag, "bool", value)])
-                            lan_ok = True
-                    else:
-                        tag_map = {
-                            "ac_switch": 43,
-                            "usb_switch": 44,
-                            "dc_switch": 46,
-                        }
-                        tag = tag_map.get(key)
-                        if tag is not None:
-                            await self._lan_session.send_write(tag, "bool", value)
-                            lan_ok = True
-                except Exception as exc:
-                    _LOGGER.debug("oukitel: LAN write fallback failed: %s", exc)
-
-            if cloud_ok or lan_ok:
-                return True
+                    _LOGGER.debug("oukitel: Cloud switch fallback failed: %s", exc)
 
             if attempt < 1:
-                _LOGGER.debug("oukitel: Retrying switch command %s=%s (attempt 2)...", key, value)
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.5)
 
         return False
 
