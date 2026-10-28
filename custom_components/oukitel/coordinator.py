@@ -490,13 +490,37 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         return False
 
     async def async_send_switch_command(self, key: str, value: bool) -> bool:
-        """Send switch command adaptively via LAN if active, and synchronize with Cloud."""
+        """Send switch command adaptively via Cloud (primary, instant Wonderfree protocol) with LAN fallback."""
         is_struct = self._detect_switch_protocol()
 
         for attempt in range(2):
-            # 1. LAN write dispatch
+            # 1. Cloud control (primary native transport matching official Wonderfree app)
+            cloud_ok = False
+            if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
+                try:
+                    if is_struct:
+                        cloud_struct_map = {
+                            "ac_switch": "ac_data",
+                            "usb_switch": "usb_data",
+                            "dc_switch": "dc_data",
+                        }
+                        prop = cloud_struct_map.get(key)
+                        cloud_payload = [{prop: {key: value}}] if prop else [{key: value}]
+                    else:
+                        cloud_payload = [{key: value}]
+
+                    cloud_ok = await self.hass.async_add_executor_job(
+                        self.client.control_device,
+                        cloud_payload,
+                    )
+                    if cloud_ok:
+                        _LOGGER.debug("oukitel: Switch command %s=%s sent successfully via Cloud", key, value)
+                except Exception as exc:
+                    _LOGGER.debug("oukitel: Cloud switch command failed: %s", exc)
+
+            # 2. LAN write fallback (if Cloud is offline, Solo LAN mode, or Cloud dispatch failed)
             lan_ok = False
-            if self._lan_active and self._lan_session:
+            if not cloud_ok and self._lan_active and self._lan_session:
                 try:
                     if is_struct:
                         struct_map = {
@@ -508,10 +532,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                             tag, subtag = struct_map[key]
                             await self._lan_session.send_write(tag, "struct", [(subtag, "bool", value)])
                             lan_ok = True
-                            _LOGGER.debug(
-                                "oukitel: Instant LAN struct switch write: tag %s subtag %s = %s",
-                                tag, subtag, value,
-                            )
                     else:
                         tag_map = {
                             "ac_switch": 43,
@@ -522,63 +542,15 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                         if tag is not None:
                             await self._lan_session.send_write(tag, "bool", value)
                             lan_ok = True
-                            _LOGGER.debug("oukitel: Instant LAN flat switch write: tag %s = %s", tag, value)
                 except Exception as exc:
-                    _LOGGER.debug("oukitel: LAN write failed: %s", exc)
+                    _LOGGER.debug("oukitel: LAN write fallback failed: %s", exc)
 
-            # 2. Cloud shadow synchronization (always sync unless in Solo LAN mode or offline)
-            cloud_ok = False
-            if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
-                try:
-                    if is_struct:
-                        cloud_struct_map = {
-                            "ac_switch": "ac_data",
-                            "usb_switch": "usb_data",
-                            "dc_switch": "dc_data",
-                        }
-                        prop = cloud_struct_map.get(key)
-                        if prop:
-                            cloud_payload = [{prop: {key: value}}]
-                        else:
-                            cloud_payload = [{key: value}]
-                    else:
-                        cloud_payload = [{key: value}]
-
-                    cloud_ok = await self.hass.async_add_executor_job(
-                        self.client.control_device,
-                        cloud_payload,
-                    )
-                except Exception as exc:
-                    _LOGGER.debug("oukitel: Cloud switch sync failed (offline or unreachable): %s", exc)
-
-            if lan_ok or cloud_ok:
+            if cloud_ok or lan_ok:
                 return True
 
-            # State readback verification: if Cloud control returned failure (e.g. timeout / code 5340),
-            # check whether the station physically applied the command before reporting failure
-            if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
-                try:
-                    await asyncio.sleep(1.0)
-                    verification_data = await self.hass.async_add_executor_job(self.client.get_telemetry)
-                    if verification_data:
-                        _unpack_port_data(verification_data)
-                        if key in verification_data:
-                            actual_val = bool(verification_data[key])
-                            if actual_val == value:
-                                _LOGGER.info(
-                                    "oukitel: Switch command %s=%s confirmed via state readback verification",
-                                    key, value,
-                                )
-                                return True
-                except Exception as verify_err:
-                    _LOGGER.debug("oukitel: State readback verification error: %s", verify_err)
-
-            if attempt == 0:
-                _LOGGER.debug(
-                    "oukitel: Switch command %s=%s unconfirmed on attempt 1; retrying in 1.5s...",
-                    key, value,
-                )
-                await asyncio.sleep(1.5)
+            if attempt < 1:
+                _LOGGER.debug("oukitel: Retrying switch command %s=%s (attempt 2)...", key, value)
+                await asyncio.sleep(1.0)
 
         return False
 
@@ -594,25 +566,46 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 min_hold = 0.0
 
             if now < until:
-                if k in target:
-                    val_t = target[k]
-                    # Only allow expiring after min_hold has elapsed to prevent jitter from out-of-order packets
-                    if now >= min_hold:
-                        if isinstance(v, bool):
-                            if bool(val_t) == v:
-                                expired.append(k)
-                                continue
-                        elif isinstance(v, (int, float)):
-                            try:
-                                if abs(float(val_t) - float(v)) < 0.1:
-                                    expired.append(k)
-                                    continue
-                            except (ValueError, TypeError):
-                                pass
-                        elif str(val_t).strip().lower() == str(v).strip().lower():
-                            expired.append(k)
-                            continue
                 target[k] = v
+                if k == "ac_switch":
+                    target[43] = v
+                    target["43"] = v
+                    if 6 in target and isinstance(target[6], dict):
+                        target[6][1] = 1 if v else 0
+                        target[6]["1"] = 1 if v else 0
+                        target[6]["ac_switch"] = v
+                    if "6" in target and isinstance(target["6"], dict):
+                        target["6"][1] = 1 if v else 0
+                        target["6"]["1"] = 1 if v else 0
+                        target["6"]["ac_switch"] = v
+                    if "ac_data" in target and isinstance(target["ac_data"], dict):
+                        target["ac_data"]["ac_switch"] = v
+                elif k == "usb_switch":
+                    target[44] = v
+                    target["44"] = v
+                    if 7 in target and isinstance(target[7], dict):
+                        target[7][1] = 1 if v else 0
+                        target[7]["1"] = 1 if v else 0
+                        target[7]["usb_switch"] = v
+                    if "7" in target and isinstance(target["7"], dict):
+                        target["7"][1] = 1 if v else 0
+                        target["7"]["1"] = 1 if v else 0
+                        target["7"]["usb_switch"] = v
+                    if "usb_data" in target and isinstance(target["usb_data"], dict):
+                        target["usb_data"]["usb_switch"] = v
+                elif k == "dc_switch":
+                    target[46] = v
+                    target["46"] = v
+                    if 9 in target and isinstance(target[9], dict):
+                        target[9][1] = 1 if v else 0
+                        target[9]["1"] = 1 if v else 0
+                        target[9]["dc_switch"] = v
+                    if "9" in target and isinstance(target["9"], dict):
+                        target["9"][1] = 1 if v else 0
+                        target["9"]["1"] = 1 if v else 0
+                        target["9"]["dc_switch"] = v
+                    if "dc_data" in target and isinstance(target["dc_data"], dict):
+                        target["dc_data"]["dc_switch"] = v
             else:
                 expired.append(k)
         for k in expired:

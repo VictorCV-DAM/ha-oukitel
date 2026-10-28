@@ -80,10 +80,30 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
             return False
         return super().available
 
+    @property
+    def is_on(self) -> bool:
+        """Return True if entity is on, respecting active user overrides."""
+        now = time.time()
+        override = getattr(self.coordinator, "_user_overrides", {}).get(self._key)
+        if override:
+            v, until = override[:2]
+            if now < until:
+                return bool(v)
+        return self._attr_is_on
+
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         if self._action_lock.locked():
             return
+        now = time.time()
+        override = getattr(self.coordinator, "_user_overrides", {}).get(self._key)
+        if override:
+            v, until = override[:2]
+            if now < until:
+                self._attr_is_on = bool(v)
+                self.async_write_ha_state()
+                return
+
         if self.coordinator.data and self._key in self.coordinator.data:
             self._attr_is_on = bool(self.coordinator.data[self._key])
         super()._handle_coordinator_update()
