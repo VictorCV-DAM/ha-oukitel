@@ -415,6 +415,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     def async_set_updated_data(self, data: dict[str, Any]) -> None:
         """Update coordinator data and refresh predictive autonomy tracker."""
+        if data:
+            self._apply_user_overrides(data)
         if hasattr(self, "predictive_tracker") and self.predictive_tracker is not None:
             self.predictive_tracker.update(data)
         super().async_set_updated_data(data)
@@ -431,14 +433,31 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         now = time.time()
         self.last_user_command_time = now
         self._user_overrides[key] = (value, now + ttl, now + min_hold)
+        tag_map = {"ac_switch": 43, "usb_switch": 44, "dc_switch": 46}
+        tag = tag_map.get(key)
+        if tag is not None:
+            self._user_overrides[tag] = (value, now + ttl, now + min_hold)
+            self._user_overrides[str(tag)] = (value, now + ttl, now + min_hold)
+
         if self.data is not None:
             self.data[key] = value
+            if tag is not None:
+                self.data[tag] = value
+                self.data[str(tag)] = value
         if self._lan_state is not None:
             self._lan_state[key] = value
+            if tag is not None:
+                self._lan_state[tag] = value
+                self._lan_state[str(tag)] = value
 
     def async_clear_user_override(self, key: str) -> None:
         """Cancel user command override immediately (e.g. if cloud command failed)."""
         self._user_overrides.pop(key, None)
+        tag_map = {"ac_switch": 43, "usb_switch": 44, "dc_switch": 46}
+        tag = tag_map.get(key)
+        if tag is not None:
+            self._user_overrides.pop(tag, None)
+            self._user_overrides.pop(str(tag), None)
 
     def _detect_switch_protocol(self) -> bool:
         """Detect whether the station uses nested STRUCT TSL tags (BP series/P5000) or flat tags (P-series)."""

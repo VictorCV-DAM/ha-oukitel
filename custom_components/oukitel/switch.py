@@ -91,9 +91,10 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
     async def async_turn_on(self, **kwargs) -> None:
         """Turn the switch on with instant LAN/Cloud dispatch and reentrancy lock."""
         async with self._action_lock:
-            # 1. Update UI and coordinator cache immediately with active override
+            # 1. Update UI and coordinator cache immediately with active override (30s for AC inverter soft-start, 15s for DC/USB)
             self._attr_is_on = True
-            self.coordinator.async_set_user_override(self._key, True, ttl=10.0, min_hold=2.0)
+            override_ttl = 30.0 if self._key == "ac_switch" else 15.0
+            self.coordinator.async_set_user_override(self._key, True, ttl=override_ttl, min_hold=4.0)
             self.async_write_ha_state()
 
             # 2. Fire hardware command (instant LAN if active, plus Cloud sync)
@@ -108,9 +109,10 @@ class OukitelSwitch(CoordinatorEntity, SwitchEntity):
     async def async_turn_off(self, **kwargs) -> None:
         """Turn the switch off with instant LAN/Cloud dispatch and reentrancy lock."""
         async with self._action_lock:
-            # 1. Update UI and coordinator cache immediately with active override
+            # 1. Update UI and coordinator cache immediately with active override (30s for AC inverter soft-start, 15s for DC/USB)
             self._attr_is_on = False
-            self.coordinator.async_set_user_override(self._key, False, ttl=10.0, min_hold=2.0)
+            override_ttl = 30.0 if self._key == "ac_switch" else 15.0
+            self.coordinator.async_set_user_override(self._key, False, ttl=override_ttl, min_hold=4.0)
             self.async_write_ha_state()
 
             # 2. Fire hardware command (instant LAN if active, plus Cloud sync)
