@@ -4,7 +4,7 @@
 
   [![HACS Default](https://img.shields.io/badge/HACS-Default%20Store-41BDF5.svg?logo=homeassistantcommunitystore)](https://github.com/hacs/default)
   [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2024.1.0%20%E2%80%94%202026.9.4%2B-41BDF5.svg?logo=home-assistant)](https://www.home-assistant.io/)
-  [![GitHub Release](https://img.shields.io/github/v/release/VictorCV-DAM/ha-oukitel)](https://github.com/VictorCV-DAM/ha-oukitel/releases)
+  [![GitHub Release](https://img.shields.io/github/v/release/VictorCV-DAM/ha-oukitel?sort=date)](https://github.com/VictorCV-DAM/ha-oukitel/releases)
   [![Downloads](https://img.shields.io/github/downloads/VictorCV-DAM/ha-oukitel/latest/total.svg?color=brightgreen&logo=github)](https://github.com/VictorCV-DAM/ha-oukitel/releases/latest)
   [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
   [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-orange?logo=buy-me-a-coffee)](https://buymeacoffee.com/VictorCV)
