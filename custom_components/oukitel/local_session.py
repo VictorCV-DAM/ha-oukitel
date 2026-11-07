@@ -213,6 +213,14 @@ class LocalSession:
 
         raise LocalAuthError(f"Station rejected login (result={result}, fields={result_fields})")
 
+    async def send_heartbeat(self) -> None:
+        """Send lightweight Quectel heartbeat ping (cmd 28727) with empty payload."""
+        if not self._writer or self._writer.is_closing() or not self._iv:
+            return
+        hb_cipher = aes_encrypt(self._key, self._iv, b"")
+        self._writer.write(build_frame(self._next_pid(), _CMD_PING, hb_cipher))
+        await self._writer.drain()
+
     async def _subscribe(self) -> None:
         # 1. Mode high-frequency LAN (cmd 19): tag 100 = 1 (局域网高频上报 - LAN high frequency report)
         body = ttlv_encode([(_TAG_REPORT_MODE, "num", 1)])
@@ -220,24 +228,28 @@ class LocalSession:
         self._writer.write(build_frame(self._next_pid(), _CMD_WRITE, ciphertext))
         await self._writer.drain()
 
-        # 2. Snapshot read all tags
+        # 2. Snapshot read all tags on initial connect
         await self.request_read()
 
         # 3. Real Heartbeat (cmd 28727 / _CMD_PING)
-        hb_cipher = aes_encrypt(self._key, self._iv, b"")
-        self._writer.write(build_frame(self._next_pid(), _CMD_PING, hb_cipher))
-        await self._writer.drain()
+        await self.send_heartbeat()
 
     async def resubscribe(self) -> None:
-        """Re-arm high-frequency reporting on an existing socket."""
-        await self._subscribe()
+        """Re-arm high-frequency reporting on an existing socket without read storm."""
+        if not self._writer or self._writer.is_closing() or not self._iv:
+            return
+        body = ttlv_encode([(_TAG_REPORT_MODE, "num", 1)])
+        ciphertext = aes_encrypt(self._key, self._iv, body)
+        self._writer.write(build_frame(self._next_pid(), _CMD_WRITE, ciphertext))
+        await self._writer.drain()
+        await self.send_heartbeat()
 
     async def _keepalive_loop(self) -> None:
         failures = 0
         while True:
             try:
                 await asyncio.sleep(_KEEPALIVE_INTERVAL)
-                await self._subscribe()
+                await self.send_heartbeat()
                 failures = 0
             except asyncio.CancelledError:
                 raise

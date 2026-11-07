@@ -44,8 +44,8 @@ _LAN_RECONNECT_DELAY = 10.0
 _CLOUD_SNAPSHOT_INTERVAL = 60.0
 _LAN_RETRY_INTERVAL = 20.0
 _LAN_SILENCE_TIMEOUT = 45.0
-_LAN_REARM_TIMEOUT = 25.0
-_LAN_REARM_INTERVAL = 5.0
+_LAN_REARM_TIMEOUT = 120.0
+_LAN_REARM_INTERVAL = 60.0
 
 STATIC_METADATA_KEYS = (
     "temp",
@@ -1157,18 +1157,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             and (now - self._lan_last_report) > _LAN_STALE_TIMEOUT
         )
         if stale:
-            _LOGGER.debug("oukitel: LAN telemetry silent, polling station via CMD 35")
+            _LOGGER.debug("oukitel: LAN telemetry silent (>150s), polling station snapshot via CMD 17")
             if self._lan_session:
                 try:
                     await self._lan_session.request_read()
                 except Exception:
                     pass
-
-        if self._lan_session:
-            try:
-                await self._lan_session.request_read()
-            except Exception:
-                pass
 
         if not self._lan_state:
             for _ in range(20):
