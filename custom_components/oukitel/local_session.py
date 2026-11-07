@@ -246,10 +246,16 @@ class LocalSession:
 
     async def _keepalive_loop(self) -> None:
         failures = 0
+        tick = 0
         while True:
             try:
                 await asyncio.sleep(_KEEPALIVE_INTERVAL)
-                await self.send_heartbeat()
+                tick += 1
+                if tick % 3 == 0:
+                    # Every ~36s refresh high-frequency reporting lease (tag 100 = 1)
+                    await self.resubscribe()
+                else:
+                    await self.send_heartbeat()
                 failures = 0
             except asyncio.CancelledError:
                 raise
