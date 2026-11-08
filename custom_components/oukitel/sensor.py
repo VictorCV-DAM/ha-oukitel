@@ -307,10 +307,10 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Hide measurements when the station has stopped reporting."""
+        """Return True if entity is available; preserves state across transient network blips."""
         if not super().available:
             return False
-        if getattr(self.coordinator, "telemetry_stale", False):
+        if self.coordinator.is_paused:
             return False
         return True
 
