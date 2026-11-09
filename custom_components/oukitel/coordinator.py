@@ -39,13 +39,13 @@ from .auth_refresh import try_refresh_auth_key
 
 _LOGGER = logging.getLogger(__name__)
 
-_LAN_STALE_TIMEOUT = 150.0
-_LAN_RECONNECT_DELAY = 10.0
+_LAN_STALE_TIMEOUT = 30.0
+_LAN_RECONNECT_DELAY = 2.0
 _CLOUD_SNAPSHOT_INTERVAL = 60.0
-_LAN_RETRY_INTERVAL = 20.0
-_LAN_SILENCE_TIMEOUT = 45.0
-_LAN_REARM_TIMEOUT = 30.0
-_LAN_REARM_INTERVAL = 15.0
+_LAN_RETRY_INTERVAL = 10.0
+_LAN_SILENCE_TIMEOUT = 25.0
+_LAN_REARM_TIMEOUT = 15.0
+_LAN_REARM_INTERVAL = 10.0
 
 STATIC_METADATA_KEYS = (
     "temp",
@@ -808,6 +808,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
             self._lan_active = False
 
+            # If LAN stream drops, immediately request cloud poll in AUTO mode to prevent frozen metrics
+            if self.connection_mode == MODE_AUTO and getattr(self.client, "access_token", None):
+                self.hass.async_create_task(self.async_request_refresh())
+
             if self._paused:
                 break
 
@@ -1041,6 +1045,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         )
         try:
             await session.resubscribe()
+            await session.request_read()
         except Exception as exc:
             _LOGGER.debug("oukitel: LAN re-arm failed: %s", exc)
             return False

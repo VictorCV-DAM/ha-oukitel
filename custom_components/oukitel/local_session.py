@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import struct
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -43,8 +44,9 @@ from .local_scan import (
 _LOGGER = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT = 15.0
-_READ_TIMEOUT = 90.0
-_KEEPALIVE_INTERVAL = 12.0
+_READ_TIMEOUT = 20.0
+_KEEPALIVE_INTERVAL = 8.0
+_SILENCE_PROBE_THRESHOLD = 12.0
 _CLOSE_TIMEOUT = 5.0
 
 
@@ -76,6 +78,7 @@ class LocalSession:
         self._keepalive_task: asyncio.Task | None = None
         self._iv: bytes | None = None
         self._packet_id = 1000
+        self._last_rx_time: float = time.monotonic()
 
     def _next_pid(self) -> int:
         self._packet_id += 1
@@ -130,6 +133,7 @@ class LocalSession:
             if not chunk:
                 _LOGGER.debug("oukitel: LAN socket closed by peer")
                 return
+            self._last_rx_time = time.monotonic()
             for _pid, cmd, payload in self._assembler.feed(chunk):
                 await self._handle(cmd, payload)
 
@@ -246,14 +250,20 @@ class LocalSession:
 
     async def _keepalive_loop(self) -> None:
         failures = 0
-        tick = 0
         while True:
             try:
                 await asyncio.sleep(_KEEPALIVE_INTERVAL)
-                tick += 1
-                if tick % 3 == 0:
-                    # Every ~36s refresh high-frequency reporting lease (tag 100 = 1)
+                now = time.monotonic()
+                silence = now - self._last_rx_time
+
+                if silence >= _SILENCE_PROBE_THRESHOLD:
+                    _LOGGER.debug(
+                        "oukitel: LAN telemetry quiet for %.1fs (threshold %.1fs) -> re-arming lease and requesting read snapshot",
+                        silence,
+                        _SILENCE_PROBE_THRESHOLD,
+                    )
                     await self.resubscribe()
+                    await self.request_read()
                 else:
                     await self.send_heartbeat()
                 failures = 0
