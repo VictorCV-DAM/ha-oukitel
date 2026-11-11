@@ -73,6 +73,28 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 )
 
 
+STEP_EP2500_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required("ep2500_host"): cv.string,
+        vol.Required("ep2500_device_id"): cv.string,
+        vol.Required("ep2500_local_key"): cv.string,
+        vol.Optional("ep2500_port", default=6668): cv.port,
+        vol.Required(
+            CONF_POLL_INTERVAL,
+            default=10,
+        ): NumberSelector(
+            NumberSelectorConfig(
+                min=3,
+                max=120,
+                step=1,
+                mode=NumberSelectorMode.SLIDER,
+                unit_of_measurement="s",
+            )
+        ),
+    }
+)
+
+
 class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Oukitel Power Station."""
 
@@ -85,7 +107,14 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._reauth_entry: config_entries.ConfigEntry | None = None
 
     async def async_step_user(self, user_input=None):
-        """Handle the initial step."""
+        """Handle the device family selection menu."""
+        return self.async_show_menu(
+            step_id="user",
+            menu_options=["portable", "ep2500"],
+        )
+
+    async def async_step_portable(self, user_input=None):
+        """Handle setup for portable stations (P & BP series)."""
         errors = {}
 
         if user_input is not None:
@@ -136,8 +165,60 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     return await self.async_step_device()
 
         return self.async_show_form(
-            step_id="user",
+            step_id="portable",
             data_schema=STEP_USER_DATA_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_ep2500(self, user_input=None):
+        """Handle setup for EP2500 Balcony Energy Storage."""
+        errors = {}
+
+        if user_input is not None:
+            host = user_input["ep2500_host"].strip()
+            dev_id = user_input["ep2500_device_id"].strip()
+            local_key = user_input["ep2500_local_key"].strip()
+            port = int(user_input.get("ep2500_port", 6668))
+
+            unique_id = f"oukitel_ep2500_{dev_id}"
+            await self.async_set_unique_id(unique_id)
+            self._abort_if_unique_id_configured()
+
+            from .ep2500.client import OukitelEP2500LocalClient
+            client = OukitelEP2500LocalClient(
+                self.hass,
+                host=host,
+                device_id=dev_id,
+                local_key=local_key,
+                port=port,
+            )
+
+            connected = await client.async_connect()
+            if not connected:
+                _LOGGER.warning(
+                    "oukitel_ep2500: Could not verify local connection to %s:%s, proceeding with entry creation.",
+                    host,
+                    port,
+                )
+
+            entry_data = {
+                "device_family": "ep2500",
+                "ep2500_host": host,
+                "ep2500_device_id": dev_id,
+                "ep2500_local_key": local_key,
+                "ep2500_port": port,
+                CONF_POLL_INTERVAL: user_input.get(CONF_POLL_INTERVAL, 10),
+            }
+
+            title = f"Oukitel EP2500 ({dev_id[-4:] if len(dev_id) >= 4 else dev_id})"
+            return self.async_create_entry(
+                title=title,
+                data=entry_data,
+            )
+
+        return self.async_show_form(
+            step_id="ep2500",
+            data_schema=STEP_EP2500_DATA_SCHEMA,
             errors=errors,
         )
 
@@ -265,6 +346,29 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
         """Manage per-device settings."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
+
+        if self._config_entry.data.get("device_family") == "ep2500":
+            current_interval = self._config_entry.options.get(
+                CONF_POLL_INTERVAL,
+                self._config_entry.data.get(CONF_POLL_INTERVAL, 10),
+            )
+            return self.async_show_form(
+                step_id="init",
+                data_schema=vol.Schema({
+                    vol.Required(
+                        CONF_POLL_INTERVAL,
+                        default=current_interval,
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=3,
+                            max=120,
+                            step=1,
+                            mode=NumberSelectorMode.SLIDER,
+                            unit_of_measurement="s",
+                        )
+                    ),
+                }),
+            )
 
         current_mode = self._config_entry.options.get(
             CONF_CONNECTION_MODE,

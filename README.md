@@ -872,10 +872,12 @@ If this integration has saved you time, enhanced your home solar automation, or 
 >
 > **How to Test in HACS:**
 > 1. In Home Assistant, open **HACS ➔ Integrations ➔ Oukitel Power Station**.
-> 2. Click the three dots (top right) ➔ **Redownload**.
-> 3. Select the branch **`feature/ep2500-support`** and click **Download**.
+> 2. Click the three dots (top right) ➔ select **Install another version** (or enable **Show beta versions**).
+> 3. Choose the latest pre-release (e.g. **`v1.6.0-alpha.1`**) and click **Install / Reinstall**.
 > 4. Restart Home Assistant.
 > 5. Go to **Settings ➔ Devices & Services ➔ Add Integration ➔ Oukitel Power Station** and choose **Balcony Energy Storage (EP2500 Series - Local Tuya)**.
+>
+> 💡 **Hardware Pairing Tip:** If you need to re-pair or connect the EP2500 to Wi-Fi, press the **Power button 4 times quickly in rapid succession**. The Wi-Fi icon on the LCD will begin flashing to indicate pairing mode.
 
 <div align="center">
   <table border="0" style="margin: 20px auto; border-collapse: separate; border-spacing: 24px 0;">
