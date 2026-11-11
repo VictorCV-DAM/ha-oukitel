@@ -44,9 +44,9 @@ from .local_scan import (
 _LOGGER = logging.getLogger(__name__)
 
 _CONNECT_TIMEOUT = 15.0
-_READ_TIMEOUT = 20.0
-_KEEPALIVE_INTERVAL = 8.0
-_SILENCE_PROBE_THRESHOLD = 12.0
+_READ_TIMEOUT = 30.0
+_KEEPALIVE_INTERVAL = 10.0
+_SILENCE_PROBE_THRESHOLD = 15.0
 _CLOSE_TIMEOUT = 5.0
 
 
@@ -145,16 +145,8 @@ class LocalSession:
         await self._writer.drain()
 
     async def request_read(self) -> None:
-        if not self._writer or self._writer.is_closing():
-            return
-        # CMD 35: Real Quectel telemetry query command
-        cipher_empty = aes_encrypt(self._key, self._iv, b"")
-        self._writer.write(build_frame(self._next_pid(), 35, cipher_empty))
-
-        body_tags = b"".join(struct.pack(">H", t) for t in self._read_tags)
-        cipher_tags = aes_encrypt(self._key, self._iv, body_tags)
-        self._writer.write(build_frame(self._next_pid(), 35, cipher_tags))
-        await self._writer.drain()
+        """Renew telemetry push lease safely without CMD 35 polling storms."""
+        await self.resubscribe()
 
     # ------------------------------------------------------------------
     # Internal
@@ -258,12 +250,11 @@ class LocalSession:
 
                 if silence >= _SILENCE_PROBE_THRESHOLD:
                     _LOGGER.debug(
-                        "oukitel: LAN telemetry quiet for %.1fs (threshold %.1fs) -> re-arming lease and requesting read snapshot",
+                        "oukitel: LAN telemetry quiet for %.1fs (threshold %.1fs) -> renewing lease (Tag 100 = 1)",
                         silence,
                         _SILENCE_PROBE_THRESHOLD,
                     )
                     await self.resubscribe()
-                    await self.request_read()
                 else:
                     await self.send_heartbeat()
                 failures = 0

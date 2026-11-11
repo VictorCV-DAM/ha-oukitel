@@ -1045,7 +1045,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         )
         try:
             await session.resubscribe()
-            await session.request_read()
         except Exception as exc:
             _LOGGER.debug("oukitel: LAN re-arm failed: %s", exc)
             return False
