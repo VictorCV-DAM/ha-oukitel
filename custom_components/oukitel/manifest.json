@@ -16,5 +16,5 @@
     "pycryptodome>=3.18.0",
     "tinytuya>=1.16.0"
   ],
-  "version": "1.6.0-alpha.2"
+  "version": "1.6.0-alpha.3"
 }

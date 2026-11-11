@@ -74,16 +74,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     device_family = entry.data.get("device_family")
     if device_family == "ep2500":
-        from .ep2500 import (
+        from .ep2500.const import (
             CONF_EP2500_HOST,
             CONF_EP2500_ID,
             CONF_EP2500_KEY,
             CONF_EP2500_PORT,
             DEFAULT_EP2500_POLL_INTERVAL,
             DEFAULT_EP2500_PORT,
-            OukitelEP2500Coordinator,
-            OukitelEP2500LocalClient,
         )
+        from .ep2500.client import OukitelEP2500LocalClient
+        from .ep2500.coordinator import OukitelEP2500Coordinator
         host = entry.data[CONF_EP2500_HOST]
         device_id = entry.data[CONF_EP2500_ID]
         local_key = entry.data[CONF_EP2500_KEY]
