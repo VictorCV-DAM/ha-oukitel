@@ -46,7 +46,7 @@ _LOGGER = logging.getLogger(__name__)
 _CONNECT_TIMEOUT = 15.0
 _READ_TIMEOUT = 30.0
 _KEEPALIVE_INTERVAL = 10.0
-_SILENCE_PROBE_THRESHOLD = 15.0
+_SILENCE_PROBE_THRESHOLD = 25.0
 _CLOSE_TIMEOUT = 5.0
 
 
@@ -79,6 +79,7 @@ class LocalSession:
         self._iv: bytes | None = None
         self._packet_id = 1000
         self._last_rx_time: float = time.monotonic()
+        self._last_telemetry_time: float = time.monotonic()
 
     def _next_pid(self) -> int:
         self._packet_id += 1
@@ -145,8 +146,8 @@ class LocalSession:
         await self._writer.drain()
 
     async def request_read(self) -> None:
-        """Renew telemetry push lease safely without CMD 35 polling storms."""
-        await self.resubscribe()
+        """Trigger immediate telemetry ping safely without UART write saturation."""
+        await self.send_heartbeat()
 
     # ------------------------------------------------------------------
     # Internal
@@ -224,10 +225,7 @@ class LocalSession:
         self._writer.write(build_frame(self._next_pid(), _CMD_WRITE, ciphertext))
         await self._writer.drain()
 
-        # 2. Snapshot read all tags on initial connect
-        await self.request_read()
-
-        # 3. Real Heartbeat (cmd 28727 / _CMD_PING)
+        # 2. Real Heartbeat (cmd 28727 / _CMD_PING) to trigger initial response
         await self.send_heartbeat()
 
     async def resubscribe(self) -> None:
@@ -246,17 +244,22 @@ class LocalSession:
             try:
                 await asyncio.sleep(_KEEPALIVE_INTERVAL)
                 now = time.monotonic()
-                silence = now - self._last_rx_time
+                telemetry_silence = now - self._last_telemetry_time
 
-                if silence >= _SILENCE_PROBE_THRESHOLD:
-                    _LOGGER.debug(
-                        "oukitel: LAN telemetry quiet for %.1fs (threshold %.1fs) -> renewing lease (Tag 100 = 1)",
-                        silence,
+                # If no telemetry frames have arrived for > threshold, the station has ceased streaming.
+                # Do NOT keep the socket artificially alive with pings. Drop the connection cleanly so
+                # the coordinator can fall back to Cloud and reconnect cleanly.
+                if telemetry_silence >= _SILENCE_PROBE_THRESHOLD:
+                    _LOGGER.warning(
+                        "oukitel: LAN telemetry quiet for %.1fs (threshold %.1fs) -> closing session to trigger clean reconnect",
+                        telemetry_silence,
                         _SILENCE_PROBE_THRESHOLD,
                     )
-                    await self.resubscribe()
-                else:
-                    await self.send_heartbeat()
+                    if self._writer and not self._writer.is_closing():
+                        self._writer.close()
+                    break
+
+                await self.send_heartbeat()
                 failures = 0
             except asyncio.CancelledError:
                 raise
@@ -265,6 +268,8 @@ class LocalSession:
                 _LOGGER.debug("oukitel: LAN keepalive tick failed (%s/3): %s", failures, exc)
                 if failures >= 3:
                     _LOGGER.debug("oukitel: LAN keepalive failed 3 consecutive times, aborting keepalive loop")
+                    if self._writer and not self._writer.is_closing():
+                        self._writer.close()
                     break
 
     async def _handle(self, cmd: int, payload: bytes) -> None:
@@ -279,6 +284,7 @@ class LocalSession:
                 data = aes_decrypt(self._key, self._iv, payload)
                 fields = ttlv_decode(data)
                 if fields:
+                    self._last_telemetry_time = time.monotonic()
                     self._on_telemetry(fields)
             except Exception as exc:
                 _LOGGER.debug("oukitel: Could not decode frame cmd=%s: %s", cmd, exc)

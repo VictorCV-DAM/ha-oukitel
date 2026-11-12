@@ -1161,12 +1161,13 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             and (now - self._lan_last_report) > _LAN_STALE_TIMEOUT
         )
         if stale:
-            _LOGGER.debug("oukitel: LAN telemetry silent (>150s), polling station snapshot via CMD 17")
-            if self._lan_session:
-                try:
-                    await self._lan_session.request_read()
-                except Exception:
-                    pass
+            _LOGGER.warning(
+                "oukitel: LAN telemetry silent (>%.1fs) — dropping socket to reconnect and falling back to cloud",
+                _LAN_STALE_TIMEOUT,
+            )
+            await self._force_lan_reconnect()
+            if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
+                return await self._update_cloud()
 
         if not self._lan_state:
             for _ in range(20):
@@ -1326,7 +1327,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 offline_data["online"] = False
                 return offline_data
 
-            can_wake = (now - self.last_user_command_time) >= 15.0
+            can_wake = (
+                self.connection_mode == MODE_CLOUD
+                and (now - self.last_user_command_time) >= 15.0
+            )
             if can_wake and (now - self.last_wake_time >= DEFAULT_WAKE_INTERVAL):
                 try:
                     await self.hass.async_add_executor_job(self.client.wake_device)
