@@ -82,6 +82,17 @@ DP_PV4_VOLTAGE = "181"
 DP_PV4_CURRENT = "182"
 DP_PV3_VOLTAGE = "183"
 
+# Operating mode schedule slots (DP 165 is slot 1, which commands the active mode)
+DP_OPERATING_MODE_SLOT1 = "165"
+DP_OPERATING_MODE_SLOT2 = "166"
+DP_OPERATING_MODE_SLOT3 = "167"
+DP_OPERATING_MODE_SLOT4 = "168"
+DP_OPERATING_MODE_SLOT5 = "169"
+
+MODE_GRID_PRIORITY = "grid_priority"
+MODE_BACKUP_POWER = "backup_power"
+EP2500_OPERATING_MODES = [MODE_GRID_PRIORITY, MODE_BACKUP_POWER]
+
 
 @dataclass(frozen=True)
 class EP2500SensorEntityDescription:

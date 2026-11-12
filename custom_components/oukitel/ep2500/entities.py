@@ -4,6 +4,7 @@ import logging
 from typing import Any, Optional
 from homeassistant.components.button import ButtonEntity
 from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import EntityCategory
@@ -11,12 +12,16 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DP_ANTI_BACKFLOW,
+    DP_ANTI_BACKFLOW_REG,
     DP_MAX_BATTERY_CHARGE_POWER,
     DP_MAX_FEED_IN_POWER,
     DP_OFFGRID_OUTLET,
+    DP_OPERATING_MODE,
+    DP_OPERATING_MODE_SLOT1,
     DP_PV_CHARGE_LIMIT,
     DP_SOC_CHARGE_STOP,
     DP_SOC_DISCHARGE_STOP,
+    EP2500_OPERATING_MODES,
     EP2500SensorEntityDescription,
     LIMIT_CHARGE_MAX,
     LIMIT_CHARGE_MIN,
@@ -171,6 +176,69 @@ class OukitelEP2500Number(CoordinatorEntity[OukitelEP2500Coordinator], NumberEnt
         await self.coordinator.async_set_dp(self._dp, int(value))
 
 
+class OukitelEP2500Select(CoordinatorEntity[OukitelEP2500Coordinator], SelectEntity):
+    """Interactive mode selector for EP2500."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: OukitelEP2500Coordinator,
+        dp_read: str,
+        dp_write: str,
+        key: str,
+        name: str,
+        options: list[str],
+        icon: str,
+    ) -> None:
+        """Initialize the select entity."""
+        super().__init__(coordinator)
+        self._dp_read = dp_read
+        self._dp_write = dp_write
+        self._key = key
+        self._attr_unique_id = f"oukitel_ep2500_{coordinator.device_id}_{key}"
+        self._attr_name = name
+        self._attr_options = options
+        self._attr_icon = icon
+
+    @property
+    def device_info(self):
+        """Return parent device information."""
+        return self.coordinator.device_info
+
+    @property
+    def current_option(self) -> Optional[str]:
+        """Return current operating mode."""
+        if not self.coordinator.data:
+            return None
+        val = self.coordinator.data.get(self._dp_read)
+        if val is None:
+            val = self.coordinator.data.get(self._dp_write)
+        if val is not None and str(val) in self._attr_options:
+            return str(val)
+        return None
+
+    async def async_select_option(self, option: str) -> None:
+        """Change operating mode on hardware."""
+        if option not in self._attr_options:
+            _LOGGER.warning("oukitel_ep2500: Invalid mode option '%s' requested", option)
+            return
+
+        _LOGGER.debug(
+            "oukitel_ep2500: Setting operating mode to %s (command register DP %s)",
+            option,
+            self._dp_write,
+        )
+        # Write to DP 165 (command register for operating mode)
+        await self.coordinator.async_set_dp(self._dp_write, option)
+
+        # Optimistically update cache for snappy UI response
+        if self.coordinator.data is not None:
+            self.coordinator.data[self._dp_read] = option
+            self.coordinator.data[self._dp_write] = option
+            self.async_write_ha_state()
+
+
 class OukitelEP2500ReloadButton(CoordinatorEntity[OukitelEP2500Coordinator], ButtonEntity):
     """Button entity to trigger immediate telemetry polling and session refresh."""
 
@@ -252,6 +320,17 @@ def create_ep2500_numbers(coordinator: OukitelEP2500Coordinator) -> list[NumberE
         ),
         OukitelEP2500Number(
             coordinator,
+            dp=DP_ANTI_BACKFLOW_REG,
+            key="anti_backflow_power",
+            name="Anti-Backflow Regulation Power",
+            min_value=LIMIT_FEED_IN_MIN,
+            max_value=LIMIT_FEED_IN_MAX,
+            step=10,
+            unit="W",
+            icon="mdi:transmission-tower",
+        ),
+        OukitelEP2500Number(
+            coordinator,
             dp=DP_SOC_CHARGE_STOP,
             key="soc_charge_stop",
             name="Battery Charge Stop SoC",
@@ -273,3 +352,19 @@ def create_ep2500_numbers(coordinator: OukitelEP2500Coordinator) -> list[NumberE
             icon="mdi:battery-low",
         ),
     ]
+
+
+def create_ep2500_selects(coordinator: OukitelEP2500Coordinator) -> list[SelectEntity]:
+    """Instantiate standard EP2500 select entities."""
+    return [
+        OukitelEP2500Select(
+            coordinator,
+            dp_read=DP_OPERATING_MODE,
+            dp_write=DP_OPERATING_MODE_SLOT1,
+            key="operating_mode",
+            name="Operating Mode",
+            options=EP2500_OPERATING_MODES,
+            icon="mdi:tune",
+        ),
+    ]
+

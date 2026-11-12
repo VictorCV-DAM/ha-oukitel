@@ -29,6 +29,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     """Set up Oukitel select entities based on a config entry."""
     data = hass.data[DOMAIN][entry.entry_id]
     if data.get("is_ep2500"):
+        from .ep2500.entities import create_ep2500_selects
+        async_add_entities(create_ep2500_selects(data["coordinator"]))
         return
 
     coordinator: OukitelDataCoordinator = data["coordinator"]
