@@ -23,6 +23,9 @@ from .const import (
     DEFAULT_REGION,
     DOMAIN,
     MODE_CLOUD,
+    MODE_ZERO_CLOUD,
+    CONF_CLOUD_BRIDGE,
+    DEFAULT_BRIDGE_PORT,
 )
 from .coordinator import OukitelDataCoordinator
 
@@ -92,54 +95,68 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     device_key = entry.data.get("device_key")
 
-    _LOGGER.debug(
-        "oukitel: Setting up entry for %s (device_key=%s, mode=%s, host=%s)",
-        email, device_key, connection_mode, host,
+    use_bridge = (
+        connection_mode == MODE_ZERO_CLOUD
+        or bool(entry.options.get(CONF_CLOUD_BRIDGE, entry.data.get(CONF_CLOUD_BRIDGE, False)))
+        or (not email and not password)
     )
-    client = AcceleronixCloudClient(
-        email=email,
-        password=password,
-        region=region,
-        device_key=device_key,
-        device_name=entry.data.get("device_name"),
+
+    _LOGGER.debug(
+        "oukitel: Setting up entry for %s (device_key=%s, mode=%s, host=%s, use_bridge=%s)",
+        email, device_key, connection_mode, host, use_bridge,
     )
 
     cloud_connected = False
-    try:
-        success = await hass.async_add_executor_job(client.login)
-        if success:
-            cloud_connected = True
-            await hass.async_add_executor_job(client.fetch_device_info)
-            _LOGGER.debug(
-                "oukitel: Fetched device info for %s (%s). authKey present: %s",
-                client.device_name, client.device_key, bool(client.auth_key),
-            )
+    if use_bridge:
+        from .local_client import LocalOnlyClient
+        client = LocalOnlyClient(
+            device_key=device_key,
+            product_key=entry.data.get("product_key"),
+            device_name=entry.data.get("device_name", "Oukitel Station"),
+        )
+    else:
+        client = AcceleronixCloudClient(
+            email=email,
+            password=password,
+            region=region,
+            device_key=device_key,
+            device_name=entry.data.get("device_name"),
+        )
+        try:
+            success = await hass.async_add_executor_job(client.login)
+            if success:
+                cloud_connected = True
+                await hass.async_add_executor_job(client.fetch_device_info)
+                _LOGGER.debug(
+                    "oukitel: Fetched device info for %s (%s). authKey present: %s",
+                    client.device_name, client.device_key, bool(client.auth_key),
+                )
 
-            # Persist credentials and metadata to config entry data for offline restarts
-            new_data = dict(entry.data)
-            updated = False
-            for k, val in (
-                (CONF_AUTH_KEY, client.auth_key),
-                ("product_key", client.product_key),
-                ("device_name", client.device_name),
-                ("product_name", client.product_name),
-                ("device_key", client.device_key),
-            ):
-                if val and new_data.get(k) != val:
-                    new_data[k] = val
-                    updated = True
-            if updated:
-                hass.config_entries.async_update_entry(entry, data=new_data)
-                _LOGGER.debug("oukitel: Persisted device credentials to config entry data")
-        else:
-            _LOGGER.warning("oukitel: Failed to login to Oukitel cloud (unsuccessful credentials or response)")
-    except OukitelAuthError as err:
-        _LOGGER.error("oukitel: Authentication failed for %s: %s", email, err)
-        raise ConfigEntryAuthFailed(f"Authentication failed for {email}: {err}") from err
-    except Exception as exc:
-        _LOGGER.warning("oukitel: Exception connecting to Oukitel cloud (network/DNS/timeout): %s", exc)
+                # Persist credentials and metadata to config entry data for offline restarts
+                new_data = dict(entry.data)
+                updated = False
+                for k, val in (
+                    (CONF_AUTH_KEY, client.auth_key),
+                    ("product_key", client.product_key),
+                    ("device_name", client.device_name),
+                    ("product_name", client.product_name),
+                    ("device_key", client.device_key),
+                ):
+                    if val and new_data.get(k) != val:
+                        new_data[k] = val
+                        updated = True
+                if updated:
+                    hass.config_entries.async_update_entry(entry, data=new_data)
+                    _LOGGER.debug("oukitel: Persisted device credentials to config entry data")
+            else:
+                _LOGGER.warning("oukitel: Failed to login to Oukitel cloud (unsuccessful credentials or response)")
+        except OukitelAuthError as err:
+            _LOGGER.error("oukitel: Authentication failed for %s: %s", email, err)
+            raise ConfigEntryAuthFailed(f"Authentication failed for {email}: {err}") from err
+        except Exception as exc:
+            _LOGGER.warning("oukitel: Exception connecting to Oukitel cloud (network/DNS/timeout): %s", exc)
 
-    if not cloud_connected:
+    if not cloud_connected and not use_bridge:
         cached_auth_key = entry.options.get(CONF_AUTH_KEY) or entry.data.get(CONF_AUTH_KEY)
         if connection_mode == MODE_CLOUD:
             raise ConfigEntryNotReady(
@@ -169,9 +186,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         host=host,
         config_entry=entry,
     )
-    
-    # Setup LAN mode if not forced to Cloud
-    if connection_mode != MODE_CLOUD:
+    coordinator.use_bridge = use_bridge
+
+    # Setup Zero-Cloud bridge or LAN mode
+    if use_bridge:
+        _LOGGER.info("oukitel: [Zero-Cloud] Initializing local MQTT broker on port %s...", DEFAULT_BRIDGE_PORT)
+        await coordinator.async_setup_bridge()
+    elif connection_mode != MODE_CLOUD:
         if not cloud_connected:
             _LOGGER.info("oukitel: Offline boot — establishing LAN session before first coordinator refresh...")
             for attempt in range(1, 4):

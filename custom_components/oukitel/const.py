@@ -1,7 +1,7 @@
 """Constants for the Oukitel Power Station integration."""
 
 DOMAIN = "oukitel"
-VERSION = "1.5.18"
+VERSION = "1.6.0-alpha.5"
 
 CONF_REGION = "region"
 CONF_EMAIL = "email"
@@ -14,17 +14,28 @@ CONF_PRICE_SENSOR = "price_sensor"
 CONF_FIXED_PRICE = "fixed_price"
 DEFAULT_FIXED_PRICE = 0.15
 CONF_CURRENCY = "currency"
+
+CONF_BLE_MAC = "ble_mac"
+CONF_BLE_SSID = "ble_ssid"
+CONF_BLE_PASSWORD = "ble_password"
+CONF_BLE_ENDPOINT = "ble_endpoint"
+CONF_BLE_SOURCE = "ble_source"
+DEFAULT_BLE_MAC = ""
 DEFAULT_CURRENCY = "€"
 CURRENCY_OPTIONS = ["€", "$", "£", "CHF", "kr", "¥", "zł", "R$", "MX$"]
 
 MODE_AUTO = "auto"
 MODE_LAN = "lan"
 MODE_CLOUD = "cloud"
+MODE_ZERO_CLOUD = "zero_cloud"
+CONF_CLOUD_BRIDGE = "cloud_bridge"
+DEFAULT_BRIDGE_PORT = 8886
 
 CONNECTION_MODES = {
     MODE_AUTO: "Automático (LAN preferente + Cloud)",
     MODE_LAN: "Solo LAN (Tiempo real directo)",
     MODE_CLOUD: "Solo Cloud (Nube / Polling)",
+    MODE_ZERO_CLOUD: "Zero-Cloud / Broker Local (100% Sin Nube)",
 }
 
 DEFAULT_REGION = "EU"

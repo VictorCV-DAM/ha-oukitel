@@ -1,9 +1,11 @@
 """Config flow and Options flow for Oukitel Power Station integration."""
 
+from __future__ import annotations
+
 import logging
-import voluptuous as vol
-from collections.abc import Mapping
 from typing import Any
+import voluptuous as vol
+
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
@@ -23,19 +25,31 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import AcceleronixCloudClient, OukitelAuthError, OukitelConnectionError
+from .ble_provision import (
+    async_discover_oukitel_ble,
+    async_get_bluetooth_sources,
+    point_station,
+)
 from .const import (
     CONF_AUTH_KEY,
+    CONF_BLE_ENDPOINT,
+    CONF_BLE_MAC,
+    CONF_BLE_PASSWORD,
+    CONF_BLE_SOURCE,
+    CONF_BLE_SSID,
+    CONF_CLOUD_BRIDGE,
     CONF_CONNECTION_MODE,
     CONF_CURRENCY,
     CONF_EMAIL,
+    CONF_FIXED_PRICE,
     CONF_HOST,
     CONF_PASSWORD,
     CONF_POLL_INTERVAL,
     CONF_PRICE_SENSOR,
-    CONF_FIXED_PRICE,
     CONF_REGION,
     CONNECTION_MODES,
     CURRENCY_OPTIONS,
+    DEFAULT_BRIDGE_PORT,
     DEFAULT_CONNECTION_MODE,
     DEFAULT_CURRENCY,
     DEFAULT_FIXED_PRICE,
@@ -45,6 +59,7 @@ from .const import (
     MODE_AUTO,
     MODE_CLOUD,
     MODE_LAN,
+    MODE_ZERO_CLOUD,
     REGION_SERVERS,
 )
 
@@ -54,9 +69,19 @@ REGIONS_OPTIONS = {k: f"{v['name']}" for k, v in REGION_SERVERS.items()}
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_REGION, default=DEFAULT_REGION): vol.In(REGIONS_OPTIONS),
-        vol.Required(CONF_EMAIL): cv.string,
-        vol.Required(CONF_PASSWORD): cv.string,
+        vol.Required("setup_mode", default="cloud"): SelectSelector(
+            SelectSelectorConfig(
+                options=[
+                    {"value": "cloud", "label": "Cloud Account (Standard / Nube Oficial)"},
+                    {"value": "zero_cloud", "label": "Zero-Cloud / Broker Local (100% Offline, Sin Nube)"},
+                ],
+                mode=SelectSelectorMode.LIST,
+            )
+        ),
+        vol.Optional(CONF_REGION, default=DEFAULT_REGION): vol.In(REGIONS_OPTIONS),
+        vol.Optional(CONF_EMAIL, default=""): cv.string,
+        vol.Optional(CONF_PASSWORD, default=""): cv.string,
+        vol.Optional("station_name", default="Oukitel Station"): cv.string,
         vol.Required(
             CONF_POLL_INTERVAL,
             default=DEFAULT_POLL_INTERVAL,
@@ -82,6 +107,7 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize config flow state."""
         self._discovered_devices: list[dict] = []
         self._user_credentials: dict = {}
+        self._ble_discovery: dict[str, Any] = {}
         self._reauth_entry: config_entries.ConfigEntry | None = None
 
     async def async_step_user(self, user_input=None):
@@ -89,10 +115,27 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
+            setup_mode = user_input.get("setup_mode", "cloud")
+
+            # 100% Offline Zero-Cloud setup (No cloud credentials required)
+            if setup_mode == "zero_cloud" or not user_input.get(CONF_EMAIL):
+                station_name = user_input.get("station_name") or "Oukitel Station"
+                entry_data = {
+                    "device_name": station_name,
+                    "device_key": "zero_cloud_station",
+                    CONF_CONNECTION_MODE: MODE_ZERO_CLOUD,
+                    CONF_CLOUD_BRIDGE: True,
+                    CONF_POLL_INTERVAL: user_input.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
+                }
+                return self.async_create_entry(
+                    title=f"{station_name} (Zero-Cloud)",
+                    data=entry_data,
+                )
+
             client = AcceleronixCloudClient(
                 email=user_input[CONF_EMAIL],
                 password=user_input[CONF_PASSWORD],
-                region=user_input[CONF_REGION],
+                region=user_input.get(CONF_REGION, DEFAULT_REGION),
             )
 
             try:
@@ -193,58 +236,101 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data=entry_data,
         )
 
-    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> FlowResult:
-        """Handle initiation of re-authentication with new credentials."""
-        self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        return await self.async_step_reauth_confirm()
-
-    async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Handle credential re-authentication dialog."""
-        errors: dict[str, str] = {}
-        entry = self._reauth_entry or self.hass.config_entries.async_get_entry(self.context["entry_id"])
-        email = entry.data.get(CONF_EMAIL, "")
-        region = entry.data.get(CONF_REGION, DEFAULT_REGION)
-
-        if user_input is not None:
-            new_password = user_input[CONF_PASSWORD]
-            client = AcceleronixCloudClient(
-                email=email,
-                password=new_password,
-                region=region,
-                device_key=entry.data.get("device_key"),
-                device_name=entry.data.get("device_name"),
-            )
+    async def async_step_bluetooth(self, discovery_info):
+        """Handle automatic discovery of an Oukitel/Quectel station over Bluetooth."""
+        dk = pk = ""
+        for data in (discovery_info.manufacturer_data or {}).values():
             try:
-                success = await self.hass.async_add_executor_job(client.login)
-                if not success:
-                    errors["base"] = "invalid_auth"
-            except OukitelAuthError:
-                errors["base"] = "invalid_auth"
-            except (OukitelConnectionError, Exception):
-                errors["base"] = "cannot_connect"
+                if len(data) >= 6:
+                    i = 4
+                    length = data[i]
+                    pk = data[i + 1 : i + 1 + length].decode("ascii")
+                    i += 1 + length
+                    length = data[i]
+                    dk = data[i + 1 : i + 1 + length].hex()
+            except Exception:
+                continue
 
-            if not errors:
-                try:
-                    await self.hass.async_add_executor_job(client.fetch_device_info)
-                except Exception:
-                    pass
+        unique_id = f"oukitel_{dk}" if dk else f"oukitel_{discovery_info.address.replace(':', '').lower()}"
+        await self.async_set_unique_id(unique_id)
+        self._abort_if_unique_id_configured()
 
-                new_data = dict(entry.data)
-                new_data[CONF_PASSWORD] = new_password
-                if client.auth_key:
-                    new_data[CONF_AUTH_KEY] = client.auth_key
+        self._ble_discovery = {
+            "mac": discovery_info.address,
+            "device_key": dk,
+            "product_key": pk,
+            "name": discovery_info.name or f"Oukitel ({discovery_info.address})",
+        }
+        return await self.async_step_bluetooth_confirm()
 
-                self.hass.config_entries.async_update_entry(entry, data=new_data)
-                await self.hass.config_entries.async_reload(entry.entry_id)
-                return self.async_abort(reason="reauth_successful")
+    async def async_step_bluetooth_confirm(self, user_input=None):
+        """Confirm pairing and configure Wi-Fi for the discovered Bluetooth station."""
+        errors = {}
+        if user_input is not None:
+            mac = self._ble_discovery.get("mac", "")
+            ssid = user_input.get(CONF_BLE_SSID, "").strip()
+            pwd = user_input.get(CONF_BLE_PASSWORD, "")
+            endpoint = user_input.get(CONF_BLE_ENDPOINT, f"mqtt://127.0.0.1:{DEFAULT_BRIDGE_PORT}").strip()
+            source = user_input.get(CONF_BLE_SOURCE, "auto")
 
+            success, msg = await point_station(
+                self.hass,
+                ssid=ssid,
+                password=pwd,
+                endpoint=endpoint,
+                mac=mac,
+                source=source,
+            )
+
+            if not success:
+                errors["base"] = "ble_provision_failed"
+                _LOGGER.warning("oukitel: BLE provisioning failed: %s", msg)
+            else:
+                dk = self._ble_discovery.get("device_key") or mac.replace(":", "").lower()
+                pk = self._ble_discovery.get("product_key", "")
+                name = self._ble_discovery.get("name", "Oukitel Station")
+                entry_data = {
+                    "device_key": dk,
+                    "product_key": pk,
+                    "device_name": name,
+                    CONF_CONNECTION_MODE: MODE_ZERO_CLOUD,
+                    CONF_CLOUD_BRIDGE: True,
+                    CONF_POLL_INTERVAL: DEFAULT_POLL_INTERVAL,
+                    CONF_BLE_MAC: mac,
+                }
+                return self.async_create_entry(
+                    title=f"{name} (Zero-Cloud)",
+                    data=entry_data,
+                )
+
+        sources = async_get_bluetooth_sources(self.hass, self._ble_discovery.get("mac", ""))
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_BLE_SSID): cv.string,
+                vol.Required(CONF_BLE_PASSWORD): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
+                vol.Required(
+                    CONF_BLE_ENDPOINT,
+                    default=f"mqtt://192.168.1.219:{DEFAULT_BRIDGE_PORT}",
+                ): cv.string,
+                vol.Optional(CONF_BLE_SOURCE, default="auto"): SelectSelector(
+                    SelectSelectorConfig(
+                        options=sources,
+                        mode=SelectSelectorMode.DROPDOWN,
+                        custom_value=True,
+                    )
+                ),
+            }
+        )
         return self.async_show_form(
-            step_id="reauth_confirm",
-            data_schema=vol.Schema({
-                vol.Required(CONF_PASSWORD): cv.string,
-            }),
-            description_placeholders={"email": email},
+            step_id="bluetooth_confirm",
+            data_schema=schema,
             errors=errors,
+            description_placeholders={
+                "name": self._ble_discovery.get("name", "Oukitel"),
+                "mac": self._ble_discovery.get("mac", ""),
+            },
         )
 
     @staticmethod
@@ -264,31 +350,33 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage per-device settings."""
         if user_input is not None:
+            if user_input.pop("reconfigure_ble", False):
+                return await self.async_step_ble_provision()
             return self.async_create_entry(title="", data=user_input)
 
         current_mode = self._config_entry.options.get(
             CONF_CONNECTION_MODE,
-            self._config_entry.data.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE)
+            self._config_entry.data.get(CONF_CONNECTION_MODE, DEFAULT_CONNECTION_MODE),
         )
         current_host = self._config_entry.options.get(
             CONF_HOST,
-            self._config_entry.data.get(CONF_HOST, "")
+            self._config_entry.data.get(CONF_HOST, ""),
         )
         current_auth_key = self._config_entry.options.get(
             CONF_AUTH_KEY,
-            self._config_entry.data.get(CONF_AUTH_KEY, "")
+            self._config_entry.data.get(CONF_AUTH_KEY, ""),
         )
         current_interval = self._config_entry.options.get(
             CONF_POLL_INTERVAL,
-            self._config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
+            self._config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
         )
         current_price_sensor = self._config_entry.options.get(
             CONF_PRICE_SENSOR,
-            self._config_entry.data.get(CONF_PRICE_SENSOR, "")
+            self._config_entry.data.get(CONF_PRICE_SENSOR, ""),
         )
         current_fixed_price = self._config_entry.options.get(
             CONF_FIXED_PRICE,
-            self._config_entry.data.get(CONF_FIXED_PRICE, DEFAULT_FIXED_PRICE)
+            self._config_entry.data.get(CONF_FIXED_PRICE, DEFAULT_FIXED_PRICE),
         )
 
         hass_currency = getattr(self.hass.config, "currency", "EUR")
@@ -319,7 +407,7 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                     default=current_mode,
                 ): SelectSelector(
                     SelectSelectorConfig(
-                        options=[MODE_AUTO, MODE_LAN, MODE_CLOUD],
+                        options=[MODE_AUTO, MODE_LAN, MODE_ZERO_CLOUD, MODE_CLOUD],
                         translation_key="connection_mode",
                         mode=SelectSelectorMode.LIST,
                     )
@@ -365,6 +453,7 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                         unit_of_measurement=f"{current_currency}/kWh",
                     )
                 ),
+                vol.Optional("reconfigure_ble", default=False): cv.boolean,
             }
         )
 
@@ -378,6 +467,76 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=self.add_suggested_values_to_schema(options_schema, suggested_values),
-            description_placeholders={"device_name": self._config_entry.title},
+            data_schema=options_schema,
+            suggested_values=suggested_values,
+        )
+
+    async def async_step_ble_provision(self, user_input=None):
+        """On-demand Bluetooth provisioning to set Wi-Fi network or change broker endpoint."""
+        errors = {}
+        if user_input is not None:
+            target_mac = user_input.get(CONF_BLE_MAC, "").strip()
+            ssid = user_input.get(CONF_BLE_SSID, "").strip()
+            pwd = user_input.get(CONF_BLE_PASSWORD, "")
+            endpoint = user_input.get(CONF_BLE_ENDPOINT, f"mqtt://192.168.1.219:{DEFAULT_BRIDGE_PORT}").strip()
+            source = user_input.get(CONF_BLE_SOURCE, "auto")
+
+            try:
+                success, msg = await point_station(
+                    self.hass,
+                    ssid=ssid,
+                    password=pwd,
+                    endpoint=endpoint,
+                    mac=target_mac,
+                    source=source,
+                )
+            except Exception as exc:
+                _LOGGER.exception("oukitel: BLE provisioning unexpected error: %s", exc)
+                success, msg = False, str(exc)
+
+            if not success:
+                errors["base"] = "ble_provision_failed"
+                _LOGGER.warning("oukitel: BLE provisioning failed: %s", msg)
+            else:
+                _LOGGER.info("oukitel: BLE provisioning succeeded: %s", msg)
+                updated_options = dict(self._config_entry.options)
+                updated_options[CONF_BLE_SSID] = ssid
+                updated_options[CONF_BLE_ENDPOINT] = endpoint
+                if endpoint.startswith("mqtt://") and not endpoint.startswith("mqtt://iot-south"):
+                    updated_options[CONF_CONNECTION_MODE] = MODE_ZERO_CLOUD
+                return self.async_create_entry(title="", data=updated_options)
+
+        discovered = async_discover_oukitel_ble(self.hass)
+        suggested_ssid = self._config_entry.options.get(
+            CONF_BLE_SSID,
+            self._config_entry.data.get(CONF_BLE_SSID, "OUKITEL"),
+        )
+        sources = async_get_bluetooth_sources(self.hass)
+        schema = vol.Schema(
+            {
+                vol.Optional(CONF_BLE_MAC, default=self._config_entry.data.get(CONF_BLE_MAC, "")): cv.string,
+                vol.Required(CONF_BLE_SSID, default=suggested_ssid): cv.string,
+                vol.Required(CONF_BLE_PASSWORD): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
+                vol.Required(
+                    CONF_BLE_ENDPOINT,
+                    default=self._config_entry.options.get(CONF_BLE_ENDPOINT, f"mqtt://192.168.1.219:{DEFAULT_BRIDGE_PORT}"),
+                ): cv.string,
+                vol.Optional(CONF_BLE_SOURCE, default="auto"): SelectSelector(
+                    SelectSelectorConfig(
+                        options=sources,
+                        mode=SelectSelectorMode.DROPDOWN,
+                        custom_value=True,
+                    )
+                ),
+            }
+        )
+        return self.async_show_form(
+            step_id="ble_provision",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "discovered": f"{len(discovered)} device(s) found" if discovered else "none in range",
+            },
         )

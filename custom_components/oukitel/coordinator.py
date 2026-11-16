@@ -385,6 +385,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         self._lan_session: LocalSession | None = None
         self._lan_listen_task: asyncio.Task | None = None
+        self.use_bridge: bool = False
+        self._bridge = None
+        self._bridge_absent_since: float | None = None
+        self._bridge_first_pass: bool = True
+        self._bridge_never_seen: bool = True
         self._lan_state: dict[int, Any] = {}
         self._lan_last_report: float | None = None
         self._stale_fingerprint: tuple | None = None
@@ -629,11 +634,54 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             await self.async_request_refresh()
 
     # ------------------------------------------------------------------
-    # LAN lifecycle
+    # LAN lifecycle & Zero-Cloud Bridge
     # ------------------------------------------------------------------
+
+    async def async_setup_bridge(self) -> bool:
+        """Start the local fake cloud and put it in place of the LAN session."""
+        if self._bridge is not None:
+            return True
+        from .cloud_bridge import CloudBridge
+
+        self.hass.data.setdefault(DOMAIN, {})
+        if "bridge" in self.hass.data[DOMAIN]:
+            bridge = self.hass.data[DOMAIN]["bridge"]
+            bridge.update_callbacks(self._on_lan_telemetry, self._on_bridge_conn)
+            _LOGGER.info("oukitel: Reusing existing active fake cloud bridge on %s", bridge._port)
+        else:
+            bridge = CloudBridge(self.hass, self._on_lan_telemetry, self._on_bridge_conn)
+            try:
+                await bridge.start()
+            except OSError as exc:
+                _LOGGER.error("oukitel: fake cloud did not start: %s", exc)
+                return False
+            self.hass.data[DOMAIN]["bridge"] = bridge
+        self._bridge = bridge
+        self._lan_session = bridge
+        self._lan_active = True
+        self._lan_connected_at = time.monotonic()
+        self._bridge_absent_since = time.monotonic()
+        self._bridge_never_seen = not bridge.connected
+        return True
+
+    def _on_bridge_conn(self, connected: bool) -> None:
+        """The station has connected to (or dropped off) the fake cloud."""
+        if connected:
+            self._lan_connected_at = time.monotonic()
+            self._bridge_never_seen = False
+            self._bridge_absent_since = None
+            _LOGGER.info("oukitel: [Zero-Cloud] Station connection established on local broker")
+        else:
+            _LOGGER.info("oukitel: [Zero-Cloud] Station connection closed on local broker")
+            if self._bridge_absent_since is None:
+                self._bridge_absent_since = time.monotonic()
 
     async def async_setup_lan(self, reason: str = "startup") -> None:
         """Try to start LAN mode; silently skips if device not found on LAN or paused."""
+        if self.use_bridge:
+            _LOGGER.info("oukitel: [Zero-Cloud] Starting local broker session")
+            await self.async_setup_bridge()
+            return
         if self._paused:
             _LOGGER.debug("oukitel: Skipping LAN setup — integration is paused")
             return
@@ -1078,6 +1126,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if self._lan_session:
             await self._lan_session.close()
             self._lan_session = None
+        if self._bridge is not None:
+            self._bridge = None
         self._lan_active = False
         self._lan_has_valid_telemetry = False
         self._lan_last_rearm = 0.0
