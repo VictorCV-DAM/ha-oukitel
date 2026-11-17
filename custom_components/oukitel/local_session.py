@@ -46,7 +46,9 @@ _LOGGER = logging.getLogger(__name__)
 _CONNECT_TIMEOUT = 15.0
 _READ_TIMEOUT = 30.0
 _KEEPALIVE_INTERVAL = 10.0
+_INITIAL_TELEMETRY_TIMEOUT = 15.0
 _SILENCE_PROBE_THRESHOLD = 90.0
+_SESSION_RECYCLE_INTERVAL = 1800.0
 _CLOSE_TIMEOUT = 5.0
 
 
@@ -80,6 +82,8 @@ class LocalSession:
         self._packet_id = 1000
         self._last_rx_time: float = time.monotonic()
         self._last_telemetry_time: float = time.monotonic()
+        self._session_start_time: float = time.monotonic()
+        self._got_telemetry: bool = False
 
     def _next_pid(self) -> int:
         self._packet_id += 1
@@ -249,11 +253,23 @@ class LocalSession:
                 # If no telemetry frames have arrived for > threshold, the station has ceased streaming.
                 # Do NOT keep the socket artificially alive with pings. Drop the connection cleanly so
                 # the coordinator can fall back to Cloud and reconnect cleanly.
-                if telemetry_silence >= _SILENCE_PROBE_THRESHOLD:
+                threshold = _SILENCE_PROBE_THRESHOLD if self._got_telemetry else _INITIAL_TELEMETRY_TIMEOUT
+                if telemetry_silence >= threshold:
                     _LOGGER.warning(
-                        "oukitel: LAN telemetry quiet for %.1fs (threshold %.1fs) -> closing session to trigger clean reconnect",
+                        "oukitel: LAN telemetry quiet for %.1fs (threshold %.1fs, got_telemetry=%s) -> closing session",
                         telemetry_silence,
-                        _SILENCE_PROBE_THRESHOLD,
+                        threshold,
+                        self._got_telemetry,
+                    )
+                    if self._writer and not self._writer.is_closing():
+                        self._writer.close()
+                    break
+
+                # Periodic session recycling: close socket cleanly every 30 minutes to flush Quectel lwIP buffers
+                if self._got_telemetry and (now - self._session_start_time >= _SESSION_RECYCLE_INTERVAL):
+                    _LOGGER.info(
+                        "oukitel: LAN session periodic recycling (%.0f min) to prevent microcontroller buffer saturation",
+                        _SESSION_RECYCLE_INTERVAL / 60.0,
                     )
                     if self._writer and not self._writer.is_closing():
                         self._writer.close()
@@ -284,6 +300,7 @@ class LocalSession:
                 data = aes_decrypt(self._key, self._iv, payload)
                 fields = ttlv_decode(data)
                 if fields:
+                    self._got_telemetry = True
                     self._last_telemetry_time = time.monotonic()
                     self._on_telemetry(fields)
             except Exception as exc:

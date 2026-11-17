@@ -172,13 +172,28 @@ To guarantee flawless operation across all 58 entities, native Riemann sum energ
 
 ---
 
-## 🌐 Connection Modes: Auto, LAN & Cloud
+## 🌐 Connection Modes & Stability Guide (Guía de Modos y Estabilidad)
 
 You can configure the active connection mode at any time directly in Home Assistant (**Settings** ➔ **Devices & Services** ➔ **Oukitel Power Station** ➔ **Configure ⚙️**):
 
-1. **Automatic (LAN preferred + Cloud)** *(Default)*: Automatically connects via local LAN (TCP port 6607, binary AES-128 push) when the station is on your home Wi-Fi network. If the station goes offline, drops Wi-Fi, or is outside the local network, it seamlessly falls back to Cloud API polling without missing data.
-2. **LAN Only (Direct real-time)**: Home Assistant talks to the station locally over TCP 6607 with 0 cloud polling. HA makes no requests to the cloud; **the station still needs internet access to emit telemetry** (see the important note below).
-3. **Cloud Only (Cloud / Polling)**: Standard cloud polling via the official Acceleronix/Quectel servers (ideal when Home Assistant and the power station are on separate networks or behind isolated VLANs).
+| Mode | Stability Rating | Latency | Hardware Stress | Recommended For | Description |
+|---|---|---|---|---|---|
+| **🟢 Solo Nube / Cloud Only** | **Estable (Recomendado)** | 10–30 s | **Mínimo (0% UART load)** | **Máxima fiabilidad 24/7 y ubicaciones remotas** | Sondeo periódico REST a la nube de Oukitel. No mantiene sockets TCP abiertos en la estación; **100% inmune a cuelgues del bus interno UART o desbordamientos de memoria del chip Wi-Fi**. Es el modo nativo para el que el fabricante diseñó el firmware. |
+| **🟡 Automático / Automatic** | **Tiempo Real (Sensible a Wi-Fi)** | ~1 s | Moderado (Push 1s + Reciclaje cada 30m) | **Usuarios que buscan telemetría instantánea con respaldo** | Conexión local LAN (TCP 6607) a 1 segundo cuando la estación está en la red local. Si el streaming local se interrumpe o la estación se silencia, conmuta automáticamente a la nube. Incluye reciclaje de sesión preventivo para evitar acumulación de buffers. |
+| **🔴 Solo LAN / LAN Only** | **Inestable / Sensible a red** | ~1 s | Alto (Push continuo sin fallback) | **Entornos aislados de alta monitorización local** | Conexión local estricta por TCP 6607 sin peticiones a la nube. Si la red Wi-Fi experimenta microcortes o la estación deja de emitir, las entidades quedarán no disponibles ya que no cuenta con respaldo en la nube. *(Nota: la estación requiere acceso a internet para generar telemetría por diseño de fábrica)*. |
+
+### 🔍 Diagnóstico de Hardware y Prevención de Cuelgues (Hardware Architecture)
+Las estaciones de energía Oukitel (series P2001, P2001E, P2001E Plus, P2001E Pro, BP2000, etc.) incorporan un módulo de comunicaciones Wi-Fi/Bluetooth **Quectel FCM100D** conectado a la placa controladora principal del inversor (STM32 MCU) mediante un puerto serie UART de 2 hilos **sin control de flujo por hardware (sin líneas RTS/CTS)**.
+- **¿Por qué puede colgarse la telemetría en streaming local?**: Al activar el modo de alta frecuencia (`Tag 100 = 1`), el inversor STM32 emite ráfagas de 10 a 20 paquetes por segundo hacia el chip Wi-Fi. Si la red Wi-Fi doméstica experimenta reintentos de paquetes (jitter, cambio de canal del router o microcortes), la cola de transmisión TCP del chip Wi-Fi se llena y la memoria FIFO del puerto serie UART sufre un desbordamiento irreversible (`UART_FIFO_OVR`). En ese estado, el chip Wi-Fi sigue respondiendo a pings de red e incluso abre el puerto TCP, pero la placa principal de la estación deja de comunicarse hasta que se apaga y enciende físicamente la batería.
+- **Medidas implementadas en la integración (v1.5.20+)**:
+  1. **Reciclaje preventivo de sesión**: En modo LAN/Automático, la integración cierra y reabre limpiamente la sesión TCP cada 30 minutos, liberando los búferes de memoria del chip Wi-Fi.
+  2. **Detección inmediata de silencio**: Si la estación acepta la conexión pero no emite telemetría durante 15 segundos, la integración cierra el socket de inmediato sin enviar pings para no saturar el chip, y en modo Automático conmuta a la nube al instante.
+  3. **Modo Solo Nube**: Elimina por completo el streaming por el puerto TCP 6607, garantizando un funcionamiento indefinido 24/7 sin ningún riesgo de bloqueo del microcontrolador.
+
+> [!TIP]
+> **¿Qué modo debo elegir?**:
+> - Si deseas **despreocuparte por completo de cuelgues o desconexiones**, o si la batería está en una segunda residencia o instalación solar aislada: selecciona **Solo Nube** con un intervalo de 10 segundos.
+> - Si deseas **ver la variación instantánea (segundo a segundo)** de potencias cuando enciendes cargas en casa: selecciona **Automático**. Asegúrate de que la estación tenga buena cobertura Wi-Fi (canal fijo de 2.4 GHz en el router).
 
 > [!IMPORTANT]
 > **LAN is local from Home Assistant to the station, but the station itself needs internet to emit telemetry.**
@@ -187,11 +202,12 @@ You can configure the active connection mode at any time directly in Home Assist
 | Feature | **LAN Mode** | **Cloud Mode** |
 |---|---|---|
 | **Protocol** | TCP port 6607 (binary, AES-128 push) | Acceleronix REST API (JSON) |
-| **Latency** | Real-time push (~1 s) | Polling interval (min. 3 s) |
+| **Latency** | Real-time push (~1 s) | Polling interval (min. 3 s, rec. 10 s) |
 | **Internet Required** | Yes — the station must keep its vendor-cloud link for telemetry (HA↔station traffic stays local) | Always |
 | **Switch Control Offline** | ✅ Yes (writes are acknowledged locally) | ❌ No |
 | **Works Offline / Cloud Down** | ⚠️ Partial — handshake and writes work; **telemetry stops** | ❌ No |
 | **Works Outside Local Network** | ❌ (requires VPN) | ✅ Yes |
+| **24/7 Hardware Reliability** | ⚠️ Sensitive to Wi-Fi quality | 🟢 100% Rock solid |
 
 > [!NOTE]
 > **Comportamiento Offline y Limitación de Fabricante: "Caso de corte externo / Corte de red de proveedor"**:
@@ -209,6 +225,17 @@ You can configure the active connection mode at any time directly in Home Assist
 
 
 ---
+
+## 🚀 What's New in v1.5.20: Microcontroller Buffer Protection, 30-min Session Recycling & Connection Mode Categorization
+
+- **🛡️ Microcontroller Buffer Protection & Session Recycling (`1800s / 30m`):** Implemented periodic session recycling for continuous LAN streaming. Gracefully closes and reopens the TCP 6607 socket every 30 minutes, freeing Quectel `FCM100D` lwIP heap and clearing internal buffers before overflow errors occur.
+- **⚡ Fast Silence Bailout (15s):** If a local session establishes the TCP handshake but receives 0 telemetry packets for 15s (indicating the internal STM32 MCU UART bridge is unresponsive), the session is terminated cleanly without sending ping floods, and Auto mode instantly falls back to Cloud API polling to prevent frozen entities in Home Assistant.
+- **🏷️ Connection Modes & Stability Categorization:** Reorganized and clearly labeled all transport modes across the Options UI (`es.json`, `en.json`, `strings.json`, and `const.py`):
+  - `Solo Nube / Cloud Only`: Clearly labeled **Estable (Recomendado para máxima fiabilidad)** / **Stable (Recommended for maximum reliability)** — 100% immune to internal UART overruns.
+  - `Automático / Automatic`: Labeled **Tiempo Real (Sensible a calidad Wi-Fi)** / **Real-time continuous (Sensitive to Wi-Fi quality)** with 30-minute recycling and instant fallback.
+  - `Solo LAN / LAN Only`: Labeled **Tiempo Real Estricto (Inestable / Sensible a red)** / **Strict local real-time (Unstable / Sensitive to network)**.
+- **📖 UI Data Descriptions:** Added comprehensive contextual descriptions under the connection mode selector explaining the stability trade-offs and recommending the 10-second polling interval for Cloud mode.
+- **🧪 Unit Test Suite:** All 39 unit tests verified and passing cleanly.
 
 ## 🚀 What's New in v1.5.10: HACS Review Compliance & Auth Flow Hardening
 

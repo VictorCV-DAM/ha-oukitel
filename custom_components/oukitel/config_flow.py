@@ -319,7 +319,7 @@ class OukitelOptionsFlowHandler(config_entries.OptionsFlow):
                     default=current_mode,
                 ): SelectSelector(
                     SelectSelectorConfig(
-                        options=[MODE_AUTO, MODE_LAN, MODE_CLOUD],
+                        options=[MODE_CLOUD, MODE_AUTO, MODE_LAN],
                         translation_key="connection_mode",
                         mode=SelectSelectorMode.LIST,
                     )

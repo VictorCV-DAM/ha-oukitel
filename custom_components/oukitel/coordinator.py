@@ -41,6 +41,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _LAN_STALE_TIMEOUT = 90.0
 _LAN_RECONNECT_DELAY = 2.0
+_LAN_SILENT_MAX_DELAY = 45.0
 _CLOUD_SNAPSHOT_INTERVAL = 60.0
 _LAN_RETRY_INTERVAL = 10.0
 _LAN_SILENCE_TIMEOUT = 90.0
@@ -392,6 +393,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_active = False
         self._lan_has_valid_telemetry: bool = False
         self._lan_session_got_telemetry: bool = False
+        self._lan_silent_sessions: int = 0
+        self._lan_hibernating: bool = False
+        self._lan_wake_event = asyncio.Event()
+        self._last_cloud_online: bool = True
         self._last_lan_attempt: float = time.monotonic()
         self._lan_setup_in_flight: bool = False
         self._lan_setup_attempts: int = 0
@@ -624,6 +629,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             _LOGGER.info(
                 "oukitel: Resuming integration — re-establishing connection and requesting refresh"
             )
+            self._lan_hibernating = False
+            self._lan_silent_sessions = 0
             if self.connection_mode != MODE_CLOUD:
                 self.hass.async_create_task(self.async_setup_lan(reason="resume"))
             await self.async_request_refresh()
@@ -805,9 +812,10 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_active = True
         self._lan_connected_at = time.monotonic()
         self._lan_session_got_telemetry = False
-        # Count the handshake as the first "report"; if no cmd20 arrives within
-        # the stale window, entities must not keep showing seeded/cloud data.
-        self._lan_last_report = time.monotonic()
+        # Initialize _lan_last_report on the very first session; if telemetry is
+        # already stale, a silent TCP handshake must NOT clear telemetry_stale!
+        if self._lan_last_report is None:
+            self._lan_last_report = time.monotonic()
         _LOGGER.info("oukitel: LAN session established and active with %s!", host)
         self._lan_listen_task = asyncio.ensure_future(self._lan_read_loop(host, auth_key))
         try:
@@ -834,10 +842,14 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
             self._lan_active = False
             if self._lan_session_got_telemetry:
+                self._lan_silent_sessions = 0
+                self._lan_hibernating = False
                 reconnect_delay = _LAN_RECONNECT_DELAY
                 reported_disconnect = False
             else:
-                reconnect_delay = min(reconnect_delay * 2.0, 120.0)
+                self._lan_silent_sessions += 1
+                self._lan_has_valid_telemetry = False
+                reconnect_delay = min(reconnect_delay * 2.0, _LAN_SILENT_MAX_DELAY)
 
             # If LAN stream drops, immediately request cloud poll in AUTO mode to prevent frozen metrics
             if self.connection_mode == MODE_AUTO and getattr(self.client, "access_token", None):
@@ -855,7 +867,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             else:
                 _LOGGER.debug("oukitel: LAN waiting to reconnect in %.1fs", reconnect_delay)
 
-            await asyncio.sleep(reconnect_delay)
+            self._lan_wake_event.clear()
+            try:
+                await asyncio.wait_for(self._lan_wake_event.wait(), timeout=reconnect_delay)
+            except asyncio.TimeoutError:
+                pass
 
             if self._paused:
                 break
@@ -919,7 +935,13 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                             )
                 self._lan_session = None
                 self._lan_active = False
-                reconnect_delay = min(reconnect_delay * 1.5, 30.0)
+                # If the station became unreachable (e.g. manual power cycle or Wi-Fi reboot),
+                # reset silent backoff so we reconnect within seconds as soon as it boots back up.
+                if self._lan_silent_sessions > 0:
+                    self._lan_silent_sessions = 0
+                    reconnect_delay = 5.0
+                else:
+                    reconnect_delay = min(reconnect_delay * 1.5, 15.0)
                 continue
 
     def _telemetry_is_stale(self) -> bool:
@@ -972,6 +994,15 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 self._stale_fingerprint = None
                 age = 0.0
                 stale = False
+                if self.connection_mode == MODE_AUTO and not self._lan_active:
+                    self._lan_hibernating = False
+                    self._lan_silent_sessions = 0
+                    self._last_lan_attempt = time.monotonic()
+                    _LOGGER.info("oukitel: Cloud telemetry resumed — waking LAN client immediately")
+                    if self._lan_listen_task and not self._lan_listen_task.done():
+                        self._lan_wake_event.set()
+                    else:
+                        self.hass.async_create_task(self.async_setup_lan(reason="cloud_telemetry_resumed"))
 
         data["telemetry_stale"] = stale
         data["last_telemetry_age"] = int(age)
@@ -981,6 +1012,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             return
         self._lan_last_report = time.monotonic()
         self._lan_session_got_telemetry = True
+        self._lan_silent_sessions = 0
+        self._lan_hibernating = False
         self._stale_fingerprint = None
         
         # Base LAN tag mapping to HA sensor keys
@@ -1105,7 +1138,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             "oukitel: LAN session silent for > %.1fs (no telemetry) — dropping socket to force clean reconnect",
             _LAN_SILENCE_TIMEOUT,
         )
-        self._lan_last_report = None
+        # Preserve _lan_last_report so telemetry_stale remains True across cloud fallback
+        # until a genuine LAN frame or new cloud telemetry fingerprint arrives.
         self._lan_active = False
         self._lan_has_valid_telemetry = False
         self._lan_last_rearm = 0.0
@@ -1133,6 +1167,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             and (now - self._last_lan_attempt >= _LAN_RETRY_INTERVAL)
         ):
             self._last_lan_attempt = now
+            self._lan_hibernating = False
+            self._lan_silent_sessions = 0
             self.hass.async_create_task(self.async_setup_lan(reason="auto_retry"))
 
         # In LAN offline mode, keep socket alive without dropping it on silence
@@ -1344,10 +1380,23 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         # If device is reported offline in userDeviceList, do not send keep-alive or expect live telemetry
         if not getattr(self.client, "is_online", True):
+            self._last_cloud_online = False
             _LOGGER.debug("oukitel: Device is offline on Cloud gateway")
             offline_data = _build_paused_data(self.data)
             offline_data["online"] = False
             return offline_data
+
+        if not self._last_cloud_online:
+            self._last_cloud_online = True
+            if self.connection_mode == MODE_AUTO and not self._lan_active:
+                self._lan_hibernating = False
+                self._lan_silent_sessions = 0
+                self._last_lan_attempt = time.monotonic()
+                _LOGGER.info("oukitel: Station reconnected to Cloud after offline state — waking LAN client")
+                if self._lan_listen_task and not self._lan_listen_task.done():
+                    self._lan_wake_event.set()
+                else:
+                    self.hass.async_create_task(self.async_setup_lan(reason="cloud_reconnected"))
 
         try:
             data = await self.hass.async_add_executor_job(self.client.get_telemetry)
@@ -1371,13 +1420,15 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 pass
 
             if not getattr(self.client, "is_online", True):
+                self._last_cloud_online = False
                 _LOGGER.info("oukitel: Device confirmed offline via userDeviceList")
                 offline_data = _build_paused_data(self.data)
                 offline_data["online"] = False
                 return offline_data
 
+        lan_streaming = self._lan_active and self._lan_has_valid_telemetry and not self.telemetry_stale
         can_wake = (
-            (self.connection_mode == MODE_CLOUD or (self.connection_mode == MODE_AUTO and not self._lan_active))
+            (self.connection_mode == MODE_CLOUD or (self.connection_mode == MODE_AUTO and not lan_streaming))
             and (now - self.last_user_command_time) >= 15.0
         )
         wake_interval = DEFAULT_WAKE_INTERVAL if self.connection_mode == MODE_CLOUD else 120.0

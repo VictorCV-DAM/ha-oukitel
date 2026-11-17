@@ -1,7 +1,7 @@
 """Constants for the Oukitel Power Station integration."""
 
 DOMAIN = "oukitel"
-VERSION = "1.5.18"
+VERSION = "1.5.20"
 
 CONF_REGION = "region"
 CONF_EMAIL = "email"
@@ -22,9 +22,9 @@ MODE_LAN = "lan"
 MODE_CLOUD = "cloud"
 
 CONNECTION_MODES = {
-    MODE_AUTO: "Automático (LAN preferente + Cloud)",
-    MODE_LAN: "Solo LAN (Tiempo real directo)",
-    MODE_CLOUD: "Solo Cloud (Nube / Polling)",
+    MODE_CLOUD: "Solo Nube (Cloud Polling) — Estable (Recomendado para máxima fiabilidad)",
+    MODE_AUTO: "Automático (LAN + Nube) — Tiempo real (Sensible a calidad Wi-Fi)",
+    MODE_LAN: "Solo LAN directo — Tiempo real estricto (Inestable / Sensible a red)",
 }
 
 DEFAULT_REGION = "EU"
