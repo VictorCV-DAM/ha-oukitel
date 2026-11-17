@@ -644,12 +644,17 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         from .cloud_bridge import CloudBridge
 
         self.hass.data.setdefault(DOMAIN, {})
+        bridge_port = (
+            self.config_entry.data.get("bridge_port", DEFAULT_BRIDGE_PORT)
+            if self.config_entry
+            else DEFAULT_BRIDGE_PORT
+        )
         if "bridge" in self.hass.data[DOMAIN]:
             bridge = self.hass.data[DOMAIN]["bridge"]
             bridge.update_callbacks(self._on_lan_telemetry, self._on_bridge_conn)
             _LOGGER.info("oukitel: Reusing existing active fake cloud bridge on %s", bridge._port)
         else:
-            bridge = CloudBridge(self.hass, self._on_lan_telemetry, self._on_bridge_conn)
+            bridge = CloudBridge(self.hass, self._on_lan_telemetry, self._on_bridge_conn, port=bridge_port)
             try:
                 await bridge.start()
             except OSError as exc:

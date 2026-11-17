@@ -257,19 +257,12 @@ def async_discover_oukitel_ble(hass: HomeAssistant) -> list[dict[str, Any]]:
 
 
         is_candidate = (
-
             bool(pk and dk)
-
-            or name_upper.startswith("QUEC_BLE")
-
+            or "QUEC" in name_upper
             or any(
-
                 p in name_upper
-
-                for p in ("OUKITEL", "P2001", "BP2000", "P5000", "P1200", "P800", "CN505")
-
+                for p in ("OUKITEL", "P1000", "P2001", "BP2000", "P5000", "P1200", "P800", "CN505")
             )
-
         )
 
         if is_candidate:

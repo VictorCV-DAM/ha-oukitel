@@ -76,8 +76,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.debug("oukitel: Frontend extra JS notice: %s", err)
 
     region = entry.data.get(CONF_REGION, DEFAULT_REGION)
-    email = entry.data[CONF_EMAIL]
-    password = entry.data[CONF_PASSWORD]
+    email = entry.data.get(CONF_EMAIL, "")
+    password = entry.data.get(CONF_PASSWORD, "")
 
     # Poll interval priority: options -> data -> default
     poll_interval = entry.options.get(
@@ -190,7 +190,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Setup Zero-Cloud bridge or LAN mode
     if use_bridge:
-        _LOGGER.info("oukitel: [Zero-Cloud] Initializing local MQTT broker on port %s...", DEFAULT_BRIDGE_PORT)
+        bridge_port = entry.data.get("bridge_port", DEFAULT_BRIDGE_PORT)
+        _LOGGER.info("oukitel: [Zero-Cloud] Initializing local MQTT broker on port %s...", bridge_port)
         await coordinator.async_setup_bridge()
     elif connection_mode != MODE_CLOUD:
         if not cloud_connected:

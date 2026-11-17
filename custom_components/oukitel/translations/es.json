@@ -2,37 +2,65 @@
   "config": {
     "step": {
       "user": {
-        "title": "Estación de Energía Oukitel",
-        "description": "Introduce las credenciales de tu cuenta de la app oficial Oukitel / Wonderfree.",
+        "title": "Oukitel Power Station",
+        "description": "Selecciona cómo conectar tu estación de energía Oukitel:",
+        "menu_options": {
+          "zero_cloud": "Zero-Cloud / Broker Local (100% Offline, Sin Nube)",
+          "cloud": "Cuenta Cloud Oficial (Estándar)",
+          "ble_provision": "Aprovisionar Wi-Fi por Bluetooth (BLE)"
+        }
+      },
+      "zero_cloud": {
+        "title": "Broker Local Zero-Cloud",
+        "description": "Ejecuta un servidor MQTT interno directamente en Home Assistant para telemetría directa sin depender de la nube del fabricante.",
         "data": {
-          "region": "Región del Servidor",
-          "email": "Correo Electrónico",
+          "station_name": "Nombre de la estación",
+          "bridge_port": "Puerto del broker local"
+        }
+      },
+      "cloud": {
+        "title": "Cuenta Cloud Oficial",
+        "description": "Introduce tus credenciales de la app Oukitel / Wonderfree.",
+        "data": {
+          "region": "Región del servidor",
+          "email": "Email de la cuenta",
           "password": "Contraseña",
-          "poll_interval": "Intervalo de Actualización (segundos)"
+          "poll_interval": "Intervalo de actualización (segundos)"
         }
       },
       "device": {
-        "title": "Seleccionar Estación Oukitel",
-        "description": "Se han detectado varias estaciones Oukitel en tu cuenta. Selecciona cuál deseas vincular a Home Assistant:",
+        "title": "Seleccionar dispositivo Oukitel",
+        "description": "Se encontraron varias estaciones en tu cuenta. Selecciona cuál configurar:",
         "data": {
-          "device_key": "Estación Oukitel"
+          "device": "Estación Oukitel"
         }
       },
-      "reauth_confirm": {
-        "title": "Reautenticar Oukitel Cloud",
-        "description": "Por favor, introduce la contraseña actualizada para {email}.",
+      "ble_provision": {
+        "title": "Aprovisionamiento Wi-Fi y Broker por Bluetooth",
+        "description": "Pon la estación en modo emparejamiento (mantén pulsado el botón IoT ~3s hasta que parpadee el icono Wi-Fi) y escribe tus credenciales:",
         "data": {
-          "password": "Contraseña"
+          "ble_mac": "Dispositivo / Dirección MAC",
+          "ble_ssid": "Nombre de red Wi-Fi (SSID)",
+          "ble_password": "Contraseña Wi-Fi",
+          "ble_endpoint": "Endpoint del Broker local (ej. mqtt://<HA_IP>:8886)",
+          "station_name": "Nombre de la estación en HA",
+          "ble_source": "Adaptador Bluetooth / Proxy"
         }
       },
       "bluetooth_confirm": {
         "title": "Estación Oukitel Descubierta por Bluetooth",
-        "description": "Se ha detectado {name} ({mac}) en modo emparejamiento. Introduce las credenciales Wi-Fi para vincular la estación a tu red:",
+        "description": "Se ha detectado {name} ({address}) en modo emparejamiento. Introduce tus credenciales Wi-Fi para conectarla al broker local:",
         "data": {
-          "ble_ssid": "Nombre de la Red Wi-Fi (SSID)",
+          "ble_ssid": "Nombre de red Wi-Fi (SSID)",
           "ble_password": "Contraseña Wi-Fi",
-          "ble_endpoint": "Endpoint / Servidor de Destino",
-          "ble_source": "Adaptador Bluetooth / Proxy"
+          "ble_endpoint": "Endpoint / Broker local"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reautenticar Oukitel Cloud",
+        "description": "Introduce la contraseña actualizada para {email}.",
+        "data": {
+          "password": "Contraseña"
         }
       }
     },

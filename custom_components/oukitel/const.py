@@ -1,7 +1,7 @@
 """Constants for the Oukitel Power Station integration."""
 
 DOMAIN = "oukitel"
-VERSION = "1.6.0-zerocloud-alpha.1"
+VERSION = "1.6.0-zerocloud-alpha.2"
 
 CONF_REGION = "region"
 CONF_EMAIL = "email"
@@ -15,6 +15,7 @@ CONF_FIXED_PRICE = "fixed_price"
 DEFAULT_FIXED_PRICE = 0.15
 CONF_CURRENCY = "currency"
 
+CONF_BRIDGE_PORT = "bridge_port"
 CONF_BLE_MAC = "ble_mac"
 CONF_BLE_SSID = "ble_ssid"
 CONF_BLE_PASSWORD = "ble_password"

@@ -3,6 +3,23 @@
     "step": {
       "user": {
         "title": "Oukitel Power Station",
+        "description": "Choose how you want to connect your Oukitel power station:",
+        "menu_options": {
+          "zero_cloud": "Zero-Cloud / Local Broker (100% Offline, No Cloud)",
+          "cloud": "Official Cloud Account (Standard)",
+          "ble_provision": "Provision Station Wi-Fi via Bluetooth (BLE)"
+        }
+      },
+      "zero_cloud": {
+        "title": "Zero-Cloud Local Broker",
+        "description": "Run a lightweight internal MQTT broker directly inside Home Assistant for direct offline telemetry without cloud dependency.",
+        "data": {
+          "station_name": "Station Name",
+          "bridge_port": "Local Broker Port"
+        }
+      },
+      "cloud": {
+        "title": "Official Cloud Account",
         "description": "Enter your Oukitel / Wonderfree Cloud account credentials.",
         "data": {
           "region": "Server Region",
@@ -15,7 +32,28 @@
         "title": "Select Oukitel Device",
         "description": "Multiple Oukitel power stations were found in your account. Select which one to configure in Home Assistant:",
         "data": {
-          "device_key": "Oukitel Station"
+          "device": "Oukitel Station"
+        }
+      },
+      "ble_provision": {
+        "title": "Bluetooth Wi-Fi & Broker Provisioning",
+        "description": "Put the station in pairing mode (press & hold IoT button for ~3s until the Wi-Fi icon flashes), select your station, and enter your network credentials:",
+        "data": {
+          "ble_mac": "Station Device / MAC Address",
+          "ble_ssid": "Wi-Fi Network Name (SSID)",
+          "ble_password": "Wi-Fi Password",
+          "ble_endpoint": "Local Broker Endpoint (e.g. mqtt://<HA_IP>:8886)",
+          "station_name": "Station Name in HA",
+          "ble_source": "Bluetooth Adapter / Proxy"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Oukitel Station Discovered via Bluetooth",
+        "description": "Discovered {name} ({address}) in pairing mode. Enter your Wi-Fi credentials to connect the station to your local Home Assistant broker:",
+        "data": {
+          "ble_ssid": "Wi-Fi Network Name (SSID)",
+          "ble_password": "Wi-Fi Password",
+          "ble_endpoint": "Target Endpoint / Local Broker"
         }
       },
       "reauth_confirm": {
@@ -23,16 +61,6 @@
         "description": "Please enter the updated password for {email}.",
         "data": {
           "password": "Password"
-        }
-      },
-      "bluetooth_confirm": {
-        "title": "Oukitel Station Discovered via Bluetooth",
-        "description": "Discovered {name} ({mac}) in pairing mode. Enter your Wi-Fi credentials to pair the station with your network:",
-        "data": {
-          "ble_ssid": "Wi-Fi Network Name (SSID)",
-          "ble_password": "Wi-Fi Password",
-          "ble_endpoint": "Target Endpoint / Broker",
-          "ble_source": "Bluetooth Adapter / Proxy"
         }
       }
     },

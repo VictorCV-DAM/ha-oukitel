@@ -16,6 +16,9 @@
       "local_name": "QUEC_BLE*"
     },
     {
+      "local_name": "QUEC*"
+    },
+    {
       "local_name": "OUKITEL*"
     }
   ],
@@ -26,5 +29,5 @@
   "requirements": [
     "pycryptodome>=3.18.0"
   ],
-  "version": "1.6.0-zerocloud-alpha.1"
+  "version": "1.6.0-zerocloud-alpha.2"
 }
