@@ -33,9 +33,9 @@ CONF_CLOUD_BRIDGE = "cloud_bridge"
 DEFAULT_BRIDGE_PORT = 8886
 
 CONNECTION_MODES = {
-    MODE_AUTO: "Automático (LAN preferente + Cloud)",
-    MODE_LAN: "Solo LAN (Tiempo real directo)",
-    MODE_CLOUD: "Solo Cloud (Nube / Polling)",
+    MODE_CLOUD: "Solo Nube (Cloud Polling) — Estable (Recomendado para máxima fiabilidad)",
+    MODE_AUTO: "Automático (LAN + Nube) — Tiempo real (Sensible a calidad Wi-Fi)",
+    MODE_LAN: "Solo LAN directo — Tiempo real estricto (Inestable / Sensible a red)",
     MODE_ZERO_CLOUD: "Zero-Cloud / Broker Local (100% Sin Nube)",
 }
 

@@ -83,6 +83,7 @@
         "data": {
           "connection_mode": "Connection Mode",
           "host": "Station Local IP",
+          "auth_key": "Station Auth Key (Optional / Auto-cached)",
           "poll_interval": "Cloud Update Interval (seconds, 3-120s)",
           "price_sensor": "Dynamic Electricity Price Sensor (Optional)",
           "currency": "Currency Symbol / Code",
@@ -90,8 +91,10 @@
           "reconfigure_ble": "Provision Wi-Fi / Change Endpoint via Bluetooth"
         },
         "data_description": {
+          "connection_mode": "• Cloud Only (Recommended for stability): Periodic polling every 10-30s. Highest 24/7 reliability, completely prevents internal microcontroller UART buffer overruns and station lockups. Ideal if you experience freezes or telemetry loss.\n• Automatic: Real-time local streaming (1s) with seamless cloud fallback if local connection drops.\n• LAN Only: Direct local real-time push (1s) with zero cloud requests (warning: per vendor firmware design, the station still requires internet access to emit telemetry and is prone to UART freezes on network jitter).",
           "host": "Optional: leave empty for automatic network discovery. Recommended if your station has a static IP to improve and accelerate connection.",
-          "poll_interval": "Telemetry polling frequency when connected through Cloud.",
+          "auth_key": "AES encryption key for local LAN sessions. Automatically retrieved from cloud and persisted across restarts, but can be manually entered for offline operation.",
+          "poll_interval": "Cloud polling frequency in seconds (10s recommended for high responsiveness, 15-30s for low bandwidth). In Cloud Only mode, 10s provides fresh data without overloading the hardware.",
           "price_sensor": "Optional: sensor providing current electricity price (e.g. PVPC or Nord Pool).",
           "currency": "Currency symbol or code (e.g. €, $, £, CHF).",
           "fixed_price": "Fixed price per kWh used when no dynamic sensor is configured."
@@ -117,10 +120,10 @@
   "selector": {
     "connection_mode": {
       "options": {
-        "auto": "Automatic (LAN preferred + Cloud)",
-        "lan": "LAN Only (Direct local real-time)",
-        "cloud": "Cloud Only (Polling)",
-        "zero_cloud": "Zero-Cloud / Local Broker (100% Offline)"
+        "cloud": "Cloud Only (Polling) — Stable (Recommended for maximum reliability)",
+        "auto": "Automatic (LAN + Cloud) — Real-time continuous (Sensitive to Wi-Fi quality)",
+        "lan": "LAN Only — Strict local real-time (Unstable / Sensitive to network)",
+        "zero_cloud": "Zero-Cloud / Local Broker (100% Offline, No Cloud)"
       }
     }
   },

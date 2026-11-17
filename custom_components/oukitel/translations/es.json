@@ -91,9 +91,10 @@
           "reconfigure_ble": "Aprovisionar Wi-Fi / Cambiar Endpoint por Bluetooth"
         },
         "data_description": {
+          "connection_mode": "• Solo Nube (Recomendado para fiabilidad): Consulta periódica cada 10-30s. Máxima estabilidad comprobada 24/7 sin saturar la memoria ni el bus UART interno de la estación. Ideal si experimentas bloqueos o pérdida de telemetría.\n• Automático: Telemetría local continua en tiempo real (1s) con conmutación a la nube en caso de caída.\n• Solo LAN: Conexión local directa a 1s sin tráfico hacia la nube (advertencia: por diseño del fabricante, la estación requiere acceso a internet para generar telemetría y puede bloquearse ante fluctuaciones de red).",
           "host": "Opcional: déjalo vacío para detección automática en la red local. Recomendable si tiene IP estática para agilizar y mejorar la conexión.",
           "auth_key": "Clave AES para la sesión LAN local. Se obtiene automáticamente de la nube y se guarda de forma persistente, pero puede introducirse manualmente para entornos offline.",
-          "poll_interval": "Frecuencia de consulta de datos cuando se conecta mediante la nube.",
+          "poll_interval": "Frecuencia de sondeo en segundos cuando se utiliza la nube (10s recomendado para máxima fluidez, 15-30s para mínimo tráfico). En modo Solo Nube, 10s proporciona datos actualizados sin sobrecargar la estación.",
           "price_sensor": "Opcional: entidad que provee el precio del kWh en tiempo real (ej. PVPC o Nord Pool).",
           "currency": "Símbolo o código de la divisa (ej. €, $, £, CHF).",
           "fixed_price": "Tarifa fija por kWh a utilizar en caso de no configurar un sensor dinámico."
@@ -119,9 +120,9 @@
   "selector": {
     "connection_mode": {
       "options": {
-        "auto": "Automático (LAN preferente + Cloud)",
-        "lan": "Solo LAN (Tiempo real directo)",
-        "cloud": "Solo Cloud (Nube / Polling)",
+        "cloud": "Solo Nube (Cloud Polling) — Estable (Recomendado para máxima fiabilidad)",
+        "auto": "Automático (LAN + Nube) — Tiempo real (Sensible a calidad Wi-Fi)",
+        "lan": "Solo LAN directo — Tiempo real estricto (Inestable / Sensible a red)",
         "zero_cloud": "Zero-Cloud / Broker Local (100% Sin Nube)"
       }
     }
