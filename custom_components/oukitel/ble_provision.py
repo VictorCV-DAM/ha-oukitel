@@ -521,7 +521,17 @@ async def point_station(
 
 
 
-    client = await establish_connection(BleakClient, device, mac, max_attempts=6)
+    try:
+        client = await establish_connection(BleakClient, device, mac, max_attempts=6)
+    except Exception as exc:
+        err_name = type(exc).__name__
+        _LOGGER.warning("oukitel: BLE establish_connection failed (%s): %s", err_name, exc)
+        if "OutOfConnectionSlots" in err_name or "connection slot" in str(exc).lower():
+            return False, (
+                "El adaptador Bluetooth de Home Assistant no tiene ranuras libres (típico en dongles CSR8510). "
+                "Utiliza el script independiente 'ble_provision.py' en tu ordenador para emparejar."
+            )
+        return False, f"No se pudo conectar a la estación vía Bluetooth ({err_name}): {exc}"
 
     from .const import DOMAIN
 

@@ -110,7 +110,11 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Present top-level connection choice."""
         return self.async_show_menu(
             step_id="user",
-            menu_options=["zero_cloud", "cloud", "ble_provision"],
+            menu_options={
+                "zero_cloud": "Zero-Cloud / Broker Local (100% Offline, Sin Nube)",
+                "cloud": "Cuenta Cloud Oficial (Estándar / App Oficial)",
+                "ble_provision": "Aprovisionar Wi-Fi de la estación por Bluetooth (BLE)",
+            },
         )
 
     async def async_step_zero_cloud(self, user_input=None) -> FlowResult:

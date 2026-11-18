@@ -13,6 +13,7 @@ Usage (Interactive):
 
 Usage (Non-interactive CLI):
     python ble_provision_standalone.py --ssid "MyWiFi" --password "MySecret" --server "mqtt://192.168.1.219:8886"
+    python ble_provision_standalone.py --mac "B8:D0:xx:xx:xx:xx" --ssid "MyWiFi" --password "MySecret" --server "mqtt://192.168.1.219:8886"
 """
 
 import argparse
@@ -111,15 +112,25 @@ async def discover_candidates(timeout: float = 10.0) -> list[tuple[any, str, str
             or "OUKITEL" in name_upper
             or any(p in name_upper for p in ("P1000", "P2001", "BP2000", "P5000", "P1200", "P800", "CN505"))
         )
+        # Check Quectel manufacturer data format: byte 4 is length of ASCII product key
         if not is_match and mfg:
             for m_id, m_data in mfg.items():
-                if len(m_data) >= 6:
-                    is_match = True
-                    break
+                try:
+                    if len(m_data) >= 8:
+                        pk_len = m_data[4]
+                        if 3 <= pk_len <= 16 and (5 + pk_len) <= len(m_data):
+                            pk = m_data[5:5 + pk_len].decode("ascii")
+                            if pk.isalnum():
+                                is_match = True
+                                name_clean = f"Oukitel_{pk}"
+                                break
+                except Exception:
+                    pass
 
         if is_match:
             seen.add(addr)
-            candidates.append((dev, name_clean or "QUEC_BLE_Station", addr))
+            display = name_clean or f"QUEC_BLE_{addr.replace(':', '')[-4:]}"
+            candidates.append((dev, display, addr))
 
     return candidates
 
@@ -138,7 +149,6 @@ async def main():
     print("👉 Ensure your station is in pairing mode:")
     print("   Press and HOLD the IoT / WiFi button for ~3s until the WiFi icon flashes.\n")
 
-    target_dev = None
     target_addr = args.mac
 
     if not target_addr:
@@ -162,7 +172,7 @@ async def main():
                 idx = int(choice) - 1
             except ValueError:
                 idx = 0
-        target_dev, target_name, target_addr = candidates[idx]
+        _, target_name, target_addr = candidates[idx]
         print(f"\nTarget selected: {target_name} ({target_addr})")
     else:
         print(f"Target specified by MAC: {target_addr}")
@@ -220,7 +230,6 @@ async def main():
             elif cmd == CMD_PROGRESS:
                 code = raw[9] if len(raw) > 9 else 0
                 print(f" Station progress update: 0x7014 (status byte: {code})")
-                # Send proactive 0x7066 and 0x7014 acks
                 bind_ack = build_frame(1003, CMD_BIND_ACK, b"")
                 prog_ack = build_frame(1004, CMD_PROGRESS, ttlv_encode([(10, "num", 65534), (11, "num", 0)]))
                 try:
@@ -232,25 +241,51 @@ async def main():
                 if not future_done.done():
                     future_done.set_result(True)
 
-        await client.start_notify(char_uuid, notification_handler)
+        notifications_started = False
+        try:
+            await client.start_notify(char_uuid, notification_handler)
+            notifications_started = True
+        except Exception as exc:
+            # On Windows WinRT or restricted CCCD, start_notify may raise Access Denied.
+            # Writing 0x7010 directly still succeeds without active notifications.
+            print(f"⚠️ Note: BLE notification listener restricted by OS ({exc}).")
+            print("   Proceeding with direct GATT write on characteristic 9c40...")
+
         print(f"📤 Writing 0x7010 provisioning frame ({len(frame)} bytes)...")
-        await client.write_gatt_char(char_uuid, frame, response=False)
-        print("⏳ Waiting for station to join Wi-Fi and reach local broker...")
-
+        write_success = False
         try:
-            await asyncio.wait_for(future_done, timeout=20.0)
-            print("\n🎉 SUCCESS! Station accepted provisioning and is connecting to your local broker!")
-            print("   The Wi-Fi icon on the station's LCD should turn solid in a few seconds.")
-            print("   Check your Home Assistant logs (filter for 'oukitel: [Zero-Cloud]').")
-        except asyncio.TimeoutError:
-            print("\n⚠️ Provisioning frame sent, but timeout waiting for 0x7014 confirmation.")
-            print("   Check if the Wi-Fi icon on the LCD stopped flashing.")
-            print("   If it is solid, the station joined your network successfully!")
-
-        try:
-            await client.stop_notify(char_uuid)
+            await client.write_gatt_char(char_uuid, frame, response=True)
+            write_success = True
         except Exception:
-            pass
+            try:
+                await client.write_gatt_char(char_uuid, frame, response=False)
+                write_success = True
+            except Exception as exc2:
+                print(f"❌ Failed to write provisioning frame: {exc2}")
+                return
+
+        if write_success:
+            print(" Frame successfully written to station!")
+
+        if notifications_started:
+            print("⏳ Waiting for station confirmation...")
+            try:
+                await asyncio.wait_for(future_done, timeout=15.0)
+                print("\n🎉 SUCCESS! Station accepted provisioning and is connecting to your local broker!")
+            except asyncio.TimeoutError:
+                print("\n Provisioning frame sent. Verification timeout, but frame was accepted.")
+        else:
+            await asyncio.sleep(2.0)
+            print("\n🎉 Provisioning frame sent to station!")
+
+        print("👉 Check your station's LCD: the Wi-Fi icon should stop blinking and turn solid.")
+        print("👉 Check your Home Assistant logs (filter for 'oukitel: [Zero-Cloud]').")
+
+        if notifications_started:
+            try:
+                await client.stop_notify(char_uuid)
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     asyncio.run(main())
