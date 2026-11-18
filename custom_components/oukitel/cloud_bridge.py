@@ -258,10 +258,11 @@ class CloudBridge:
                 pass
 
             # Check if station connects with transient vendor credentials (starts with '2;' or '0;')
-            # and inject 0x00B4 to configure local persistent Device Secret (DS)
+            # and inject 0x00B4 {5: DS} to configure local persistent Device Secret (DS)
             pwd = self._client_password
             if pwd.startswith(("2;", "0;")) or not pwd.startswith("1;0002;"):
-                _LOGGER.info("oukitel: [Zero-Cloud] Station has vendor credentials ('%s'). Sending 0x00B4 DS overwrite sequence...", pwd[:10])
+                _LOGGER.info("oukitel: [Zero-Cloud] Station connected with credentials ('%s'). Waiting 1.5s then writing local DS via 0x00B4...", pwd[:10])
+                await asyncio.sleep(1.5)
                 await self._send_device_secret_overwrite()
             else:
                 _LOGGER.info("oukitel: [Zero-Cloud] Station authenticated with local persistent DS ('%s')!", pwd[:16])
@@ -397,27 +398,18 @@ class CloudBridge:
         await writer.drain()
 
     async def _send_device_secret_overwrite(self) -> None:
-        """Send QuecThing 0x00B4 frames to wipe vendor DS and overwrite with local 32-char DS."""
+        """Send QuecThing 0x00B4 {5: DS} frame to establish local 32-char DS (omits {9} to prevent NVRAM corruption)."""
         if self._writer is None or self._down_base is None:
             return
         try:
             self._pid += 1
-            # 1. Frame {9: true} -> Clear vendor Device Secret
-            frame_reset = build_frame(self._pid, 180, ttlv_encode([(9, "num", 1)]))
-            _LOGGER.info("oukitel: [Zero-Cloud] Sending 0x00B4 {9: 1} to reset vendor DS on station...")
-            for sub in ("sys", "bus"):
-                await self._send_downlink(sub, frame_reset, qos=1)
-
-            await asyncio.sleep(0.1)
-
-            self._pid += 1
-            # 2. Frame {5: "<32-char DS>"} -> Set our persistent local Device Secret
+            # Frame {5: "<32-char DS>"} -> Set our persistent local Device Secret directly
             frame_set_ds = build_frame(self._pid, 180, ttlv_encode([(5, "str", LOCAL_DEVICE_SECRET)]))
             _LOGGER.info("oukitel: [Zero-Cloud] Sending 0x00B4 {5: '%s'} to establish local offline DS...", LOCAL_DEVICE_SECRET)
             for sub in ("sys", "bus"):
                 await self._send_downlink(sub, frame_set_ds, qos=1)
 
-            _LOGGER.info("oukitel: [Zero-Cloud] 0x00B4 Device Secret sequence dispatched successfully.")
+            _LOGGER.info("oukitel: [Zero-Cloud] 0x00B4 local Device Secret dispatched successfully.")
         except Exception as exc:
             _LOGGER.warning("oukitel: [Zero-Cloud] Failed sending 0x00B4 sequence: %s", exc)
 

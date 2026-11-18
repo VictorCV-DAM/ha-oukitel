@@ -42,7 +42,8 @@ class AcceleronixCloudClient:
         device_name: str | None = None,
     ):
         self.email = email
-        self.password = password
+        # Cloud API accepts at most 20 chars; Wonderfree truncates passwords to 20 chars
+        self.password = password[:20] if password else ""
         self.region = region.upper() if region.upper() in REGION_SERVERS else "EU"
 
         reg_data = REGION_SERVERS[self.region]
