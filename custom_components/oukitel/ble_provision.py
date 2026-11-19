@@ -387,7 +387,7 @@ async def point_station(
 
     mac: str,
 
-    listen_for: float = 180.0,
+    listen_for: float = 60.0,
 
     source: str = "",
 
@@ -941,7 +941,8 @@ async def point_station(
 
                         _LOGGER.warning("oukitel: BLE write proactive acks failed: %s", exc)
 
-                    # NOTE: Do NOT break here! Keep notifications alive so station can finish pairing!
+                    # Proactive acks dispatched. Shorten deadline to let station finish pairing without 180s delay.
+                    deadline = min(deadline, time.monotonic() + 4.0)
 
 
 

@@ -24,6 +24,7 @@ from .api import AcceleronixCloudClient, OukitelAuthError, OukitelConnectionErro
 from .const import (
     CONF_AUTH_KEY,
     CONF_HOST,
+    DEFAULT_BRIDGE_PORT,
     DEFAULT_CONNECTION_MODE,
     DEFAULT_POLL_INTERVAL,
     DEFAULT_WAKE_INTERVAL,
