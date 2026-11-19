@@ -329,17 +329,25 @@ class CloudBridge:
                     frame_b9 = build_frame(_p if _p else self._pid, 185, b9_payload)
                     await self._send_downlink("sys", frame_b9, qos=1)
                     await self._send_downlink("sys_", b9_payload, qos=1)
+                    continue
 
-                # 2. Handle Station Pairing Requests
+                # 2. Handle Station Pairing & Control Requests (drop from telemetry to avoid string/metadata tag pollution)
                 elif _c == 28725:  # 0x7035 login request
                     _LOGGER.info("oukitel: [Zero-Cloud] Station requested login (0x7035), sending login ack (0x7065)")
                     await self._send_downlink("bus", build_frame(_p, 28773, ttlv_encode([(1, "num", 0), (2, "num", 0), (10, "num", 65534)])), qos=1)
+                    continue
                 elif _c == 28726:  # 0x7036 bind request
                     _LOGGER.info("oukitel: [Zero-Cloud] Station requested bind (0x7036), sending bind ack (0x7066)")
                     await self._send_downlink("bus", build_frame(_p, 28774, ttlv_encode([(1, "num", 0), (2, "num", 0), (10, "num", 65534)])), qos=1)
+                    continue
                 elif _c in (28753, 28755):
                     _LOGGER.info("oukitel: [Zero-Cloud] Station requested status (0x%04X), sending status ack (0x7054)", _c)
                     await self._send_downlink("bus", build_frame(_p, 28756, ttlv_encode([(1, "num", 0), (2, "num", 0)])), qos=1)
+                    continue
+
+                # Ignore non-telemetry protocol command frames
+                if _c in (184, 185, 28720, 28721, 28722, 28723, 28724, 28725, 28726, 28727, 28728, 28753, 28754, 28755, 28756, 28773, 28774):
+                    continue
 
                 self._has_telemetry = True
                 self._last_telemetry_at = time.monotonic()

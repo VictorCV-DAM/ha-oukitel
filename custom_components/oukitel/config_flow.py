@@ -339,9 +339,14 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         pass
 
                 station_name = user_input.get("station_name", "Oukitel Station").strip() or "Oukitel Station"
+                clean_mac = target_mac.replace(":", "").lower() if target_mac else "station"
+                dev_key = f"zero_cloud_{clean_mac}"
+                await self.async_set_unique_id(f"oukitel_{dev_key}")
+                self._abort_if_unique_id_configured()
+
                 entry_data = {
                     "device_name": station_name,
-                    "device_key": "zero_cloud_station",
+                    "device_key": dev_key,
                     CONF_EMAIL: "",
                     CONF_PASSWORD: "",
                     CONF_CONNECTION_MODE: MODE_ZERO_CLOUD,
@@ -440,9 +445,14 @@ class OukitelConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             port = p
                     except Exception:
                         pass
+                clean_mac = target_mac.replace(":", "").lower() if target_mac else "station"
+                dev_key = f"zero_cloud_{clean_mac}"
+                await self.async_set_unique_id(f"oukitel_{dev_key}")
+                self._abort_if_unique_id_configured()
+
                 entry_data = {
                     "device_name": target_name,
-                    "device_key": "zero_cloud_station",
+                    "device_key": dev_key,
                     CONF_EMAIL: "",
                     CONF_PASSWORD: "",
                     CONF_CONNECTION_MODE: MODE_ZERO_CLOUD,

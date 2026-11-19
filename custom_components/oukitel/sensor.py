@@ -474,8 +474,11 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
             if not (ac_sw or ac_p > 0):
                 return 0
             val = self.coordinator.data.get("ac_output_voltage")
-            if val is not None and val > 0:
-                return val
+            try:
+                if val is not None and float(val) > 0:
+                    return float(val)
+            except (ValueError, TypeError):
+                pass
             v_enum = self.coordinator.data.get("ACvoltage_Switchover")
             enum_map = {0: 100, 1: 110, 2: 120, 3: 220, 4: 230}
             return enum_map.get(v_enum, 230)
@@ -483,8 +486,11 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         # 5. DC Car Output Voltage & Current: 12V when active, otherwise 0
         if self._key == "dc_output_voltage":
             val = self.coordinator.data.get("dc_output_voltage")
-            if val is not None and val > 0:
-                return val
+            try:
+                if val is not None and float(val) > 0:
+                    return float(val)
+            except (ValueError, TypeError):
+                pass
             dc_p = float(self.coordinator.data.get("dc_output_power") or 0)
             dc_sw = bool(self.coordinator.data.get("dc_switch", False))
             if dc_p > 0 or dc_sw:
@@ -493,8 +499,11 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
 
         if self._key == "dc_output_current":
             val = self.coordinator.data.get("dc_output_current")
-            if val is not None and val > 0:
-                return val
+            try:
+                if val is not None and float(val) > 0:
+                    return float(val)
+            except (ValueError, TypeError):
+                pass
             dc_p = float(self.coordinator.data.get("dc_output_power") or 0)
             if dc_p > 0:
                 return round(dc_p / 12.0, 2)
@@ -503,10 +512,16 @@ class OukitelSensor(CoordinatorEntity, SensorEntity):
         # 6. Inverter Temperature: fallback to unit temperature (temp) if tag 33 is absent
         if self._key == "inverter_temp":
             val = self.coordinator.data.get("inverter_temp")
-            if val is not None and val > 0:
-                return val
+            try:
+                if val is not None and float(val) > 0:
+                    return float(val)
+            except (ValueError, TypeError):
+                pass
             val = self.coordinator.data.get("temp")
-            return val if val is not None else None
+            try:
+                return float(val) if val is not None else None
+            except (ValueError, TypeError):
+                return None
 
         # 7. Individual port outputs and power metrics default to 0 if None/inactive (prevents "Unknown" states)
         if self._key in (

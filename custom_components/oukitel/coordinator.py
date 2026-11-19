@@ -258,13 +258,19 @@ class OukitelPredictiveTracker:
             self.smoothed_charge_minutes = None
             return
 
+        def _to_float(v):
+            try:
+                return float(v) if v is not None else 0.0
+            except (ValueError, TypeError):
+                return 0.0
+
         now = time.monotonic()
-        total_in = float(data.get("total_input_power") or 0.0)
-        ac_in = float(data.get("ac_input") or 0.0)
-        dc_in = float(data.get("dc_input") or 0.0)
-        total_out = float(data.get("total_output_power") or 0.0)
-        ac_out = float(data.get("ac_output_power") or 0.0)
-        dc_out = float(data.get("dc_output_power") or 0.0)
+        total_in = _to_float(data.get("total_input_power"))
+        ac_in = _to_float(data.get("ac_input"))
+        dc_in = _to_float(data.get("dc_input"))
+        total_out = _to_float(data.get("total_output_power"))
+        ac_out = _to_float(data.get("ac_output_power"))
+        dc_out = _to_float(data.get("dc_output_power"))
 
         real_in = max(total_in, ac_in + dc_in)
         real_out = max(total_out, ac_out + dc_out)
@@ -1095,9 +1101,34 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         if self._lan_state:
             current_data.update(self._lan_state)
 
+        numeric_keys = {
+            "battery_percentage",
+            "remain_time",
+            "remain_charging_time",
+            "total_input_power",
+            "total_output_power",
+            "ac_input",
+            "dc_input",
+            "temp",
+            "inverter_temp",
+            "ac_charging_limit",
+        }
+
         for tag, val in fields.items():
             if tag in tag_map:
                 key = tag_map[tag]
+                # Guard against string/metadata tag pollution in numeric sensors
+                if key in numeric_keys:
+                    try:
+                        val = float(val)
+                    except (ValueError, TypeError):
+                        _LOGGER.debug(
+                            "oukitel: Ignoring non-numeric value for %s (tag %s): %r",
+                            key,
+                            tag,
+                            val,
+                        )
+                        continue
                 # Filter out transient 0% battery glitch from handshake frames if previous was > 5%
                 # Legitimate slow discharge down to 0% (<= 5.0%) is preserved and accepted
                 if key == "battery_percentage" and val == 0:
