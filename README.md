@@ -226,6 +226,15 @@ Las estaciones de energía Oukitel (series P2001, P2001E, P2001E Plus, P2001E Pr
 
 ---
 
+## 🚀 What's New in v1.5.21: Proactive Lease Renewal, Anti-Flapping Storm Backoff & Zero Cloud-LAN Collisions
+
+- **🔄 Proactive 45s Firmware Lease Renewal (`local_session.py`):** Oukitel station firmware automatically expires `Tag 100 = 1` (`high_frequency_reporting = 1`) after ~90 seconds. The session now proactively renews `Tag 100 = 1` every 45 seconds **only while telemetry is actively flowing (`silence < 10s`)**, eliminating 60-second telemetry pauses and preventing write bursts into silent sockets during Wi-Fi drops.
+- **🛑 Zero Writes on Silent Sockets & Removal of `_async_rearm_lan()`:** Eliminated the coordinator's reactive re-arm loop that previously injected `Tag 100 = 1` writes every 10 seconds when a socket went silent during Wi-Fi packet loss. If telemetry stops for >= 10 seconds, zero heartbeats and zero writes are sent; if silence reaches 35 seconds, the socket is closed cleanly.
+- **🌩️ Progressive Anti-Flapping Storm Backoff (`15s ➔ 45s ➔ 180s`):** When consecutive LAN sessions drop within < 3 minutes (indicating an active router reboot or Wi-Fi packet-loss storm), the coordinator progressively backs off up to 180 seconds, riding out nightly network maintenance windows without overwhelming the station's UART buffer.
+- **🔒 Pure Local 30-Minute Session Recycling & Cloud Collision Prevention:** Planned 30-minute buffer recycles (`was_recycled = True`) now reconnect silently in local LAN without flipping the `Connection Mode` sensor to `Cloud` or triggering Cloud `wake_device(3)` (`high_frequency_reporting = 3`) collisions.
+
+---
+
 ## 🚀 What's New in v1.5.20: Microcontroller Buffer Protection, 30-min Session Recycling & Connection Mode Categorization
 
 - **🛡️ Microcontroller Buffer Protection & Session Recycling (`1800s / 30m`):** Implemented periodic session recycling for continuous LAN streaming. Gracefully closes and reopens the TCP 6607 socket every 30 minutes, freeing Quectel `FCM100D` lwIP heap and clearing internal buffers before overflow errors occur.
