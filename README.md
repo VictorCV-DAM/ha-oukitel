@@ -980,6 +980,41 @@ A heartfelt acknowledgment to the community members whose dedication, hardware d
       </ul>
     </td>
   </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/cash83">
+        <img src="https://avatars.githubusercontent.com/u/62354219?v=4" width="80" height="80" style="border-radius: 50%;" alt="cash83"/><br/>
+        <b>@cash83</b>
+      </a>
+    </td>
+    <td>
+      <b>Pioneer of Zero-Cloud Offline Architecture & BLE Provisioning Discovery</b><br/>
+      Initiated and catalyzed the 100% offline local revolution for Oukitel power stations (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/6">#6</a>), discovering the foundational breakthroughs that bypassed vendor cloud servers entirely:
+      <ul>
+        <li><b>BLE GATT Provisioning Discovery (<code>0x7010</code>):</b> Reverse-engineered the manufacturer broadcast (<code>QUEC_BLE_*</code>) and the proprietary GATT <code>0x7010</code> configuration frame on characteristic <code>9c40</code>, uncovering the undocumented capability to inject custom network endpoints.</li>
+        <li><b>Plaintext MQTT Endpoint Fallback:</b> Discovered that supplying an unencrypted <code>mqtt://</code> URI instructs the Quectel FCM100D Wi-Fi controller to bypass cloud TLS-PSK encryption entirely, allowing direct, cleartext communication with a local broker on port 8886.</li>
+        <li><b>Prototype Architecture Foundation:</b> Contributed the original architectural blueprints for <code>cloud_bridge.py</code> and <code>ble_provision.py</code>, establishing the standalone local MQTT server model and silence watchdog concept.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/Korzar">
+        <img src="https://avatars.githubusercontent.com/u/9057993?v=4" width="80" height="80" style="border-radius: 50%;" alt="Korzar"/><br/>
+        <b>@Korzar</b>
+      </a>
+    </td>
+    <td>
+      <b>Zero-Cloud Field Testing, ESP32-S3 Bluetooth Proxy & Real-World Validation</b><br/>
+      Fearless, rigorous in-the-wild testing of the Zero-Cloud broker architecture on physical P1000E Plus hardware (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/6">#6</a>), turning a theoretical prototype into a rock-solid, production-grade reality:
+      <ul>
+        <li><b>ESPHome ESP32-S3 Bluetooth Proxy Integration:</b> Validated Home Assistant's native BLE proxy architecture for provisioning Oukitel hardware, proving that zero external dongles or scripts are needed to configure stations locally.</li>
+        <li><b>Pinpoint Diagnostic Tracebacks:</b> Captured the critical <code>DEFAULT_BRIDGE_PORT</code> NameError and isolated the <code>'2.19.0_beta'</code> firmware string collision during QuecThing login frames, enabling rapid, targeted hotfixes.</li>
+        <li><b>Elimination of Sensor Lag & Exception Storms:</b> Systematically reproduced the 344+ sensor listener exceptions, validating that eliminating string pollution restored 1–2 Hz real-time telemetry and sub-second control.</li>
+        <li><b>Autonomous Reboot Resilience & Production Load Testing:</b> Verified flawless autonomous reconnection within 5–10 seconds after full VM and HA reboots without physical intervention, and deployed the Zero-Cloud integration into 24/7 production powering his live server rack.</li>
+      </ul>
+    </td>
+  </tr>
 </table>
 
 ---
