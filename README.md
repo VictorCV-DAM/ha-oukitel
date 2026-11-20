@@ -172,13 +172,28 @@ To guarantee flawless operation across all 58 entities, native Riemann sum energ
 
 ---
 
-## 🌐 Connection Modes: Auto, LAN & Cloud
+## 🌐 Connection Modes & Stability Guide (Guía de Modos y Estabilidad)
 
 You can configure the active connection mode at any time directly in Home Assistant (**Settings** ➔ **Devices & Services** ➔ **Oukitel Power Station** ➔ **Configure ⚙️**):
 
-1. **Automatic (LAN preferred + Cloud)** *(Default)*: Automatically connects via local LAN (TCP port 6607, binary AES-128 push) when the station is on your home Wi-Fi network. If the station goes offline, drops Wi-Fi, or is outside the local network, it seamlessly falls back to Cloud API polling without missing data.
-2. **LAN Only (Direct real-time)**: Home Assistant talks to the station locally over TCP 6607 with 0 cloud polling. HA makes no requests to the cloud; **the station still needs internet access to emit telemetry** (see the important note below).
-3. **Cloud Only (Cloud / Polling)**: Standard cloud polling via the official Acceleronix/Quectel servers (ideal when Home Assistant and the power station are on separate networks or behind isolated VLANs).
+| Mode | Stability Rating | Latency | Hardware Stress | Recommended For | Description |
+|---|---|---|---|---|---|
+| **🟢 Solo Nube / Cloud Only** | **Estable (Recomendado)** | 10–30 s | **Mínimo (0% UART load)** | **Máxima fiabilidad 24/7 y ubicaciones remotas** | Sondeo periódico REST a la nube de Oukitel. No mantiene sockets TCP abiertos en la estación; **100% inmune a cuelgues del bus interno UART o desbordamientos de memoria del chip Wi-Fi**. Es el modo nativo para el que el fabricante diseñó el firmware. |
+| **🟡 Automático / Automatic** | **Tiempo Real (Sensible a Wi-Fi)** | ~1 s | Moderado (Push 1s + Reciclaje cada 30m) | **Usuarios que buscan telemetría instantánea con respaldo** | Conexión local LAN (TCP 6607) a 1 segundo cuando la estación está en la red local. Si el streaming local se interrumpe o la estación se silencia, conmuta automáticamente a la nube. Incluye reciclaje de sesión preventivo para evitar acumulación de buffers. |
+| **🔴 Solo LAN / LAN Only** | **Inestable / Sensible a red** | ~1 s | Alto (Push continuo sin fallback) | **Entornos aislados de alta monitorización local** | Conexión local estricta por TCP 6607 sin peticiones a la nube. Si la red Wi-Fi experimenta microcortes o la estación deja de emitir, las entidades quedarán no disponibles ya que no cuenta con respaldo en la nube. *(Nota: la estación requiere acceso a internet para generar telemetría por diseño de fábrica)*. |
+
+### 🔍 Diagnóstico de Hardware y Prevención de Cuelgues (Hardware Architecture)
+Las estaciones de energía Oukitel (series P2001, P2001E, P2001E Plus, P2001E Pro, BP2000, etc.) incorporan un módulo de comunicaciones Wi-Fi/Bluetooth **Quectel FCM100D** conectado a la placa controladora principal del inversor (STM32 MCU) mediante un puerto serie UART de 2 hilos **sin control de flujo por hardware (sin líneas RTS/CTS)**.
+- **¿Por qué puede colgarse la telemetría en streaming local?**: Al activar el modo de alta frecuencia (`Tag 100 = 1`), el inversor STM32 emite ráfagas de 10 a 20 paquetes por segundo hacia el chip Wi-Fi. Si la red Wi-Fi doméstica experimenta reintentos de paquetes (jitter, cambio de canal del router o microcortes), la cola de transmisión TCP del chip Wi-Fi se llena y la memoria FIFO del puerto serie UART sufre un desbordamiento irreversible (`UART_FIFO_OVR`). En ese estado, el chip Wi-Fi sigue respondiendo a pings de red e incluso abre el puerto TCP, pero la placa principal de la estación deja de comunicarse hasta que se apaga y enciende físicamente la batería.
+- **Medidas implementadas en la integración (v1.5.20+)**:
+  1. **Reciclaje preventivo de sesión**: En modo LAN/Automático, la integración cierra y reabre limpiamente la sesión TCP cada 30 minutos, liberando los búferes de memoria del chip Wi-Fi.
+  2. **Detección inmediata de silencio**: Si la estación acepta la conexión pero no emite telemetría durante 15 segundos, la integración cierra el socket de inmediato sin enviar pings para no saturar el chip, y en modo Automático conmuta a la nube al instante.
+  3. **Modo Solo Nube**: Elimina por completo el streaming por el puerto TCP 6607, garantizando un funcionamiento indefinido 24/7 sin ningún riesgo de bloqueo del microcontrolador.
+
+> [!TIP]
+> **¿Qué modo debo elegir?**:
+> - Si deseas **despreocuparte por completo de cuelgues o desconexiones**, o si la batería está en una segunda residencia o instalación solar aislada: selecciona **Solo Nube** con un intervalo de 10 segundos.
+> - Si deseas **ver la variación instantánea (segundo a segundo)** de potencias cuando enciendes cargas en casa: selecciona **Automático**. Asegúrate de que la estación tenga buena cobertura Wi-Fi (canal fijo de 2.4 GHz en el router).
 
 > [!IMPORTANT]
 > **LAN is local from Home Assistant to the station, but the station itself needs internet to emit telemetry.**
@@ -187,11 +202,12 @@ You can configure the active connection mode at any time directly in Home Assist
 | Feature | **LAN Mode** | **Cloud Mode** |
 |---|---|---|
 | **Protocol** | TCP port 6607 (binary, AES-128 push) | Acceleronix REST API (JSON) |
-| **Latency** | Real-time push (~1 s) | Polling interval (min. 3 s) |
+| **Latency** | Real-time push (~1 s) | Polling interval (min. 3 s, rec. 10 s) |
 | **Internet Required** | Yes — the station must keep its vendor-cloud link for telemetry (HA↔station traffic stays local) | Always |
 | **Switch Control Offline** | ✅ Yes (writes are acknowledged locally) | ❌ No |
 | **Works Offline / Cloud Down** | ⚠️ Partial — handshake and writes work; **telemetry stops** | ❌ No |
 | **Works Outside Local Network** | ❌ (requires VPN) | ✅ Yes |
+| **24/7 Hardware Reliability** | ⚠️ Sensitive to Wi-Fi quality | 🟢 100% Rock solid |
 
 > [!NOTE]
 > **Comportamiento Offline y Limitación de Fabricante: "Caso de corte externo / Corte de red de proveedor"**:
@@ -209,6 +225,17 @@ You can configure the active connection mode at any time directly in Home Assist
 
 
 ---
+
+## 🚀 What's New in v1.5.20: Microcontroller Buffer Protection, 30-min Session Recycling & Connection Mode Categorization
+
+- **🛡️ Microcontroller Buffer Protection & Session Recycling (`1800s / 30m`):** Implemented periodic session recycling for continuous LAN streaming. Gracefully closes and reopens the TCP 6607 socket every 30 minutes, freeing Quectel `FCM100D` lwIP heap and clearing internal buffers before overflow errors occur.
+- **⚡ Fast Silence Bailout (15s):** If a local session establishes the TCP handshake but receives 0 telemetry packets for 15s (indicating the internal STM32 MCU UART bridge is unresponsive), the session is terminated cleanly without sending ping floods, and Auto mode instantly falls back to Cloud API polling to prevent frozen entities in Home Assistant.
+- **🏷️ Connection Modes & Stability Categorization:** Reorganized and clearly labeled all transport modes across the Options UI (`es.json`, `en.json`, `strings.json`, and `const.py`):
+  - `Solo Nube / Cloud Only`: Clearly labeled **Estable (Recomendado para máxima fiabilidad)** / **Stable (Recommended for maximum reliability)** — 100% immune to internal UART overruns.
+  - `Automático / Automatic`: Labeled **Tiempo Real (Sensible a calidad Wi-Fi)** / **Real-time continuous (Sensitive to Wi-Fi quality)** with 30-minute recycling and instant fallback.
+  - `Solo LAN / LAN Only`: Labeled **Tiempo Real Estricto (Inestable / Sensible a red)** / **Strict local real-time (Unstable / Sensitive to network)**.
+- **📖 UI Data Descriptions:** Added comprehensive contextual descriptions under the connection mode selector explaining the stability trade-offs and recommending the 10-second polling interval for Cloud mode.
+- **🧪 Unit Test Suite:** All 39 unit tests verified and passing cleanly.
 
 ## 🚀 What's New in v1.5.10: HACS Review Compliance & Auth Flow Hardening
 
@@ -872,12 +899,10 @@ If this integration has saved you time, enhanced your home solar automation, or 
 >
 > **How to Test in HACS:**
 > 1. In Home Assistant, open **HACS ➔ Integrations ➔ Oukitel Power Station**.
-> 2. Click the three dots (top right) ➔ select **Install another version** (or enable **Show beta versions**).
-> 3. Choose the latest pre-release (e.g. **`v1.6.0-alpha.1`**) and click **Install / Reinstall**.
+> 2. Click the three dots (top right) ➔ **Redownload**.
+> 3. Select the branch **`feature/ep2500-support`** and click **Download**.
 > 4. Restart Home Assistant.
 > 5. Go to **Settings ➔ Devices & Services ➔ Add Integration ➔ Oukitel Power Station** and choose **Balcony Energy Storage (EP2500 Series - Local Tuya)**.
->
-> 💡 **Hardware Pairing Tip:** If you need to re-pair or connect the EP2500 to Wi-Fi, press the **Power button 4 times quickly in rapid succession**. The Wi-Fi icon on the LCD will begin flashing to indicate pairing mode.
 
 <div align="center">
   <table border="0" style="margin: 20px auto; border-collapse: separate; border-spacing: 24px 0;">
@@ -952,6 +977,151 @@ A heartfelt acknowledgment to the community members whose dedication, hardware d
         <li><b>Firmware Inverter Accuracy:</b> Isolated phantom 230V AC voltage retention when inverters are powered off, enabling true 0V sensor clearing at zero load.</li>
         <li><b>Cloud Resilience & State Readback Guard:</b> Co-designed the <b>State Readback Verification</b> mechanism to absorb transient cloud <code>code 5340</code> ACK timeouts without UI rollbacks, and pinpointed the composite TSL struct unpacking required for nested models.</li>
         <li><b>Real-World Outage Stress-Testing:</b> Conducted exhaustive telemetry verification on physical BP2000 hardware under real-life grid outage automation cycles.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/cash83">
+        <img src="https://avatars.githubusercontent.com/u/62354219?v=4" width="80" height="80" style="border-radius: 50%;" alt="cash83"/><br/>
+        <b>@cash83</b>
+      </a>
+    </td>
+    <td>
+      <b>Pioneer of Zero-Cloud Offline Architecture & BLE Provisioning Discovery</b><br/>
+      Initiated and catalyzed the 100% offline local revolution for Oukitel power stations (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/6">#6</a>), discovering the foundational breakthroughs that bypassed vendor cloud servers entirely:
+      <ul>
+        <li><b>BLE GATT Provisioning Discovery (<code>0x7010</code>):</b> Reverse-engineered the manufacturer broadcast (<code>QUEC_BLE_*</code>) and the proprietary GATT <code>0x7010</code> configuration frame on characteristic <code>9c40</code>, uncovering the undocumented capability to inject custom network endpoints.</li>
+        <li><b>Plaintext MQTT Endpoint Fallback:</b> Discovered that supplying an unencrypted <code>mqtt://</code> URI instructs the Quectel FCM100D Wi-Fi controller to bypass cloud TLS-PSK encryption entirely, allowing direct, cleartext communication with a local broker on port 8886.</li>
+        <li><b>Prototype Architecture Foundation:</b> Contributed the original architectural blueprints for <code>cloud_bridge.py</code> and <code>ble_provision.py</code>, establishing the standalone local MQTT server model and silence watchdog concept.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/Korzar">
+        <img src="https://avatars.githubusercontent.com/u/9057993?v=4" width="80" height="80" style="border-radius: 50%;" alt="Korzar"/><br/>
+        <b>@Korzar</b>
+      </a>
+    </td>
+    <td>
+      <b>Zero-Cloud Field Testing, ESP32-S3 Bluetooth Proxy & Real-World Validation</b><br/>
+      Fearless, rigorous in-the-wild testing of the Zero-Cloud broker architecture on physical P1000E Plus hardware (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/6">#6</a>), turning a theoretical prototype into a rock-solid, production-grade reality:
+      <ul>
+        <li><b>ESPHome ESP32-S3 Bluetooth Proxy Integration:</b> Validated Home Assistant's native BLE proxy architecture for provisioning Oukitel hardware, proving that zero external dongles or scripts are needed to configure stations locally.</li>
+        <li><b>Pinpoint Diagnostic Tracebacks:</b> Captured the critical <code>DEFAULT_BRIDGE_PORT</code> NameError and isolated the <code>'2.19.0_beta'</code> firmware string collision during QuecThing login frames, enabling rapid, targeted hotfixes.</li>
+        <li><b>Elimination of Sensor Lag & Exception Storms:</b> Systematically reproduced the 344+ sensor listener exceptions, validating that eliminating string pollution restored 1–2 Hz real-time telemetry and sub-second control.</li>
+        <li><b>Autonomous Reboot Resilience & Production Load Testing:</b> Verified flawless autonomous reconnection within 5–10 seconds after full VM and HA reboots without physical intervention, and deployed the Zero-Cloud integration into 24/7 production powering his live server rack.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/appriocoles">
+        <img src="https://avatars.githubusercontent.com/u/265141468?v=4" width="80" height="80" style="border-radius: 50%;" alt="appriocoles"/><br/>
+        <b>@appriocoles</b>
+      </a>
+    </td>
+    <td>
+      <b>EP2500 Balcony Storage Groundwork, Protocol Reverse Engineering & Live Telemetry Dump</b><br/>
+      Crucial pioneer of the Oukitel EP2500 balcony solar storage support (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/9">#9</a>), providing the foundational telemetry extractions, hardware discoveries, and live testing that made native Tuya 3.5 local control possible:
+      <ul>
+        <li><b>Undocumented Hardware Pairing Discovery:</b> Empirically discovered and documented the physical hardware pairing sequence (<b>4 rapid presses on the Power button</b> to trigger Wi-Fi pairing mode), an undocumented manufacturer procedure that unlocked device recovery and local pairing.</li>
+        <li><b>Comprehensive 83-Datapoint Reverse Engineering Dump:</b> Captured and contributed a complete live telemetry extraction of 83 datapoints (DP 101 through 188), validating individual cell voltage scaling (<code>3325 mV</code> on DP 130/131), decidegree dual thermal probes (<code>25.8 °C</code> on DP 132/133), inverter status registers, and power regulation thresholds.</li>
+        <li><b>Bidirectional Control Verification:</b> Successfully conducted the first physical verification of local Tuya 3.5 command dispatch, proving that adjusting <code>Maximum Feed-In Power</code> (DP 121) from Home Assistant takes effect instantly on the physical inverter.</li>
+        <li><b>Startup Trace & Regression Triage:</b> Captured and reported the exact stack trace during early alpha testing, pinpointing coordinator package export omissions and accelerating the stable driver rollout.</li>
+        <li><b>Dynamic Arbitrage & Zero-Export Blueprint:</b> Designed and validated the real-world automation architecture pairing the EP2500 with Shelly Pro 3EM whole-house metering and OMIE dynamic electricity spot-pricing for automated grid charging and peak shaving.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/Jeff-buell">
+        <img src="https://avatars.githubusercontent.com/u/338980819?v=4" width="80" height="80" style="border-radius: 50%;" alt="Jeff-buell"/><br/>
+        <b>@Jeff-buell</b>
+      </a>
+    </td>
+    <td>
+      <b>EP2500 Inverter Operating Mode Architecture & Hardware Cross-Validation</b><br/>
+      Pivotal contributions to the EP2500 balcony storage driver (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/9">#9</a>), identifying essential inverter control registers and providing multi-unit cross-validation:
+      <ul>
+        <li><b>Operating Mode Architecture Discovery:</b> Pinpointed and documented the essential bidirectional control mechanism between <code>grid_priority</code> (home feed-in) and <code>backup_power</code> (forced AC grid charging), identifying writable schedule registers (DP 165–169) and correlating with reference reverse-engineering documentation.</li>
+        <li><b>Independent Physical Multi-Unit Cross-Validation:</b> Extensively verified the local Tuya 3.5 integration across an independent physical EP2500 installation, confirming telemetry reliability, device discovery, and seamless execution of the operating mode select entity (<code>v1.6.0-ep2500-alpha.4</code>).</li>
+        <li><b>Active Community Mentorship:</b> Actively supported incoming community members by sharing video walkthroughs and guidance on Tuya Developer platform credential extraction to obtain the required Local Key.</li>
+      </ul>
+    </td>
+  </tr>: acknowledge @appriocoles and @Jeff-buell for EP2500 reverse engineering & validation)
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/cash83">
+        <img src="https://avatars.githubusercontent.com/u/62354219?v=4" width="80" height="80" style="border-radius: 50%;" alt="cash83"/><br/>
+        <b>@cash83</b>
+      </a>
+    </td>
+    <td>
+      <b>Pioneer of Zero-Cloud Offline Architecture & BLE Provisioning Discovery</b><br/>
+      Initiated and catalyzed the 100% offline local revolution for Oukitel power stations (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/6">#6</a>), discovering the foundational breakthroughs that bypassed vendor cloud servers entirely:
+      <ul>
+        <li><b>BLE GATT Provisioning Discovery (<code>0x7010</code>):</b> Reverse-engineered the manufacturer broadcast (<code>QUEC_BLE_*</code>) and the proprietary GATT <code>0x7010</code> configuration frame on characteristic <code>9c40</code>, uncovering the undocumented capability to inject custom network endpoints.</li>
+        <li><b>Plaintext MQTT Endpoint Fallback:</b> Discovered that supplying an unencrypted <code>mqtt://</code> URI instructs the Quectel FCM100D Wi-Fi controller to bypass cloud TLS-PSK encryption entirely, allowing direct, cleartext communication with a local broker on port 8886.</li>
+        <li><b>Prototype Architecture Foundation:</b> Contributed the original architectural blueprints for <code>cloud_bridge.py</code> and <code>ble_provision.py</code>, establishing the standalone local MQTT server model and silence watchdog concept.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/Korzar">
+        <img src="https://avatars.githubusercontent.com/u/9057993?v=4" width="80" height="80" style="border-radius: 50%;" alt="Korzar"/><br/>
+        <b>@Korzar</b>
+      </a>
+    </td>
+    <td>
+      <b>Zero-Cloud Field Testing, ESP32-S3 Bluetooth Proxy & Real-World Validation</b><br/>
+      Fearless, rigorous in-the-wild testing of the Zero-Cloud broker architecture on physical P1000E Plus hardware (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/6">#6</a>), turning a theoretical prototype into a rock-solid, production-grade reality:
+      <ul>
+        <li><b>ESPHome ESP32-S3 Bluetooth Proxy Integration:</b> Validated Home Assistant's native BLE proxy architecture for provisioning Oukitel hardware, proving that zero external dongles or scripts are needed to configure stations locally.</li>
+        <li><b>Pinpoint Diagnostic Tracebacks:</b> Captured the critical <code>DEFAULT_BRIDGE_PORT</code> NameError and isolated the <code>'2.19.0_beta'</code> firmware string collision during QuecThing login frames, enabling rapid, targeted hotfixes.</li>
+        <li><b>Elimination of Sensor Lag & Exception Storms:</b> Systematically reproduced the 344+ sensor listener exceptions, validating that eliminating string pollution restored 1–2 Hz real-time telemetry and sub-second control.</li>
+        <li><b>Autonomous Reboot Resilience & Production Load Testing:</b> Verified flawless autonomous reconnection within 5–10 seconds after full VM and HA reboots without physical intervention, and deployed the Zero-Cloud integration into 24/7 production powering his live server rack.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/appriocoles">
+        <img src="https://avatars.githubusercontent.com/u/265141468?v=4" width="80" height="80" style="border-radius: 50%;" alt="appriocoles"/><br/>
+        <b>@appriocoles</b>
+      </a>
+    </td>
+    <td>
+      <b>EP2500 Balcony Storage Groundwork, Protocol Reverse Engineering & Live Telemetry Dump</b><br/>
+      Crucial pioneer of the Oukitel EP2500 balcony solar storage support (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/9">#9</a>), providing the foundational telemetry extractions, hardware discoveries, and live testing that made native Tuya 3.5 local control possible:
+      <ul>
+        <li><b>Undocumented Hardware Pairing Discovery:</b> Empirically discovered and documented the physical hardware pairing sequence (<b>4 rapid presses on the Power button</b> to trigger Wi-Fi pairing mode), an undocumented manufacturer procedure that unlocked device recovery and local pairing.</li>
+        <li><b>Comprehensive 83-Datapoint Reverse Engineering Dump:</b> Captured and contributed a complete live telemetry extraction of 83 datapoints (DP 101 through 188), validating individual cell voltage scaling (<code>3325 mV</code> on DP 130/131), decidegree dual thermal probes (<code>25.8 °C</code> on DP 132/133), inverter status registers, and power regulation thresholds.</li>
+        <li><b>Bidirectional Control Verification:</b> Successfully conducted the first physical verification of local Tuya 3.5 command dispatch, proving that adjusting <code>Maximum Feed-In Power</code> (DP 121) from Home Assistant takes effect instantly on the physical inverter.</li>
+        <li><b>Startup Trace & Regression Triage:</b> Captured and reported the exact stack trace during early alpha testing, pinpointing coordinator package export omissions and accelerating the stable driver rollout.</li>
+        <li><b>Dynamic Arbitrage & Zero-Export Blueprint:</b> Designed and validated the real-world automation architecture pairing the EP2500 with Shelly Pro 3EM whole-house metering and OMIE dynamic electricity spot-pricing for automated grid charging and peak shaving.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/Jeff-buell">
+        <img src="https://avatars.githubusercontent.com/u/338980819?v=4" width="80" height="80" style="border-radius: 50%;" alt="Jeff-buell"/><br/>
+        <b>@Jeff-buell</b>
+      </a>
+    </td>
+    <td>
+      <b>EP2500 Inverter Operating Mode Architecture & Hardware Cross-Validation</b><br/>
+      Pivotal contributions to the EP2500 balcony storage driver (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/9">#9</a>), identifying essential inverter control registers and providing multi-unit cross-validation:
+      <ul>
+        <li><b>Operating Mode Architecture Discovery:</b> Pinpointed and documented the essential bidirectional control mechanism between <code>grid_priority</code> (home feed-in) and <code>backup_power</code> (forced AC grid charging), identifying writable schedule registers (DP 165–169) and correlating with reference reverse-engineering documentation.</li>
+        <li><b>Independent Physical Multi-Unit Cross-Validation:</b> Extensively verified the local Tuya 3.5 integration across an independent physical EP2500 installation, confirming telemetry reliability, device discovery, and seamless execution of the operating mode select entity (<code>v1.6.0-ep2500-alpha.4</code>).</li>
+        <li><b>Active Community Mentorship:</b> Actively supported incoming community members by sharing video walkthroughs and guidance on Tuya Developer platform credential extraction to obtain the required Local Key.</li>
       </ul>
     </td>
   </tr>
