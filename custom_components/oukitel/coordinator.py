@@ -887,6 +887,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
     async def _lan_read_loop(self, host: str, auth_key: str) -> None:
         reconnect_delay = _LAN_RECONNECT_DELAY
         reported_disconnect = False
+        short_sessions = 0
         while True:
             if self._paused:
                 _LOGGER.debug("oukitel: LAN read loop stopped because integration is paused")
@@ -896,29 +897,54 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             except Exception as exc:
                 _LOGGER.debug("oukitel: LAN read loop ended: %s", exc)
 
+            was_recycled = bool(self._lan_session and getattr(self._lan_session, "recycled", False))
+            session_duration = (
+                time.monotonic() - self._lan_connected_at
+                if self._lan_connected_at > 0
+                else 0.0
+            )
             if self._lan_session:
                 await self._lan_session.close()
                 self._lan_session = None
 
-            self._lan_active = False
-            if self._lan_session_got_telemetry:
+            if not was_recycled:
+                self._lan_active = False
+            if was_recycled:
                 self._lan_silent_sessions = 0
+                short_sessions = 0
                 self._lan_hibernating = False
                 reconnect_delay = _LAN_RECONNECT_DELAY
                 reported_disconnect = False
+            elif self._lan_session_got_telemetry:
+                self._lan_silent_sessions = 0
+                self._lan_hibernating = False
+                reported_disconnect = False
+                # Progressive backoff if sessions die repeatedly in < 3 minutes (flapping Wi-Fi storm)
+                if session_duration < 180.0:
+                    short_sessions += 1
+                    reconnect_delay = 15.0 if short_sessions == 1 else (45.0 if short_sessions == 2 else 180.0)
+                    _LOGGER.warning(
+                        "oukitel: Short-lived LAN session #%d (%.1fs < 180s) — cooling off for %.0fs",
+                        short_sessions,
+                        session_duration,
+                        reconnect_delay,
+                    )
+                else:
+                    short_sessions = 0
+                    reconnect_delay = 10.0
             else:
                 self._lan_silent_sessions += 1
                 self._lan_has_valid_telemetry = False
-                reconnect_delay = min(reconnect_delay * 2.0, _LAN_SILENT_MAX_DELAY)
+                reconnect_delay = min(max(reconnect_delay, 15.0) * 2.0, 180.0)
 
-            # If LAN stream drops, immediately request cloud poll in AUTO mode to prevent frozen metrics
-            if self.connection_mode == MODE_AUTO and getattr(self.client, "access_token", None):
+            # If LAN stream drops unexpectedly (not a planned 30m recycle), request cloud poll in AUTO mode
+            if not was_recycled and self.connection_mode == MODE_AUTO and getattr(self.client, "access_token", None):
                 self.hass.async_create_task(self.async_request_refresh())
 
             if self._paused:
                 break
 
-            if not reported_disconnect:
+            if not was_recycled and not reported_disconnect:
                 _LOGGER.info(
                     "oukitel: LAN disconnected — retrying connection in background (initial delay %.1fs)",
                     reconnect_delay,
@@ -995,13 +1021,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                             )
                 self._lan_session = None
                 self._lan_active = False
-                # If the station became unreachable (e.g. manual power cycle or Wi-Fi reboot),
-                # reset silent backoff so we reconnect within seconds as soon as it boots back up.
-                if self._lan_silent_sessions > 0:
-                    self._lan_silent_sessions = 0
-                    reconnect_delay = 5.0
-                else:
-                    reconnect_delay = min(reconnect_delay * 1.5, 15.0)
+                reconnect_delay = min(max(reconnect_delay, 15.0) * 1.5, 180.0)
                 continue
 
     def _telemetry_is_stale(self) -> bool:
@@ -1258,17 +1278,6 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             self._lan_silent_sessions = 0
             self.hass.async_create_task(self.async_setup_lan(reason="auto_retry"))
 
-        # In LAN offline mode, keep socket alive without dropping it on silence
-        if self._lan_active and self.connection_mode != MODE_CLOUD:
-            reference = self._lan_last_report or self._lan_connected_at
-            silent_for = None if reference is None else (now - reference)
-            if (
-                silent_for is not None
-                and silent_for > _LAN_REARM_TIMEOUT
-                and (now - self._lan_last_rearm) >= _LAN_REARM_INTERVAL
-            ):
-                await self._async_rearm_lan()
-
         if self.connection_mode == MODE_CLOUD:
             data = await self._update_cloud()
         elif self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
@@ -1513,9 +1522,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 offline_data["online"] = False
                 return offline_data
 
-        lan_streaming = self._lan_active and self._lan_has_valid_telemetry and not self.telemetry_stale
         can_wake = (
-            (self.connection_mode == MODE_CLOUD or (self.connection_mode == MODE_AUTO and not lan_streaming))
+            (self.connection_mode == MODE_CLOUD or (self.connection_mode == MODE_AUTO and self._lan_connected_at == 0.0))
             and (now - self.last_user_command_time) >= 15.0
         )
         wake_interval = DEFAULT_WAKE_INTERVAL if self.connection_mode == MODE_CLOUD else 120.0

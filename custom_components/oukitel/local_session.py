@@ -46,8 +46,9 @@ _LOGGER = logging.getLogger(__name__)
 _CONNECT_TIMEOUT = 15.0
 _READ_TIMEOUT = 30.0
 _KEEPALIVE_INTERVAL = 10.0
+_LEASE_RENEWAL_INTERVAL = 45.0
 _INITIAL_TELEMETRY_TIMEOUT = 15.0
-_SILENCE_PROBE_THRESHOLD = 90.0
+_SILENCE_PROBE_THRESHOLD = 35.0
 _SESSION_RECYCLE_INTERVAL = 1800.0
 _CLOSE_TIMEOUT = 5.0
 
@@ -82,8 +83,10 @@ class LocalSession:
         self._packet_id = 1000
         self._last_rx_time: float = time.monotonic()
         self._last_telemetry_time: float = time.monotonic()
+        self._last_subscribe_time: float = time.monotonic()
         self._session_start_time: float = time.monotonic()
         self._got_telemetry: bool = False
+        self.recycled: bool = False
 
     def _next_pid(self) -> int:
         self._packet_id += 1
@@ -228,6 +231,7 @@ class LocalSession:
         ciphertext = aes_encrypt(self._key, self._iv, body)
         self._writer.write(build_frame(self._next_pid(), _CMD_WRITE, ciphertext))
         await self._writer.drain()
+        self._last_subscribe_time = time.monotonic()
 
         # 2. Real Heartbeat (cmd 28727 / _CMD_PING) to trigger initial response
         await self.send_heartbeat()
@@ -240,7 +244,7 @@ class LocalSession:
         ciphertext = aes_encrypt(self._key, self._iv, body)
         self._writer.write(build_frame(self._next_pid(), _CMD_WRITE, ciphertext))
         await self._writer.drain()
-        await self.send_heartbeat()
+        self._last_subscribe_time = time.monotonic()
 
     async def _keepalive_loop(self) -> None:
         failures = 0
@@ -267,6 +271,7 @@ class LocalSession:
 
                 # Periodic session recycling: close socket cleanly every 30 minutes to flush Quectel lwIP buffers
                 if self._got_telemetry and (now - self._session_start_time >= _SESSION_RECYCLE_INTERVAL):
+                    self.recycled = True
                     _LOGGER.info(
                         "oukitel: LAN session periodic recycling (%.0f min) to prevent microcontroller buffer saturation",
                         _SESSION_RECYCLE_INTERVAL / 60.0,
@@ -275,7 +280,14 @@ class LocalSession:
                         self._writer.close()
                     break
 
-                await self.send_heartbeat()
+                # Only send frames when the connection is actively delivering telemetry (< 10s silence).
+                # Proactively renew the 90s firmware Tag 100 = 1 lease every 45s while healthy,
+                # and never write anything into a silent/stalled socket during a Wi-Fi drop.
+                if telemetry_silence < _KEEPALIVE_INTERVAL:
+                    if self._got_telemetry and (now - self._last_subscribe_time >= _LEASE_RENEWAL_INTERVAL):
+                        await self.resubscribe()
+                    else:
+                        await self.send_heartbeat()
                 failures = 0
             except asyncio.CancelledError:
                 raise

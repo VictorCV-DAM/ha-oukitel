@@ -226,6 +226,15 @@ Las estaciones de energía Oukitel (series P2001, P2001E, P2001E Plus, P2001E Pr
 
 ---
 
+## 🚀 What's New in v1.5.21: Proactive Lease Renewal, Anti-Flapping Storm Backoff & Zero Cloud-LAN Collisions
+
+- **🔄 Proactive 45s Firmware Lease Renewal (`local_session.py`):** Oukitel station firmware automatically expires `Tag 100 = 1` (`high_frequency_reporting = 1`) after ~90 seconds. The session now proactively renews `Tag 100 = 1` every 45 seconds **only while telemetry is actively flowing (`silence < 10s`)**, eliminating 60-second telemetry pauses and preventing write bursts into silent sockets during Wi-Fi drops.
+- **🛑 Zero Writes on Silent Sockets & Removal of `_async_rearm_lan()`:** Eliminated the coordinator's reactive re-arm loop that previously injected `Tag 100 = 1` writes every 10 seconds when a socket went silent during Wi-Fi packet loss. If telemetry stops for >= 10 seconds, zero heartbeats and zero writes are sent; if silence reaches 35 seconds, the socket is closed cleanly.
+- **🌩️ Progressive Anti-Flapping Storm Backoff (`15s ➔ 45s ➔ 180s`):** When consecutive LAN sessions drop within < 3 minutes (indicating an active router reboot or Wi-Fi packet-loss storm), the coordinator progressively backs off up to 180 seconds, riding out nightly network maintenance windows without overwhelming the station's UART buffer.
+- **🔒 Pure Local 30-Minute Session Recycling & Cloud Collision Prevention:** Planned 30-minute buffer recycles (`was_recycled = True`) now reconnect silently in local LAN without flipping the `Connection Mode` sensor to `Cloud` or triggering Cloud `wake_device(3)` (`high_frequency_reporting = 3`) collisions.
+
+---
+
 ## 🚀 What's New in v1.5.20: Microcontroller Buffer Protection, 30-min Session Recycling & Connection Mode Categorization
 
 - **🛡️ Microcontroller Buffer Protection & Session Recycling (`1800s / 30m`):** Implemented periodic session recycling for continuous LAN streaming. Gracefully closes and reopens the TCP 6607 socket every 30 minutes, freeing Quectel `FCM100D` lwIP heap and clearing internal buffers before overflow errors occur.
@@ -1012,6 +1021,42 @@ A heartfelt acknowledgment to the community members whose dedication, hardware d
         <li><b>Pinpoint Diagnostic Tracebacks:</b> Captured the critical <code>DEFAULT_BRIDGE_PORT</code> NameError and isolated the <code>'2.19.0_beta'</code> firmware string collision during QuecThing login frames, enabling rapid, targeted hotfixes.</li>
         <li><b>Elimination of Sensor Lag & Exception Storms:</b> Systematically reproduced the 344+ sensor listener exceptions, validating that eliminating string pollution restored 1–2 Hz real-time telemetry and sub-second control.</li>
         <li><b>Autonomous Reboot Resilience & Production Load Testing:</b> Verified flawless autonomous reconnection within 5–10 seconds after full VM and HA reboots without physical intervention, and deployed the Zero-Cloud integration into 24/7 production powering his live server rack.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/appriocoles">
+        <img src="https://avatars.githubusercontent.com/u/265141468?v=4" width="80" height="80" style="border-radius: 50%;" alt="appriocoles"/><br/>
+        <b>@appriocoles</b>
+      </a>
+    </td>
+    <td>
+      <b>EP2500 Balcony Storage Groundwork, Protocol Reverse Engineering & Live Telemetry Dump</b><br/>
+      Crucial pioneer of the Oukitel EP2500 balcony solar storage support (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/9">#9</a>), providing the foundational telemetry extractions, hardware discoveries, and live testing that made native Tuya 3.5 local control possible:
+      <ul>
+        <li><b>Undocumented Hardware Pairing Discovery:</b> Empirically discovered and documented the physical hardware pairing sequence (<b>4 rapid presses on the Power button</b> to trigger Wi-Fi pairing mode), an undocumented manufacturer procedure that unlocked device recovery and local pairing.</li>
+        <li><b>Comprehensive 83-Datapoint Reverse Engineering Dump:</b> Captured and contributed a complete live telemetry extraction of 83 datapoints (DP 101 through 188), validating individual cell voltage scaling (<code>3325 mV</code> on DP 130/131), decidegree dual thermal probes (<code>25.8 °C</code> on DP 132/133), inverter status registers, and power regulation thresholds.</li>
+        <li><b>Bidirectional Control Verification:</b> Successfully conducted the first physical verification of local Tuya 3.5 command dispatch, proving that adjusting <code>Maximum Feed-In Power</code> (DP 121) from Home Assistant takes effect instantly on the physical inverter.</li>
+        <li><b>Startup Trace & Regression Triage:</b> Captured and reported the exact stack trace during early alpha testing, pinpointing coordinator package export omissions and accelerating the stable driver rollout.</li>
+        <li><b>Dynamic Arbitrage & Zero-Export Blueprint:</b> Designed and validated the real-world automation architecture pairing the EP2500 with Shelly Pro 3EM whole-house metering and OMIE dynamic electricity spot-pricing for automated grid charging and peak shaving.</li>
+      </ul>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <a href="https://github.com/Jeff-buell">
+        <img src="https://avatars.githubusercontent.com/u/338980819?v=4" width="80" height="80" style="border-radius: 50%;" alt="Jeff-buell"/><br/>
+        <b>@Jeff-buell</b>
+      </a>
+    </td>
+    <td>
+      <b>EP2500 Inverter Operating Mode Architecture & Hardware Cross-Validation</b><br/>
+      Pivotal contributions to the EP2500 balcony storage driver (Issue <a href="https://github.com/VictorCV-DAM/ha-oukitel/issues/9">#9</a>), identifying essential inverter control registers and providing multi-unit cross-validation:
+      <ul>
+        <li><b>Operating Mode Architecture Discovery:</b> Pinpointed and documented the essential bidirectional control mechanism between <code>grid_priority</code> (home feed-in) and <code>backup_power</code> (forced AC grid charging), identifying writable schedule registers (DP 165–169) and correlating with reference reverse-engineering documentation.</li>
+        <li><b>Independent Physical Multi-Unit Cross-Validation:</b> Extensively verified the local Tuya 3.5 integration across an independent physical EP2500 installation, confirming telemetry reliability, device discovery, and seamless execution of the operating mode select entity (<code>v1.6.0-ep2500-alpha.4</code>).</li>
+        <li><b>Active Community Mentorship:</b> Actively supported incoming community members by sharing video walkthroughs and guidance on Tuya Developer platform credential extraction to obtain the required Local Key.</li>
       </ul>
     </td>
   </tr>
