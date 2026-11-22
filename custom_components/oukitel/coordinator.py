@@ -1213,10 +1213,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 await self._lan_listen_task
             except asyncio.CancelledError:
                 pass
-        if self._lan_session:
+        if self._lan_session and self._lan_session is not self._bridge:
             await self._lan_session.close()
             self._lan_session = None
         if self._bridge is not None:
+            await self._bridge.close()
             self._bridge = None
         self._lan_active = False
         self._lan_has_valid_telemetry = False
@@ -1241,6 +1242,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
     async def _force_lan_reconnect(self) -> None:
         """Drop a silent session so the background read loop cleanly reconnects."""
+        if self.use_bridge:
+            _LOGGER.info(
+                "oukitel: [Zero-Cloud] Local broker telemetry silent for > %.1fs — resetting client socket (keeping broker server listening)",
+                _LAN_STALE_TIMEOUT,
+            )
+            self._lan_has_valid_telemetry = False
+            if self._bridge is not None:
+                self._bridge.disconnect_client()
+            return
+
         _LOGGER.info(
             "oukitel: LAN session silent for > %.1fs (no telemetry) — dropping socket to force clean reconnect",
             _LAN_SILENCE_TIMEOUT,
@@ -1280,6 +1291,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
 
         if self.connection_mode == MODE_CLOUD:
             data = await self._update_cloud()
+        elif self.use_bridge or self.connection_mode == MODE_ZERO_CLOUD:
+            if self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
+                data = await self._update_lan()
+            else:
+                data = await self._update_lan_offline()
         elif self._lan_active and self._lan_has_valid_telemetry and self._lan_state:
             data = await self._update_lan()
         elif self.connection_mode == MODE_LAN or not getattr(self.client, "access_token", None):
@@ -1343,12 +1359,16 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         )
         if stale:
             _LOGGER.warning(
-                "oukitel: LAN telemetry silent (>%.1fs) — dropping socket to reconnect and falling back to cloud",
+                "oukitel: %s telemetry silent (>%.1fs) — dropping socket to reconnect%s",
+                "Zero-Cloud broker" if self.use_bridge else "LAN",
                 _LAN_STALE_TIMEOUT,
+                "" if self.use_bridge or self.connection_mode == MODE_LAN else " and falling back to cloud",
             )
             await self._force_lan_reconnect()
-            if self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
+            if not self.use_bridge and self.connection_mode != MODE_LAN and getattr(self.client, "access_token", None):
                 return await self._update_cloud()
+            if self.use_bridge:
+                return await self._update_lan_offline()
 
         if not self._lan_state:
             for _ in range(20):

@@ -35,6 +35,7 @@ from .const import (
     DEFAULT_FIXED_PRICE,
     DOMAIN,
     ENTITY_DESCRIPTIONS,
+    MODE_ZERO_CLOUD,
     VERSION,
     get_battery_capacity_wh,
     get_entity_description,
@@ -615,7 +616,7 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
     _attr_name = None
     _attr_icon = "mdi:lan-connect"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["LAN", "Cloud", "Paused"]
+    _attr_options = ["LAN", "Zero-Cloud", "Cloud", "Paused", "Disconnected"]
 
     def __init__(self, coordinator: OukitelDataCoordinator, client) -> None:
         super().__init__(coordinator)
@@ -631,6 +632,9 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
     def native_value(self) -> str:
         if self.coordinator.is_paused:
             return "Paused"
+        if self.coordinator.use_bridge or getattr(self.coordinator, "connection_mode", None) == MODE_ZERO_CLOUD:
+            is_connected = bool(self.coordinator._bridge and self.coordinator._bridge.connected)
+            return "Zero-Cloud" if is_connected else "Disconnected"
         is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
         return "LAN" if is_lan else "Cloud"
 
@@ -638,6 +642,9 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
     def icon(self) -> str:
         if self.coordinator.is_paused:
             return "mdi:pause-circle-outline"
+        if self.coordinator.use_bridge or getattr(self.coordinator, "connection_mode", None) == MODE_ZERO_CLOUD:
+            is_connected = bool(self.coordinator._bridge and self.coordinator._bridge.connected)
+            return "mdi:router-wireless" if is_connected else "mdi:lan-disconnect"
         is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
         return "mdi:lan-connect" if is_lan else "mdi:cloud-outline"
 

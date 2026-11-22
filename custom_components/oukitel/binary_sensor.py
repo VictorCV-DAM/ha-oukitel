@@ -77,19 +77,26 @@ class OukitelOnBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
         real_in = max(total_in, ac_in + dc_in)
         real_out = max(total_out, ac_out + dc_out)
 
-        # 1. Inputs absent (<= 5W): running on battery
+        # 1. AC mains input present: unit is connected to grid / wall power (charging or UPS bypass)
+        if ac_in > 10.0:
+            self._last_state = False
+            return False
+
+        # 2. No AC mains input (<= 5W): check if running pure battery or solar
         if real_in <= 5.0:
             self._last_state = True
             return True
 
-        # 2. Inputs present: apply hysteresis around net balance to prevent flutter
+        # 3. Off-grid with DC solar input: apply hysteresis around solar vs load
+        # If solar clearly covers the load (+10W margin), we are running on solar / charging
+        # If load clearly exceeds solar (+15W margin), battery is discharging to cover the deficit
         delta = real_out - real_in
         if self._last_state:
-            # Currently on battery -> only switch to charging if inputs clearly exceed load (>10W)
+            # Currently on battery -> only switch to solar/charging if solar clearly exceeds load (>10W)
             if delta < -10.0:
                 self._last_state = False
         else:
-            # Currently on mains/charging -> only switch to battery if load clearly exceeds inputs (>15W)
+            # Currently on solar/charging -> only switch to battery if load clearly exceeds solar (>15W)
             if delta > 15.0:
                 self._last_state = True
 

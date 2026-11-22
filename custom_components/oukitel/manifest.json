@@ -29,5 +29,5 @@
   "requirements": [
     "pycryptodome>=3.18.0"
   ],
-  "version": "1.6.0-zerocloud-alpha.6"
+  "version": "1.6.0-zerocloud-alpha.7"
 }

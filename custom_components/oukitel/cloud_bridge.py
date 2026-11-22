@@ -177,6 +177,23 @@ class CloudBridge:
     def connected(self) -> bool:
         return self._writer is not None
 
+    def disconnect_client(self) -> None:
+        """Drop active client connections while keeping the listening broker server active."""
+        all_conns = set(self._connections)
+        if self._writer is not None:
+            all_conns.add(self._writer)
+        self._writer = None
+        self._down_base = None
+        self._connections.clear()
+        for conn in all_conns:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        if self._on_conn:
+            self._on_conn(False)
+        _LOGGER.info("oukitel: [Zero-Cloud] Client socket reset performed — broker server remains listening on port %s", self._port)
+
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
         eti = f"{peer[0]}:{peer[1]}" if peer else "?"
@@ -185,9 +202,20 @@ class CloudBridge:
         buf = bytearray()
         era_lei = False
         self._connections.add(writer)
+        sock = writer.get_extra_info("socket")
+        if sock:
+            try:
+                import socket
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            except Exception:
+                pass
         try:
             while True:
-                chunk = await reader.read(4096)
+                try:
+                    chunk = await asyncio.wait_for(reader.read(4096), timeout=120.0)
+                except asyncio.TimeoutError:
+                    _LOGGER.info("oukitel: [Zero-Cloud] Socket %s silent for >120s — dropping dead client connection", eti)
+                    break
                 if not chunk:
                     break
                 if not buf and chunk[0] == 0x16:
@@ -217,7 +245,7 @@ class CloudBridge:
                 _LOGGER.info("oukitel: [Zero-Cloud] Station %s disconnected from local broker", eti)
                 if self._on_conn:
                     self._on_conn(False)
-            elif era_lei and self._on_conn:
+            elif era_lei and self._on_conn and not self._writer and not self._connections:
                 self._on_conn(False)
             try:
                 writer.close()
@@ -468,13 +496,9 @@ class CloudBridge:
 
     async def _stimulus_loop(self) -> None:
         try:
-            loop_count = 0
             while True:
                 await asyncio.sleep(STIMULUS_SECONDS)
                 if self._writer is not None:
-                    loop_count += 1
-                    if loop_count % 6 == 0:
-                        await self._confirm_binding()
                     await self._stimulate(rumoroso=False)
         except asyncio.CancelledError:
             raise
