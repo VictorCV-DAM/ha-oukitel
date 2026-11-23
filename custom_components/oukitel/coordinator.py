@@ -491,8 +491,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             self._use_struct_switch_protocol = True
             return True
 
-        # Known P-series (P2001 Plus, P1000 Plus, P1500 Plus, P5000 Pro / P5000E Pro, etc.) use flat tags (43, 44, 46)
-        if pk in ("p11wn7", "p11uve", "p11tzc") or any(x in pn for x in ("2001", "1000", "1500", "5000")):
+        # Known P-series (P2001 Plus / Plus-G2, P1000 Plus, P1500 Plus, P5000 Pro / P5000E Pro, etc.) use flat tags (43, 44, 46)
+        if pk in ("p11wn7", "p11uve", "p11tzc", "p11tji") or any(x in pn for x in ("2001", "1000", "1500", "5000")):
             self._use_struct_switch_protocol = False
             return False
 

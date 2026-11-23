@@ -22,10 +22,11 @@ Custom integration for Home Assistant to monitor and control **Oukitel Power Sta
     <td valign="top" width="60%">
       <b>100% VERIFIED DEVICES (Official Stable Releases):</b>
       <ul>
-        <li><b>P2001E PLUS</b></li>
+        <li><b>P2001E PLUS / P2001 PLUS-G2</b> (<code>p11wN7</code>, <code>p11tji</code>)</li>
+        <li><b>P1000E PLUS</b> (<code>p11uve</code>)</li>
+        <li><b>P5000E PRO / P5000 PRO</b> (<code>p11tzc</code>)</li>
         <li><b>BP3000E</b></li>
-        <li><b>BP2000 / BP2000 PRO</b></li>
-        <li><b>P1000E PLUS</b></li>
+        <li><b>BP2000 / BP2000 PRO</b> (<code>p11ssr</code>)</li>
       </ul>
       <b>🧪 BETA / COMMUNITY TESTING (<a href="https://github.com/VictorCV-DAM/ha-oukitel/tree/feature/ep2500-support"><code>feature/ep2500-support</code></a>):</b>
       <ul>
