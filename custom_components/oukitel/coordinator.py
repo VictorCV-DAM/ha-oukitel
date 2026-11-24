@@ -409,6 +409,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._last_auth_refresh: float = 0.0
         self._paused: bool = False
         self._user_overrides: dict[str, tuple] = {}
+        self._override_prior_values: dict[Any, tuple[bool, Any, bool, Any]] = {}
         self._last_device_list_check: float = 0.0
         self.last_user_command_time: float = 0.0
         self._static_metadata: dict[str, Any] = {}
@@ -438,12 +439,20 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         """Record user command override so stale telemetry does not overwrite commanded state."""
         now = time.time()
         self.last_user_command_time = now
-        self._user_overrides[key] = (value, now + ttl, now + min_hold)
         tag_map = {"ac_switch": 43, "usb_switch": 44, "dc_switch": 46}
         tag = tag_map.get(key)
+        affected_keys: list[Any] = [key]
         if tag is not None:
-            self._user_overrides[tag] = (value, now + ttl, now + min_hold)
-            self._user_overrides[str(tag)] = (value, now + ttl, now + min_hold)
+            affected_keys.extend([tag, str(tag)])
+
+        for k in affected_keys:
+            if k not in self._user_overrides:
+                has_data = self.data is not None and k in self.data
+                prior_data = self.data[k] if has_data else None
+                has_lan = self._lan_state is not None and k in self._lan_state
+                prior_lan = self._lan_state[k] if has_lan else None
+                self._override_prior_values[k] = (has_data, prior_data, has_lan, prior_lan)
+            self._user_overrides[k] = (value, now + ttl, now + min_hold)
 
         if self.data is not None:
             self.data[key] = value
@@ -457,13 +466,28 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 self._lan_state[str(tag)] = value
 
     def async_clear_user_override(self, key: str) -> None:
-        """Cancel user command override immediately (e.g. if cloud command failed)."""
-        self._user_overrides.pop(key, None)
+        """Cancel user command override immediately and restore pre-override cached values."""
         tag_map = {"ac_switch": 43, "usb_switch": 44, "dc_switch": 46}
         tag = tag_map.get(key)
+        affected_keys: list[Any] = [key]
         if tag is not None:
-            self._user_overrides.pop(tag, None)
-            self._user_overrides.pop(str(tag), None)
+            affected_keys.extend([tag, str(tag)])
+
+        for k in affected_keys:
+            self._user_overrides.pop(k, None)
+            prior = self._override_prior_values.pop(k, None)
+            if prior is not None:
+                has_data, prior_data, has_lan, prior_lan = prior
+                if self.data is not None:
+                    if has_data:
+                        self.data[k] = prior_data
+                    else:
+                        self.data.pop(k, None)
+                if self._lan_state is not None:
+                    if has_lan:
+                        self._lan_state[k] = prior_lan
+                    else:
+                        self._lan_state.pop(k, None)
 
     def _detect_switch_protocol(self) -> bool:
         """Detect whether the station uses nested STRUCT TSL tags (BP series/P5000) or flat tags (P-series)."""
@@ -474,8 +498,8 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         pk = (getattr(self.client, "product_key", None) or "").strip().lower()
         pn = (getattr(self.client, "product_name", None) or getattr(self.client, "device_name", "") or "").lower()
 
-        # Known BP series (BP2000 Pro / BP2000) uses nested struct protocol
-        if pk in ("p11ssr",) or "bp2000" in pn or ("2000" in pn and "bp" in pn):
+        # Known BP series (BP2000 Pro / BP2000 / 2000/Pro-48V) uses nested struct protocol
+        if pk in ("p11ssr",) or "bp2000" in pn or "2000/pro" in pn or "48v" in pn or ("2000" in pn and "bp" in pn):
             self._use_struct_switch_protocol = True
             return True
 
@@ -495,9 +519,22 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._use_struct_switch_protocol = False
         return False
 
+    async def async_ensure_lan_for_command(self) -> None:
+        """Wake LAN reconnect loop immediately if sleeping when user sends a control command."""
+        if not self._lan_active and self.connection_mode != MODE_CLOUD and not self._paused:
+            if self._lan_listen_task and not self._lan_listen_task.done():
+                self._lan_wake_event.set()
+            elif not self._lan_setup_in_flight:
+                self.hass.async_create_task(self.async_setup_lan(reason="user_command"))
+            for _ in range(35):
+                if self._lan_active and self._lan_session:
+                    break
+                await asyncio.sleep(0.1)
+
     async def async_send_switch_command(self, key: str, value: bool) -> bool:
         """Send switch command via instant LAN (sub-millisecond local dispatch) with Cloud fallback."""
         is_struct = self._detect_switch_protocol()
+        await self.async_ensure_lan_for_command()
 
         for attempt in range(2):
             # 1. Instant direct LAN dispatch (<10ms local socket latency, zero cloud hops)
@@ -1250,9 +1287,11 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             return _build_paused_data(self._lan_state or self.data)
 
         now = time.monotonic()
+        last_activity = max(self._lan_last_report or 0.0, self._lan_connected_at)
         stale = (
             self._lan_last_report is not None
-            and (now - self._lan_last_report) > _LAN_STALE_TIMEOUT
+            and last_activity > 0.0
+            and (now - last_activity) > _LAN_STALE_TIMEOUT
         )
         if stale:
             _LOGGER.warning(

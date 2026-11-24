@@ -91,7 +91,9 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         target_val = int(round(value))
         target_val = max(3, min(100, target_val))
 
-        # 1. Update UI and coordinator cache immediately with active override
+        # 1. Snapshot prior value before drag, then update UI and coordinator cache immediately
+        if not (self._pending_task and not self._pending_task.done()):
+            self._prev_native_value = self._attr_native_value
         self._attr_native_value = float(target_val)
         self.coordinator.async_set_user_override(self._key, target_val, ttl=10.0, min_hold=2.0)
         self.async_write_ha_state()
@@ -112,6 +114,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
             return
 
         lan_ok = False
+        await self.coordinator.async_ensure_lan_for_command()
         if self.coordinator._lan_active and self.coordinator._lan_session:
             try:
                 await self.coordinator._lan_session.send_write(20, "num", target_val)
@@ -130,6 +133,7 @@ class OukitelChargingLimitNumber(CoordinatorEntity, NumberEntity):
         if not cloud_ok and not lan_ok:
             _LOGGER.error("oukitel: Failed to set %s to %s", self._key, target_val)
             self.coordinator.async_clear_user_override(self._key)
+            self._attr_native_value = getattr(self, "_prev_native_value", self._attr_native_value)
             if self.coordinator.data and self._key in self.coordinator.data:
                 try:
                     self._attr_native_value = float(self.coordinator.data[self._key])

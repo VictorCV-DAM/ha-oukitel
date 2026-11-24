@@ -102,6 +102,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
                 )
 
             cloud_val = FREQ_MAP_TO_VAL[option]
+            prev_opt = self._attr_current_option
 
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_current_option = option
@@ -110,7 +111,8 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
             self.async_write_ha_state()
 
             lan_ok = False
-            # 2. Write via local LAN if active
+            # 2. Write via local LAN if active (waking reconnect timer on demand if needed)
+            await self.coordinator.async_ensure_lan_for_command()
             if self.coordinator._lan_active and self.coordinator._lan_session:
                 try:
                     await self.coordinator._lan_session.send_write(27, "num", cloud_val)
@@ -129,8 +131,7 @@ class OukitelFrequencySelect(CoordinatorEntity, SelectEntity):
                 _LOGGER.error("oukitel: Failed to set output frequency to %s", option)
                 self.coordinator.async_clear_user_override(self._key)
                 self.coordinator.async_clear_user_override("27")
-                if self.coordinator.data and self._key in self.coordinator.data:
-                    self._attr_current_option = FREQ_MAP_TO_NAME.get(str(self.coordinator.data[self._key]), "50Hz")
+                self._attr_current_option = prev_opt
                 self.async_write_ha_state()
 
 
@@ -204,6 +205,7 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
                 )
 
             clean_num = int(option.replace("V", ""))
+            prev_opt = self._attr_current_option
 
             # 1. Update UI and coordinator cache immediately with active override
             self._attr_current_option = option
@@ -212,7 +214,8 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
             self.async_write_ha_state()
 
             lan_ok = False
-            # 2. Write via local LAN if active
+            # 2. Write via local LAN if active (waking reconnect timer on demand if needed)
+            await self.coordinator.async_ensure_lan_for_command()
             if self.coordinator._lan_active and self.coordinator._lan_session:
                 try:
                     await self.coordinator._lan_session.send_write(28, "num", clean_num)
@@ -231,9 +234,5 @@ class OukitelVoltageSelect(CoordinatorEntity, SelectEntity):
                 _LOGGER.error("oukitel: Failed to set output voltage to %s", option)
                 self.coordinator.async_clear_user_override(self._key)
                 self.coordinator.async_clear_user_override("28")
-                if self.coordinator.data and self._key in self.coordinator.data:
-                    raw = str(self.coordinator.data[self._key]).replace("V", "").strip()
-                    formatted = f"{raw}V"
-                    if formatted in VOLTAGE_OPTIONS:
-                        self._attr_current_option = formatted
+                self._attr_current_option = prev_opt
                 self.async_write_ha_state()

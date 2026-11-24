@@ -38,8 +38,11 @@ class DummyCoord(OukitelDataCoordinator):
     def __init__(self, client, lan_state=None, data=None):
         self.client = client
         self._use_struct_switch_protocol = None
-        self._lan_state = lan_state or {}
-        self.data = data or {}
+        self._lan_state = lan_state if lan_state is not None else {}
+        self.data = data if data is not None else {}
+        self._user_overrides = {}
+        self._override_prior_values = {}
+        self.last_user_command_time = 0.0
 
 
 class SwitchProtocolDetectionTests(unittest.TestCase):
@@ -75,6 +78,30 @@ class SwitchProtocolDetectionTests(unittest.TestCase):
     def test_default_fallback_is_flat(self):
         coord = DummyCoord(DummyClient())
         self.assertFalse(coord._detect_switch_protocol())
+
+    def test_bp2000_pro_48v_name_uses_struct(self):
+        """Issue #10: 2000/Pro-48V must be detected as struct protocol."""
+        coord = DummyCoord(DummyClient(product_name="2000/Pro-48V"))
+        self.assertTrue(coord._detect_switch_protocol())
+
+    def test_failed_write_rollback_restores_prior_cached_values(self):
+        """Issue #10: async_clear_user_override must restore pre-override values in data and _lan_state."""
+        coord = DummyCoord(
+            DummyClient(),
+            lan_state={"ac_switch": False, 43: False},
+            data={"ac_switch": False, 43: False, "43": False},
+        )
+        coord.async_set_user_override("ac_switch", True, ttl=30.0, min_hold=4.0)
+        self.assertTrue(coord.data["ac_switch"])
+        self.assertTrue(coord._lan_state["ac_switch"])
+
+        # Simulate failed write rollback
+        coord.async_clear_user_override("ac_switch")
+        self.assertFalse(coord.data["ac_switch"])
+        self.assertFalse(coord.data[43])
+        self.assertFalse(coord.data["43"])
+        self.assertFalse(coord._lan_state["ac_switch"])
+        self.assertFalse(coord._lan_state[43])
 
 
 if __name__ == "__main__":
