@@ -35,6 +35,7 @@ from .const import (
     DEFAULT_FIXED_PRICE,
     DOMAIN,
     ENTITY_DESCRIPTIONS,
+    MODE_LAN,
     MODE_ZERO_CLOUD,
     VERSION,
     get_battery_capacity_wh,
@@ -636,7 +637,11 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
             is_connected = bool(self.coordinator._bridge and self.coordinator._bridge.connected)
             return "Zero-Cloud" if is_connected else "Disconnected"
         is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
-        return "LAN" if is_lan else "Cloud"
+        if is_lan:
+            return "LAN"
+        if getattr(self.coordinator, "connection_mode", None) == MODE_LAN:
+            return "Disconnected"
+        return "Cloud"
 
     @property
     def icon(self) -> str:
@@ -646,7 +651,11 @@ class OukitelConnectionModeSensor(CoordinatorEntity, SensorEntity):
             is_connected = bool(self.coordinator._bridge and self.coordinator._bridge.connected)
             return "mdi:router-wireless" if is_connected else "mdi:lan-disconnect"
         is_lan = self.coordinator._lan_active and getattr(self.coordinator, "_lan_has_valid_telemetry", False)
-        return "mdi:lan-connect" if is_lan else "mdi:cloud-outline"
+        if is_lan:
+            return "mdi:lan-connect"
+        if getattr(self.coordinator, "connection_mode", None) == MODE_LAN:
+            return "mdi:lan-disconnect"
+        return "mdi:cloud-outline"
 
     @property
     def extra_state_attributes(self) -> dict:

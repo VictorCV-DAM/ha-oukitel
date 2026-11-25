@@ -409,6 +409,7 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         self._lan_hibernating: bool = False
         self._lan_wake_event = asyncio.Event()
         self._last_cloud_online: bool = True
+        self._created_at: float = time.monotonic()
         self._last_lan_attempt: float = time.monotonic()
         self._lan_setup_in_flight: bool = False
         self._lan_setup_attempts: int = 0
@@ -1276,13 +1277,15 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("oukitel: Polling skipped — integration is paused (returning zeroed power metrics)")
             return _build_paused_data(self.data or self._lan_state)
 
-        # In Auto mode, if LAN session is dead or never started, periodically retry starting LAN
+        # In Auto or Solo LAN mode, if LAN session is dead or never started, periodically retry starting LAN
         now = time.monotonic()
+        retry_interval = 30.0 if self.connection_mode == MODE_LAN else _LAN_RETRY_INTERVAL
         if (
-            self.connection_mode == MODE_AUTO
+            self.connection_mode in (MODE_AUTO, MODE_LAN)
+            and not self.use_bridge
             and not self._lan_active
             and (self._lan_listen_task is None or self._lan_listen_task.done())
-            and (now - self._last_lan_attempt >= _LAN_RETRY_INTERVAL)
+            and (now - self._last_lan_attempt >= retry_interval)
         ):
             self._last_lan_attempt = now
             self._lan_hibernating = False
@@ -1325,11 +1328,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         return data
 
     async def _update_lan_offline(self) -> dict:
-        """Provide baseline operational data when booting offline with an active LAN session."""
+        """Provide baseline operational data when booting offline or when LAN session is disconnected."""
         data = dict(self._lan_state)
         if self.data:
             data.update(self.data)
-        data.setdefault("online", True)
+        is_connected = bool(self._bridge.connected) if self.use_bridge and self._bridge else bool(self._lan_active)
+        data["online"] = is_connected
         data.setdefault("wifi_signal", -60)
         data.setdefault("battery_soc", 0)
         data.setdefault("total_input_power", 0)
@@ -1345,6 +1349,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
         for k, v in self._static_metadata.items():
             if k not in data or data[k] is None:
                 data[k] = v
+        if not is_connected and self._lan_last_report is None:
+            age = max(0.0, time.monotonic() - getattr(self, "_created_at", time.monotonic()))
+            data["telemetry_stale"] = age > _LAN_STALE_TIMEOUT
+            data["last_telemetry_age"] = round(age, 1)
+        else:
+            self._apply_telemetry_freshness(data)
         self._apply_user_overrides(data)
         return data
 
