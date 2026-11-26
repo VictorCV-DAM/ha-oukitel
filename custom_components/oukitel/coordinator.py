@@ -287,8 +287,12 @@ class OukitelPredictiveTracker:
         self.battery_remaining_wh = round((batt_pct / 100.0) * capacity_wh, 1)
         self.battery_needed_wh = round(max(0.0, ((100.0 - batt_pct) / 100.0) * capacity_wh), 1)
 
+        ac_mains_in = max(ac_in, total_in - dc_in)
+
         # Detect operating state
-        if net_power < -5.0 and batt_pct > 0:
+        if ac_mains_in > 10.0 and batt_pct >= 99.0:
+            current_mode = "Full"
+        elif net_power < -5.0 and batt_pct > 0 and not (ac_mains_in > 10.0 and net_power > -25.0):
             current_mode = "Discharging"
         elif net_power > 5.0 and batt_pct < 100:
             current_mode = "Charging"

@@ -77,8 +77,10 @@ class OukitelOnBatteryBinarySensor(CoordinatorEntity, BinarySensorEntity):
         real_in = max(total_in, ac_in + dc_in)
         real_out = max(total_out, ac_out + dc_out)
 
-        # 1. AC mains input present: unit is connected to grid / wall power (charging or UPS bypass)
-        if ac_in > 10.0:
+        # 1. AC mains input present (charging OR UPS bypass where tag 11 ac_input drops to 0W at 100% SoC
+        # while tag 4 total_input_power still carries wall passthrough wattage)
+        ac_mains_in = max(ac_in, total_in - dc_in)
+        if ac_mains_in > 10.0:
             self._last_state = False
             return False
 

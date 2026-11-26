@@ -1,7 +1,7 @@
 """Constants for the Oukitel Power Station integration."""
 
 DOMAIN = "oukitel"
-VERSION = "1.6.0-zerocloud-alpha.7"
+VERSION = "1.6.0-zerocloud-alpha.8"
 
 CONF_REGION = "region"
 CONF_EMAIL = "email"

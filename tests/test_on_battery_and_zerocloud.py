@@ -129,6 +129,27 @@ class OnBatterySensorTests(unittest.TestCase):
         coord.data["total_input_power"] = 690.0
         self.assertFalse(sensor.is_on)
 
+    def test_mains_ups_bypass_full_battery_ac_input_zero(self):
+        """At 100% SoC in UPS bypass, tag 11 (ac_input) drops to 0W while tag 4 (total_input_power) carries wall load."""
+        coord = MockCoordinator({
+            "battery_percentage": 100.0,
+            "total_input_power": 700.0,
+            "total_output_power": 720.0,
+            "ac_input": 0.0,
+            "dc_input": 0.0,
+            "ac_output_power": 720.0,
+            "dc_output_power": 0.0,
+        })
+        sensor = OukitelOnBatteryBinarySensor(coord, self.client)
+        self.assertFalse(sensor.is_on)
+
+        from custom_components.oukitel.coordinator import OukitelPredictiveTracker
+        tracker = OukitelPredictiveTracker(self.client)
+        tracker.update(coord.data)
+        self.assertEqual(tracker.operating_mode, "Full")
+        self.assertIsNone(tracker.smoothed_discharge_minutes)
+        self.assertIsNone(tracker.empty_timestamp)
+
     def test_mains_unplugged_triggers_battery_mode(self):
         """When mains cable is disconnected (ac_in drops to 0), sensor switches to True."""
         coord = MockCoordinator({
