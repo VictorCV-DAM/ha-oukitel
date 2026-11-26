@@ -896,12 +896,12 @@ class OukitelDataCoordinator(DataUpdateCoordinator):
                 self._lan_silent_sessions = 0
                 self._lan_hibernating = False
                 reported_disconnect = False
-                # Progressive backoff if sessions die repeatedly in < 3 minutes (flapping Wi-Fi storm)
-                if session_duration < 180.0:
+                # Progressive backoff if sessions die repeatedly in < 90s (flapping Wi-Fi storm)
+                if session_duration < 90.0:
                     short_sessions += 1
                     reconnect_delay = 15.0 if short_sessions == 1 else (45.0 if short_sessions == 2 else 180.0)
                     _LOGGER.warning(
-                        "oukitel: Short-lived LAN session #%d (%.1fs < 180s) — cooling off for %.0fs",
+                        "oukitel: Short-lived LAN session #%d (%.1fs < 90s) — cooling off for %.0fs",
                         short_sessions,
                         session_duration,
                         reconnect_delay,
